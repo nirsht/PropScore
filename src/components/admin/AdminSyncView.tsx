@@ -142,9 +142,24 @@ export function AdminSyncView() {
                 <stop offset="100%" stopColor="#7c5cff" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <XAxis dataKey="time" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} />
-            <RechartsTooltip />
+            <XAxis
+              dataKey="time"
+              tick={{ fontSize: 11, fill: "var(--mui-palette-text-secondary)" }}
+            />
+            <YAxis tick={{ fontSize: 11, fill: "var(--mui-palette-text-secondary)" }} />
+            <RechartsTooltip
+              contentStyle={{
+                background: "var(--mui-palette-background-paper)",
+                border: "1px solid var(--mui-palette-divider)",
+                borderRadius: 8,
+                fontSize: 12,
+                boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+                color: "var(--mui-palette-text-primary)",
+              }}
+              labelStyle={{ color: "var(--mui-palette-text-primary)", fontWeight: 600 }}
+              itemStyle={{ color: "var(--mui-palette-text-secondary)" }}
+              cursor={{ fill: "rgba(255,255,255,0.04)" }}
+            />
             <Area
               type="monotone"
               dataKey="upserted"

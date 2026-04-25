@@ -447,10 +447,17 @@ function ScoreBars({
   return (
     <ResponsiveContainer width="100%" height={150}>
       <BarChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
-        <XAxis dataKey="name" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+        <XAxis
+          dataKey="name"
+          tick={{ fontSize: 11, fill: "var(--mui-palette-text-secondary)" }}
+          axisLine={false}
+          tickLine={false}
+        />
         <RechartsTooltip
           cursor={{ fill: "rgba(255,255,255,0.04)" }}
-          contentStyle={{ fontSize: 12 }}
+          contentStyle={CHART_TOOLTIP_CONTENT_STYLE}
+          labelStyle={CHART_TOOLTIP_LABEL_STYLE}
+          itemStyle={CHART_TOOLTIP_ITEM_STYLE}
         />
         <Bar dataKey="value" radius={[6, 6, 0, 0]}>
           {data.map((d) => (
@@ -461,6 +468,22 @@ function ScoreBars({
     </ResponsiveContainer>
   );
 }
+
+const CHART_TOOLTIP_CONTENT_STYLE: React.CSSProperties = {
+  background: "var(--mui-palette-background-paper)",
+  border: "1px solid var(--mui-palette-divider)",
+  borderRadius: 8,
+  fontSize: 12,
+  boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+  color: "var(--mui-palette-text-primary)",
+};
+const CHART_TOOLTIP_LABEL_STYLE: React.CSSProperties = {
+  color: "var(--mui-palette-text-primary)",
+  fontWeight: 600,
+};
+const CHART_TOOLTIP_ITEM_STYLE: React.CSSProperties = {
+  color: "var(--mui-palette-text-secondary)",
+};
 
 function PhotoStrip({
   loading,

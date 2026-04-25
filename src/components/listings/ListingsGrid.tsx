@@ -248,26 +248,72 @@ export function ListingsGrid({ onSelectListing }: Props) {
   );
 
   const sortBy = state.sortBy ?? "valueAdd";
+  const sortDir = state.sortDir ?? "desc";
   const sortField = SORT_KEY_TO_FIELD[sortBy] ?? "valueAddWeightedAvg";
-  const sortModel: GridSortModel = [{ field: sortField, sort: state.sortDir ?? "desc" }];
 
-  function handleSort(model: GridSortModel) {
-    const item = model[0];
-    if (!item) {
-      set({ sortBy: "valueAdd", sortDir: "desc" });
-      return;
-    }
-    const key = FIELD_TO_SORT_KEY[item.field];
-    if (!key) return;
-    set({ sortBy: key, sortDir: item.sort === "asc" ? "asc" : "desc" });
-  }
+  // Stable refs so DataGrid doesn't re-fire onSortModelChange /
+  // onPaginationModelChange during the parent render commit (which was
+  // producing "state update on a component that hasn't mounted yet").
+  const sortModel = React.useMemo<GridSortModel>(
+    () => [{ field: sortField, sort: sortDir }],
+    [sortField, sortDir],
+  );
+  const paginationModel = React.useMemo(
+    () => ({ page, pageSize: PAGE_SIZE }),
+    [page],
+  );
+
+  const handleSort = React.useCallback(
+    (model: GridSortModel) => {
+      const item = model[0];
+      if (!item) {
+        if (sortBy !== "valueAdd" || sortDir !== "desc") {
+          set({ sortBy: "valueAdd", sortDir: "desc" });
+        }
+        return;
+      }
+      const key = FIELD_TO_SORT_KEY[item.field];
+      if (!key) return;
+      const nextDir = item.sort === "asc" ? "asc" : "desc";
+      // Bail out if nothing changed — DataGrid fires this during initial
+      // render with the model we already passed in.
+      if (key === sortBy && nextDir === sortDir) return;
+      set({ sortBy: key, sortDir: nextDir });
+    },
+    [sortBy, sortDir, set],
+  );
 
   const rows = query.data?.rows ?? [];
+  const nextCursor = query.data?.nextCursor;
+  const handlePagination = React.useCallback(
+    (model: { page: number; pageSize: number }) => {
+      const next = model.page;
+      if (next === page) return;
+      if (next > page) {
+        setCursors((prev) => {
+          if (prev[next] !== undefined) return prev;
+          const copy = [...prev];
+          copy[next] = nextCursor ?? null;
+          return copy;
+        });
+      }
+      setPage(next);
+    },
+    [page, nextCursor],
+  );
+
+  const handleRowClick = React.useCallback(
+    (params: { row: ListingRow }) => onSelectListing?.(params.row.mlsId),
+    [onSelectListing],
+  );
+
+  const getRowId = React.useCallback((row: ListingRow) => row.mlsId, []);
+
   // Real count from the server; falls back to a synthetic value while the
   // count query is in flight so DataGrid can still paginate.
   const totalCount =
     countQuery.data ??
-    page * PAGE_SIZE + rows.length + (query.data?.nextCursor ? 1 : 0);
+    page * PAGE_SIZE + rows.length + (nextCursor ? 1 : 0);
 
   return (
     <Paper variant="outlined" sx={{ borderColor: "divider" }}>
@@ -276,7 +322,7 @@ export function ListingsGrid({ onSelectListing }: Props) {
         <DataGrid<ListingRow>
           rows={rows}
           columns={columns}
-          getRowId={(row) => row.mlsId}
+          getRowId={getRowId}
           density="compact"
           disableRowSelectionOnClick
           disableColumnMenu
@@ -286,22 +332,10 @@ export function ListingsGrid({ onSelectListing }: Props) {
           onSortModelChange={handleSort}
           paginationMode="server"
           rowCount={totalCount}
-          paginationModel={{ page, pageSize: PAGE_SIZE }}
+          paginationModel={paginationModel}
           pageSizeOptions={[PAGE_SIZE]}
-          onPaginationModelChange={(model) => {
-            const next = model.page;
-            if (next === page) return;
-            if (next > page) {
-              const nextCursor = query.data?.nextCursor ?? null;
-              setCursors((prev) => {
-                const copy = [...prev];
-                copy[next] = nextCursor;
-                return copy;
-              });
-            }
-            setPage(next);
-          }}
-          onRowClick={(params) => onSelectListing?.(params.row.mlsId)}
+          onPaginationModelChange={handlePagination}
+          onRowClick={handleRowClick}
           sx={{
             border: 0,
             cursor: "pointer",
