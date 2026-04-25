@@ -27,6 +27,7 @@ import LayersRoundedIcon from "@mui/icons-material/LayersRounded";
 import WaterDamageRoundedIcon from "@mui/icons-material/WaterDamageRounded";
 import HomeWorkRoundedIcon from "@mui/icons-material/HomeWorkRounded";
 import DirectionsWalkRoundedIcon from "@mui/icons-material/DirectionsWalkRounded";
+import StraightenRoundedIcon from "@mui/icons-material/StraightenRounded";
 import {
   Bar,
   BarChart,
@@ -39,6 +40,7 @@ import { trpc } from "@/lib/trpc/client";
 import { EnrichWithAIButton } from "./EnrichWithAIButton";
 import { RentGrowthCard } from "./RentGrowthCard";
 import { PhotoLightbox } from "./PhotoLightbox";
+import { MeasureLotModal } from "./MeasureLotModal";
 
 const fmtMoney = (n: number | null | undefined) =>
   n == null ? "—" : `$${Math.round(n).toLocaleString()}`;
@@ -72,6 +74,8 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null);
   const openPhoto = React.useCallback((idx: number) => setLightboxIndex(idx), []);
   const closeLightbox = React.useCallback(() => setLightboxIndex(null), []);
+
+  const [measureOpen, setMeasureOpen] = React.useState(false);
 
   const listing = listingQuery.data;
   const score = listing?.score;
@@ -246,10 +250,22 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
                 label="Bing Aerial"
               />
               <ToolLink
-                href={`https://msc.fema.gov/portal/search?AddressQuery=${encodeURIComponent(fullAddress)}`}
+                href={`https://hazards-fema.maps.arcgis.com/apps/webappviewer/index.html?id=8b0adb51996444d4879338b5529aa9cd&find=${encodeURIComponent(fullAddress)}`}
                 icon={<WaterDamageRoundedIcon fontSize="small" />}
                 label="FEMA Flood"
               />
+              <Tooltip title="Trace the parcel on a satellite map and compare to the API's lot size" arrow>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="primary"
+                  startIcon={<StraightenRoundedIcon fontSize="small" />}
+                  onClick={() => setMeasureOpen(true)}
+                  disabled={lat == null || lng == null}
+                >
+                  Measure lot
+                </Button>
+              </Tooltip>
             </Stack>
           </Paper>
 
@@ -387,6 +403,15 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
         index={lightboxIndex ?? 0}
         onClose={closeLightbox}
         onIndexChange={setLightboxIndex}
+      />
+
+      <MeasureLotModal
+        open={measureOpen}
+        onClose={() => setMeasureOpen(false)}
+        lat={lat}
+        lng={lng}
+        address={fullAddress || address}
+        apiLotSizeSqft={listing?.lotSizeSqft ?? null}
       />
     </Drawer>
   );
