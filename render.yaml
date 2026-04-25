@@ -1,0 +1,63 @@
+# Render Infrastructure as Code.
+# Both services point at the existing managed Postgres `propscore` (configured
+# manually in the Render dashboard — its DATABASE_URL is wired in via env vars).
+
+services:
+  - type: web
+    name: propscore-web
+    runtime: node
+    plan: starter
+    region: ohio
+    branch: main
+    autoDeploy: true
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    startCommand: pnpm start
+    preDeployCommand: pnpm prisma migrate deploy && pnpm db:seed
+    healthCheckPath: /api/trpc/listings.facets
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: NEXTAUTH_URL
+        sync: false
+      - key: NEXTAUTH_SECRET
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: BRIDGE_SERVER_TOKEN
+        sync: false
+      - key: BRIDGE_DATASET
+        value: sfar
+      - key: BRIDGE_BASE_URL
+        value: https://api.bridgedataoutput.com/api/v2/OData
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o-2024-11-20
+      - key: NEXT_PUBLIC_MAP_STYLE_URL
+        sync: false
+
+  - type: cron
+    name: propscore-etl-nightly
+    runtime: node
+    region: ohio
+    branch: main
+    schedule: "0 3 * * *"
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm prisma generate
+    startCommand: pnpm etl:sync
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: BRIDGE_SERVER_TOKEN
+        sync: false
+      - key: BRIDGE_DATASET
+        value: sfar
+      - key: BRIDGE_BASE_URL
+        value: https://api.bridgedataoutput.com/api/v2/OData
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o-2024-11-20

@@ -1,0 +1,196 @@
+"use client";
+
+import * as React from "react";
+import {
+  Alert,
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  Paper,
+  Stack,
+  Tooltip,
+  Typography,
+} from "@mui/material";
+import TrendingUpRoundedIcon from "@mui/icons-material/TrendingUpRounded";
+import AutoFixHighOutlinedIcon from "@mui/icons-material/AutoFixHighOutlined";
+import { trpc } from "@/lib/trpc/client";
+import type { RentGrowthOutput } from "@/server/agents/rent-growth/schema";
+
+const fmtMoney = (n: number | null | undefined) =>
+  n == null ? "—" : `$${Math.round(n).toLocaleString()}`;
+
+const fmtPct = (n: number | null | undefined) =>
+  n == null ? "—" : `${Math.round(n)}%`;
+
+export function RentGrowthCard({ mlsId }: { mlsId: string }) {
+  const utils = trpc.useUtils();
+  const cached = trpc.agents.latestRentGrowth.useQuery({ mlsId });
+
+  const compute = trpc.agents.rentGrowth.useMutation({
+    onSuccess: () => {
+      void utils.agents.latestRentGrowth.invalidate({ mlsId });
+    },
+  });
+
+  const result: RentGrowthOutput | null =
+    (compute.data as RentGrowthOutput | undefined) ??
+    (cached.data?.output as RentGrowthOutput | undefined) ??
+    null;
+
+  const isStale =
+    !!cached.data && !compute.data
+      ? Date.now() - new Date(cached.data.createdAt).getTime() > 1000 * 60 * 60 * 24 * 30
+      : false;
+
+  return (
+    <Paper variant="outlined" sx={{ p: 2 }}>
+      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
+        <TrendingUpRoundedIcon fontSize="small" color="primary" />
+        <Typography variant="subtitle2">Rent-growth potential</Typography>
+        {result && <ConfidenceChip confidence={result.confidence} />}
+        <Box sx={{ flex: 1 }} />
+        <Tooltip title="GPT analyses the listing description and field data to estimate rent upside.">
+          <span>
+            <Button
+              size="small"
+              variant={result ? "outlined" : "contained"}
+              startIcon={
+                compute.isPending ? (
+                  <CircularProgress size={14} />
+                ) : (
+                  <AutoFixHighOutlinedIcon fontSize="small" />
+                )
+              }
+              disabled={compute.isPending}
+              onClick={() => compute.mutate({ mlsId })}
+            >
+              {compute.isPending
+                ? "Analyzing…"
+                : result
+                ? "Re-run"
+                : "Estimate rent upside"}
+            </Button>
+          </span>
+        </Tooltip>
+      </Stack>
+
+      {compute.error && (
+        <Alert severity="error" sx={{ mb: 1.5 }}>
+          {compute.error.message}
+        </Alert>
+      )}
+
+      {!result && !compute.isPending && (
+        <Typography variant="body2" color="text.secondary">
+          Click <em>Estimate rent upside</em> to have GPT extract current vs.
+          market rent signals from the description.
+        </Typography>
+      )}
+
+      {result && (
+        <Stack spacing={1.75}>
+          <Stack direction="row" spacing={3} flexWrap="wrap" useFlexGap>
+            <Metric
+              label="Current rent (mo)"
+              primary={fmtMoney(result.currentRent?.totalMonthly ?? null)}
+              secondary={
+                result.currentRent
+                  ? `${fmtMoney(result.currentRent.perUnitMonthly)}/unit · ${result.currentRent.source}`
+                  : "no signal"
+              }
+            />
+            <Metric
+              label="Market rent (mo)"
+              primary={fmtMoney(result.marketRent?.totalMonthly ?? null)}
+              secondary={
+                result.marketRent
+                  ? `${fmtMoney(result.marketRent.perUnitMonthly)}/unit`
+                  : "—"
+              }
+            />
+            <Metric
+              label="Monthly upside"
+              primary={fmtMoney(result.monthlyUpside)}
+              emphasis
+            />
+            <Metric
+              label="Annual upside"
+              primary={fmtMoney(result.annualUpside)}
+            />
+            <Metric label="Upside %" primary={fmtPct(result.upsidePercent)} />
+          </Stack>
+
+          {result.rationale && (
+            <Box>
+              <Typography variant="caption" color="text.secondary">
+                Rationale
+              </Typography>
+              <Typography variant="body2">{result.rationale}</Typography>
+            </Box>
+          )}
+
+          {result.signals.length > 0 && (
+            <Box>
+              <Typography variant="caption" color="text.secondary">
+                Signals from description
+              </Typography>
+              <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mt: 0.5 }}>
+                {result.signals.map((s, i) => (
+                  <Chip key={i} size="small" variant="outlined" label={s} />
+                ))}
+              </Stack>
+            </Box>
+          )}
+
+          {cached.data && !compute.data && (
+            <Typography variant="caption" color="text.secondary">
+              Cached estimate from {new Date(cached.data.createdAt).toLocaleString()}
+              {isStale ? " · stale (>30d)" : ""}
+            </Typography>
+          )}
+        </Stack>
+      )}
+    </Paper>
+  );
+}
+
+function ConfidenceChip({ confidence }: { confidence: "low" | "medium" | "high" }) {
+  const color = confidence === "high" ? "success" : confidence === "medium" ? "warning" : "default";
+  return <Chip size="small" color={color} label={`${confidence} confidence`} />;
+}
+
+function Metric({
+  label,
+  primary,
+  secondary,
+  emphasis,
+}: {
+  label: string;
+  primary: string;
+  secondary?: string;
+  emphasis?: boolean;
+}) {
+  return (
+    <Box>
+      <Typography variant="caption" color="text.secondary">
+        {label}
+      </Typography>
+      <Typography
+        variant={emphasis ? "h6" : "body1"}
+        sx={{
+          fontWeight: emphasis ? 700 : 500,
+          color: emphasis ? "primary.main" : "text.primary",
+          lineHeight: 1.2,
+        }}
+      >
+        {primary}
+      </Typography>
+      {secondary && (
+        <Typography variant="caption" color="text.secondary">
+          {secondary}
+        </Typography>
+      )}
+    </Box>
+  );
+}

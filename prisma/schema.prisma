@@ -1,0 +1,205 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis, pg_trgm]
+}
+
+// -------------------- AUTH --------------------
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id             String        @id @default(cuid())
+  email          String        @unique
+  name           String?
+  hashedPassword String?
+  role           Role          @default(USER)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  accounts       Account[]
+  sessions       Session[]
+  savedFilters   SavedFilter[]
+  agentTraces    AgentTrace[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// -------------------- LISTINGS --------------------
+
+model Listing {
+  mlsId                       String    @id
+  address                     String
+  city                        String?
+  state                       String?
+  postalCode                  String?
+  lat                         Float?
+  lng                         Float?
+  // PostGIS geography(Point,4326) column added by raw SQL migration as "geom"
+  // (Prisma doesn't model PostGIS types directly; we query via $queryRaw.)
+
+  price                       Int
+  daysOnMls                   Int
+  postDate                    DateTime
+  listingUpdatedAt            DateTime
+  status                      String
+
+  propertyType                String
+  sqft                        Int?
+  units                       Int?
+  beds                        Int?
+  baths                       Float?
+  occupancy                   Float?
+  yearBuilt                   Int?
+  stories                     Int?
+
+  // generated columns added in raw SQL migration:
+  //   pricePerSqft  numeric  GENERATED ALWAYS AS (price::numeric / NULLIF(sqft,0)) STORED
+  //   pricePerUnit  numeric  GENERATED ALWAYS AS (price::numeric / NULLIF(units,0)) STORED
+  //   sqftPerUnit   numeric  GENERATED ALWAYS AS (sqft::numeric / NULLIF(units,0)) STORED
+
+  raw                         Json
+  bridgeModificationTimestamp DateTime
+
+  score          Score?
+  enrichments    AIEnrichment[]
+  createdAt      DateTime      @default(now())
+
+  @@index([price])
+  @@index([daysOnMls])
+  @@index([propertyType])
+  @@index([yearBuilt])
+  @@index([status])
+  @@index([bridgeModificationTimestamp])
+}
+
+enum ScoreSource {
+  HEURISTIC
+  AI
+}
+
+model Score {
+  listingMlsId        String      @id
+  listing             Listing     @relation(fields: [listingMlsId], references: [mlsId], onDelete: Cascade)
+
+  densityScore        Float
+  vacancyScore        Float
+  motivationScore     Float
+  valueAddWeightedAvg Float
+  breakdown           Json
+  computedBy          ScoreSource
+  computedAt          DateTime    @default(now())
+
+  @@index([valueAddWeightedAvg(sort: Desc)])
+  @@index([densityScore(sort: Desc)])
+  @@index([vacancyScore(sort: Desc)])
+  @@index([motivationScore(sort: Desc)])
+}
+
+model AIEnrichment {
+  id           String   @id @default(cuid())
+  listingMlsId String
+  agentName    String
+  output       Json
+  createdAt    DateTime @default(now())
+
+  listing Listing @relation(fields: [listingMlsId], references: [mlsId], onDelete: Cascade)
+
+  @@index([listingMlsId, agentName])
+}
+
+// -------------------- ETL / OPS --------------------
+
+enum SyncStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+model SyncRun {
+  id              String     @id @default(cuid())
+  startedAt       DateTime   @default(now())
+  finishedAt      DateTime?
+  status          SyncStatus @default(RUNNING)
+  recordsUpserted Int        @default(0)
+  recordsScored   Int        @default(0)
+  cursorFrom      DateTime?
+  cursorTo        DateTime?
+  error           String?
+
+  progressMessage String?
+  progressCurrent Int?
+  progressTotal   Int?
+  logs            Json?
+
+  @@index([startedAt(sort: Desc)])
+}
+
+model AgentTrace {
+  id        String   @id @default(cuid())
+  agentName String
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  input     Json
+  output    Json?
+  steps     Json?
+  tokens    Int?
+  latencyMs Int?
+  error     String?
+  createdAt DateTime @default(now())
+
+  @@index([agentName, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+model SavedFilter {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  payload   Json
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+}
