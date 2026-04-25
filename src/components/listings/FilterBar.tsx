@@ -61,6 +61,64 @@ function Field({
   );
 }
 
+type DateRangeValue = { from?: string; to?: string };
+
+function DateRange({
+  label,
+  value,
+  onChange,
+  hint,
+}: {
+  label: string;
+  value: DateRangeValue | undefined;
+  onChange: (v: DateRangeValue | undefined) => void;
+  hint?: string;
+}) {
+  const [from, setFrom] = React.useState(value?.from ?? "");
+  const [to, setTo] = React.useState(value?.to ?? "");
+
+  React.useEffect(() => {
+    setFrom(value?.from ?? "");
+    setTo(value?.to ?? "");
+  }, [value?.from, value?.to]);
+
+  function commit(nextFrom: string, nextTo: string) {
+    if (!nextFrom && !nextTo) {
+      onChange(undefined);
+      return;
+    }
+    onChange({
+      ...(nextFrom ? { from: nextFrom } : {}),
+      ...(nextTo ? { to: nextTo } : {}),
+    });
+  }
+
+  return (
+    <Field label={label} hint={hint}>
+      <Stack direction="row" spacing={1}>
+        <TextField
+          type="date"
+          value={from}
+          onChange={(e) => {
+            setFrom(e.target.value);
+            commit(e.target.value, to);
+          }}
+          fullWidth
+        />
+        <TextField
+          type="date"
+          value={to}
+          onChange={(e) => {
+            setTo(e.target.value);
+            commit(from, e.target.value);
+          }}
+          fullWidth
+        />
+      </Stack>
+    </Field>
+  );
+}
+
 function NumberRange({
   label,
   value,
@@ -277,6 +335,14 @@ export function FilterBar() {
             value={state.valueAddWeightedAvg}
             onChange={(valueAddWeightedAvg) => set({ valueAddWeightedAvg })}
           />
+          <Box sx={{ gridColumn: { xs: "auto", sm: "span 2" } }}>
+            <DateRange
+              label="Posted"
+              hint="Listing post-date range (inclusive)"
+              value={state.postDate}
+              onChange={(postDate) => set({ postDate })}
+            />
+          </Box>
         </Box>
       </Collapse>
     </Paper>
@@ -355,6 +421,7 @@ function countActive(s: ReturnType<typeof useFilter>["state"]): number {
     const v = s[k];
     if (v && (v.min != null || v.max != null)) n++;
   }
+  if (s.postDate && (s.postDate.from || s.postDate.to)) n++;
   if (s.radius) n++;
   if (s.polygon) n++;
   return n;

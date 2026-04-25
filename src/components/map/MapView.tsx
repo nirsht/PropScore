@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Alert, Box, Button, Paper, Stack, Typography } from "@mui/material";
+import { Alert, Box, Button, Paper, Stack, Tooltip, Typography } from "@mui/material";
 import Map, { Marker, Popup, NavigationControl, type MapRef } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { keepPreviousData } from "@tanstack/react-query";
@@ -58,11 +58,36 @@ function MapInner() {
 
   return (
     <Stack spacing={2}>
-      <Stack direction="row" spacing={2} alignItems="center">
+      <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" useFlexGap>
         <Typography variant="h5">Map</Typography>
         <Typography variant="body2" color="text.secondary">
           {query.data?.rows.length ?? 0} listings
         </Typography>
+
+        {/* Legend */}
+        <Stack direction="row" spacing={1.5} alignItems="center">
+          <LegendDot color="#7c5cff" label="Value-Add ≥ 70" />
+          <LegendDot color="#23d29a" label="Below 70" />
+          <Tooltip
+            arrow
+            placement="top"
+            title="Markers are colored by Value-Add Weighted Avg. Purple = strong opportunity (≥ 70). Green = below 70. Click any marker for details."
+          >
+            <Box
+              component="span"
+              sx={{
+                display: "inline-flex",
+                alignItems: "center",
+                color: "text.secondary",
+                cursor: "help",
+                fontSize: 13,
+              }}
+            >
+              ⓘ
+            </Box>
+          </Tooltip>
+        </Stack>
+
         <Box sx={{ flex: 1 }} />
         <Button
           variant={drawMode === "radius" ? "contained" : "outlined"}
@@ -76,6 +101,12 @@ function MapInner() {
           </Button>
         )}
       </Stack>
+
+      <Alert severity="info" variant="outlined" sx={{ py: 0.5 }}>
+        Showing up to <strong>200</strong> listings on the map for performance.
+        To zoom in on a specific area, click <strong>Filter by radius</strong>{" "}
+        and drop a pin — the grid and map will both narrow to that region.
+      </Alert>
 
       {query.isError && <Alert severity="error">Failed to load listings.</Alert>}
 
@@ -170,6 +201,26 @@ function MapInner() {
       </Paper>
 
       <ListingDrawer mlsId={selectedMlsId} onClose={() => setSelectedMlsId(null)} />
+    </Stack>
+  );
+}
+
+function LegendDot({ color, label }: { color: string; label: string }) {
+  return (
+    <Stack direction="row" spacing={0.75} alignItems="center">
+      <Box
+        sx={{
+          width: 10,
+          height: 10,
+          borderRadius: "50%",
+          background: color,
+          border: "2px solid #0a0a0c",
+          boxShadow: "0 0 0 1px rgba(255,255,255,0.4)",
+        }}
+      />
+      <Typography variant="caption" color="text.secondary">
+        {label}
+      </Typography>
     </Stack>
   );
 }

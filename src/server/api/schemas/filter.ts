@@ -46,6 +46,14 @@ export const FilterInput = z.object({
   motivationScore: range(0, 100),
   valueAddWeightedAvg: range(0, 100),
 
+  // Date ranges (ISO YYYY-MM-DD strings — coerced to Date in the SQL builder)
+  postDate: z
+    .object({
+      from: z.string().optional(),
+      to: z.string().optional(),
+    })
+    .optional(),
+
   // Geo
   radius: z
     .object({

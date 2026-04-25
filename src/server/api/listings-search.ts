@@ -63,8 +63,18 @@ function buildWhere(
   const where: Prisma.Sql[] = [];
 
   if (input.q && input.q.length >= 2) {
+    // Fuzzy match: pg_trgm's `<%` (word similarity, indexed by the GIN we
+    // built on `address` and `city`) catches typos like "misson" → "Mission",
+    // while ILIKE with leading-wildcard pattern matching also rides the same
+    // GIN index for substring matches like "mission" → "1234 Mission St".
+    const ilike = `%${input.q}%`;
     where.push(
-      Prisma.sql`("address" ILIKE ${"%" + input.q + "%"} OR "city" ILIKE ${"%" + input.q + "%"})`,
+      Prisma.sql`(
+        "address" ILIKE ${ilike}
+        OR "city" ILIKE ${ilike}
+        OR "address" <% ${input.q}
+        OR "city" <% ${input.q}
+      )`,
     );
   }
 
@@ -86,6 +96,13 @@ function buildWhere(
   pushRange(where, '"vacancyScore"', input.vacancyScore);
   pushRange(where, '"motivationScore"', input.motivationScore);
   pushRange(where, '"valueAddWeightedAvg"', input.valueAddWeightedAvg);
+
+  if (input.postDate?.from) {
+    where.push(Prisma.sql`"postDate" >= ${new Date(input.postDate.from)}`);
+  }
+  if (input.postDate?.to) {
+    where.push(Prisma.sql`"postDate" <= ${new Date(input.postDate.to)}`);
+  }
 
   if (input.radius) {
     where.push(
