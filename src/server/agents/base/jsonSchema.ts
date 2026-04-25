@@ -1,5 +1,4 @@
-import type { ZodSchema, ZodTypeAny } from "zod";
-import { z } from "zod";
+import type { z, ZodSchema, ZodTypeAny } from "zod";
 
 /**
  * Minimal zod -> JSON Schema converter sufficient for OpenAI structured output

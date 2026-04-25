@@ -135,7 +135,7 @@ export function RentGrowthCard({ mlsId }: { mlsId: string }) {
 
           {result.currentRent?.source === "unknown" && result.marketRent?.totalMonthly != null && (
             <Alert severity="info" variant="outlined" sx={{ py: 0.5 }}>
-              The description doesn't disclose current rents, so the upside fields
+              The description doesn&apos;t disclose current rents, so the upside fields
               are blank. The estimated rent above is a data-driven projection
               using units, beds, sqft, year built, and city.
             </Alert>

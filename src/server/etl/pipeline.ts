@@ -1,4 +1,4 @@
-import { Prisma, SyncStatus } from "@prisma/client";
+import type { Prisma, SyncStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { searchProperties } from "./bridge-client";
 import { normalizeListing, type NormalizedListing } from "./normalize";

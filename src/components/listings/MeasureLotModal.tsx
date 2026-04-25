@@ -107,10 +107,10 @@ export function MeasureLotModal({
     return (
       <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
         <Stack sx={{ p: 3 }} spacing={1}>
-          <Typography variant="h6">Can't measure this lot</Typography>
+          <Typography variant="h6">Can&apos;t measure this lot</Typography>
           <Typography variant="body2" color="text.secondary">
-            This listing has no latitude/longitude in the MLS feed, so we can't
-            center the map on it.
+            This listing has no latitude/longitude in the MLS feed, so we
+            can&apos;t center the map on it.
           </Typography>
           <Box sx={{ alignSelf: "flex-end", mt: 1 }}>
             <Button variant="contained" onClick={onClose}>

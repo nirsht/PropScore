@@ -44,8 +44,6 @@ import { MeasureLotModal } from "./MeasureLotModal";
 
 const fmtMoney = (n: number | null | undefined) =>
   n == null ? "—" : `$${Math.round(n).toLocaleString()}`;
-const fmtDecimal = (n: number | null | undefined, digits = 1) =>
-  n == null ? "—" : Number(n).toFixed(digits);
 const fmtDate = (d: Date | string | null | undefined) =>
   d ? new Date(d).toLocaleDateString() : "—";
 
