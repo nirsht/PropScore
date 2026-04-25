@@ -62,8 +62,15 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     const body = await res.text();
     throw new Error(`Render API ${res.status} ${res.statusText} on ${path}\n${body}`);
   }
-  if (res.status === 204) return {} as T;
-  return (await res.json()) as T;
+  // Some Render endpoints (notably POST /deploys) reply with a 2xx + empty
+  // body. Parse defensively — text first, then JSON if non-empty.
+  const text = await res.text();
+  if (!text) return {} as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return {} as T;
+  }
 }
 
 type RenderService = {
@@ -121,11 +128,11 @@ async function triggerDeploy(serviceId: string, label: string) {
     return;
   }
   console.log(`→ ${label}: triggering deploy…`);
-  const res = await api<{ id: string }>(`/services/${serviceId}/deploys`, {
+  const res = await api<{ id?: string }>(`/services/${serviceId}/deploys`, {
     method: "POST",
     body: JSON.stringify({ clearCache: "do_not_clear" }),
   });
-  console.log(`     deploy id=${res.id}`);
+  console.log(`     deploy ${res.id ? `id=${res.id}` : "queued"}`);
 }
 
 async function main() {
