@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import type { FilterInput, SortKey } from "./schemas/filter";
+import { FILTER_DEFAULTS, type FilterInput, type SortKey } from "./schemas/filter";
 
 export type ListingRow = {
   mlsId: string;
@@ -104,9 +104,10 @@ function buildWhere(
   }
 
   if (opts.includeCursor && input.cursor) {
-    const sortColRaw = SORT_COLUMN[input.sortBy];
-    const sortCol = Prisma.raw(sortColRaw);
-    const cmp = Prisma.raw(input.sortDir === "asc" ? ">" : "<");
+    const sortBy = input.sortBy ?? FILTER_DEFAULTS.sortBy;
+    const sortDir = input.sortDir ?? FILTER_DEFAULTS.sortDir;
+    const sortCol = Prisma.raw(SORT_COLUMN[sortBy]);
+    const cmp = Prisma.raw(sortDir === "asc" ? ">" : "<");
 
     if (input.cursor.sortValue == null) {
       where.push(Prisma.sql`("mlsId" ${cmp} ${input.cursor.mlsId})`);
@@ -124,10 +125,12 @@ function buildWhere(
 
 export async function searchListings(input: FilterInput): Promise<SearchResult> {
   const { sql: whereSql } = buildWhere(input, { includeCursor: true });
-  const sortColRaw = SORT_COLUMN[input.sortBy];
-  const sortCol = Prisma.raw(sortColRaw);
-  const dir = Prisma.raw(input.sortDir === "asc" ? "ASC" : "DESC");
-  const limit = input.limit + 1;
+  const sortBy = input.sortBy ?? FILTER_DEFAULTS.sortBy;
+  const sortDir = input.sortDir ?? FILTER_DEFAULTS.sortDir;
+  const pageSize = input.limit ?? FILTER_DEFAULTS.limit;
+  const sortCol = Prisma.raw(SORT_COLUMN[sortBy]);
+  const dir = Prisma.raw(sortDir === "asc" ? "ASC" : "DESC");
+  const limit = pageSize + 1;
 
   const rows = await db.$queryRaw<ListingRow[]>(
     Prisma.sql`
@@ -148,11 +151,11 @@ export async function searchListings(input: FilterInput): Promise<SearchResult> 
 
   let nextCursor: SearchResult["nextCursor"] = null;
   let trimmed = rows;
-  if (rows.length > input.limit) {
-    trimmed = rows.slice(0, input.limit);
+  if (rows.length > pageSize) {
+    trimmed = rows.slice(0, pageSize);
     const last = trimmed[trimmed.length - 1]!;
     nextCursor = {
-      sortValue: extractSortValue(last, input.sortBy),
+      sortValue: extractSortValue(last, sortBy),
       mlsId: last.mlsId,
     };
   }

@@ -17,6 +17,7 @@ const baseListing = (overrides: Partial<NormalizedListing> = {}): NormalizedList
   status: "Active",
   propertyType: "Multi Family",
   sqft: 4000,
+  lotSizeSqft: null,
   units: 4,
   beds: 8,
   baths: 4,

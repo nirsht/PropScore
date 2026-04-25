@@ -202,10 +202,12 @@ type Props = {
   onSelectListing?: (mlsId: string) => void;
 };
 
+type Cursor = { sortValue: number | null; mlsId: string } | null;
+
 export function ListingsGrid({ onSelectListing }: Props) {
   const { state, set } = useFilter();
   const [page, setPage] = React.useState(0);
-  const [cursors, setCursors] = React.useState<Array<typeof state.cursor | null>>([null]);
+  const [cursors, setCursors] = React.useState<Cursor[]>([null]);
 
   React.useEffect(() => {
     setPage(0);

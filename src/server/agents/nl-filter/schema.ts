@@ -3,7 +3,9 @@ import { FilterInput } from "@/server/api/schemas/filter";
 
 export const NLFilterInput = z.object({
   q: z.string().min(1).max(500),
-  knownPropertyTypes: z.array(z.string()).default([]),
+  // Required (callers must pass [] when none) — `.default()` confuses
+  // BaseAgent's input/output zod-type inference.
+  knownPropertyTypes: z.array(z.string()),
 });
 
 export const NLFilterOutput = z.object({

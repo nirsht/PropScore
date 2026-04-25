@@ -8,8 +8,8 @@ export const SetReasoningInput = z.object({
 
 export const SetReasoningOutput = z.object({
   answer: z.string(),
-  highlightedMlsIds: z.array(z.string()).default([]),
-  followUps: z.array(z.string()).default([]),
+  highlightedMlsIds: z.array(z.string()),
+  followUps: z.array(z.string()),
 });
 
 export type SetReasoningInput = z.infer<typeof SetReasoningInput>;

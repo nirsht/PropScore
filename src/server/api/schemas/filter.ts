@@ -63,9 +63,11 @@ export const FilterInput = z.object({
     })
     .optional(),
 
-  // Sort + paging
-  sortBy: SortKey.default("valueAdd"),
-  sortDir: z.enum(["asc", "desc"]).default("desc"),
+  // Sort + paging — optional in the schema (defaults applied at the SQL
+  // boundary). Using `.default()` here corrupts z.infer in tRPC v11 and forces
+  // every consumer to spread/cast around `T | undefined`.
+  sortBy: SortKey.optional(),
+  sortDir: z.enum(["asc", "desc"]).optional(),
   cursor: z
     .object({
       sortValue: z.number().nullable(),
@@ -73,8 +75,14 @@ export const FilterInput = z.object({
     })
     .nullable()
     .optional(),
-  limit: z.number().int().min(1).max(200).default(50),
+  limit: z.number().int().min(1).max(200).optional(),
 });
+
+export const FILTER_DEFAULTS = {
+  sortBy: "valueAdd" as const,
+  sortDir: "desc" as const,
+  limit: 50,
+};
 
 export type FilterInput = z.infer<typeof FilterInput>;
 export type SortKey = z.infer<typeof SortKey>;

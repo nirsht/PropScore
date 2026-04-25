@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 import { protectedProcedure, router } from "../trpc";
 import { computeHeuristicScore } from "@/server/etl/scoring";
 import { normalizeListing } from "@/server/etl/normalize";
@@ -21,7 +22,7 @@ export const scoringRouter = router({
             vacancyScore: score.vacancyScore,
             motivationScore: score.motivationScore,
             valueAddWeightedAvg: score.valueAddWeightedAvg,
-            breakdown: score.breakdown,
+            breakdown: score.breakdown as Prisma.InputJsonValue,
             computedBy: "HEURISTIC",
           },
           update: {
@@ -29,7 +30,7 @@ export const scoringRouter = router({
             vacancyScore: score.vacancyScore,
             motivationScore: score.motivationScore,
             valueAddWeightedAvg: score.valueAddWeightedAvg,
-            breakdown: score.breakdown,
+            breakdown: score.breakdown as Prisma.InputJsonValue,
             computedBy: "HEURISTIC",
             computedAt: new Date(),
           },

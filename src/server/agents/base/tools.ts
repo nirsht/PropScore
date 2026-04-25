@@ -1,6 +1,12 @@
 import type { ZodSchema } from "zod";
 
-export type ToolDef<TIn = unknown, TOut = unknown> = {
+// `any` defaults (rather than `unknown`) so an array of typed tools is
+// assignable to `ToolDef[]`. Variance on the `run` parameter would otherwise
+// reject Tool<{specific input}> as a Tool<unknown>. Internally the runtime
+// validates each tool's input through its zod schema so this is type-erasing
+// at the boundary, not at use.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type ToolDef<TIn = any, TOut = any> = {
   name: string;
   description: string;
   input: ZodSchema<TIn>;
