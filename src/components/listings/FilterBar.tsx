@@ -12,6 +12,7 @@ import {
   Stack,
   TextField,
   Tooltip,
+  Typography,
 } from "@mui/material";
 import RefreshOutlinedIcon from "@mui/icons-material/RefreshOutlined";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
@@ -19,6 +20,46 @@ import { trpc } from "@/lib/trpc/client";
 import { useFilter } from "./filterStore";
 
 type Range = { min?: number; max?: number };
+
+function FieldLabel({ children, hint }: { children: React.ReactNode; hint?: string }) {
+  return (
+    <Tooltip title={hint ?? ""} arrow placement="top" disableHoverListener={!hint}>
+      <Typography
+        variant="caption"
+        sx={{
+          color: "text.secondary",
+          fontWeight: 500,
+          fontSize: 11,
+          textTransform: "uppercase",
+          letterSpacing: 0.5,
+          mb: 0.75,
+          display: "block",
+          cursor: hint ? "help" : "default",
+          userSelect: "none",
+        }}
+      >
+        {children}
+      </Typography>
+    </Tooltip>
+  );
+}
+
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Box>
+      <FieldLabel hint={hint}>{label}</FieldLabel>
+      {children}
+    </Box>
+  );
+}
 
 function NumberRange({
   label,
@@ -55,12 +96,7 @@ function NumberRange({
   }
 
   return (
-    <Stack direction="column" spacing={0.5} sx={{ minWidth: 180 }}>
-      <Tooltip title={hint ?? ""} arrow placement="top" disableHoverListener={!hint}>
-        <Box sx={{ fontSize: 12, color: "text.secondary", cursor: hint ? "help" : "default" }}>
-          {label}
-        </Box>
-      </Tooltip>
+    <Field label={label} hint={hint}>
       <Stack direction="row" spacing={1}>
         <TextField
           placeholder="min"
@@ -72,6 +108,7 @@ function NumberRange({
             if (e.key === "Enter") commit(min, max);
           }}
           inputProps={{ inputMode: "numeric", step }}
+          fullWidth
         />
         <TextField
           placeholder="max"
@@ -83,9 +120,10 @@ function NumberRange({
             if (e.key === "Enter") commit(min, max);
           }}
           inputProps={{ inputMode: "numeric", step }}
+          fullWidth
         />
       </Stack>
-    </Stack>
+    </Field>
   );
 }
 
@@ -107,73 +145,98 @@ export function FilterBar() {
         bgcolor: "background.paper",
       }}
     >
-      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: expanded ? 2 : 0 }}>
-        <IconButton
-          size="small"
-          onClick={() => setExpanded((v) => !v)}
-          aria-label={expanded ? "Collapse filters" : "Expand filters"}
-        >
-          <ExpandMoreRoundedIcon
-            sx={{
-              transition: "transform 200ms",
-              transform: expanded ? "rotate(0deg)" : "rotate(-90deg)",
-            }}
-          />
-        </IconButton>
-        <Box sx={{ fontSize: 13, fontWeight: 600 }}>Filters</Box>
-        {activeCount > 0 && (
-          <Chip size="small" color="primary" label={`${activeCount} active`} />
-        )}
+      {/* Header row: collapse toggle, label, active-count, quick chips, reset */}
+      <Stack
+        direction={{ xs: "column", md: "row" }}
+        alignItems={{ xs: "stretch", md: "center" }}
+        spacing={1.5}
+        sx={{ mb: expanded ? 2.5 : 0 }}
+      >
+        <Stack direction="row" alignItems="center" spacing={1}>
+          <IconButton
+            size="small"
+            onClick={() => setExpanded((v) => !v)}
+            aria-label={expanded ? "Collapse filters" : "Expand filters"}
+          >
+            <ExpandMoreRoundedIcon
+              sx={{
+                transition: "transform 200ms",
+                transform: expanded ? "rotate(0deg)" : "rotate(-90deg)",
+              }}
+            />
+          </IconButton>
+          <Typography sx={{ fontSize: 13, fontWeight: 600 }}>Filters</Typography>
+          {activeCount > 0 && (
+            <Chip size="small" color="primary" label={`${activeCount} active`} />
+          )}
+        </Stack>
 
         <Box sx={{ flex: 1 }} />
 
-        <QuickChips />
-
-        <Tooltip title="Reset all filters">
-          <span>
-            <Button
-              size="small"
-              variant="text"
-              startIcon={<RefreshOutlinedIcon fontSize="small" />}
-              onClick={reset}
-              disabled={activeCount === 0}
-            >
-              Reset
-            </Button>
-          </span>
-        </Tooltip>
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+          <QuickChips />
+          <Tooltip title="Reset all filters">
+            <span>
+              <Button
+                size="small"
+                variant="text"
+                startIcon={<RefreshOutlinedIcon fontSize="small" />}
+                onClick={reset}
+                disabled={activeCount === 0}
+              >
+                Reset
+              </Button>
+            </span>
+          </Tooltip>
+        </Stack>
       </Stack>
 
       <Collapse in={expanded} unmountOnExit>
-        <Stack
-          direction={{ xs: "column", lg: "row" }}
-          spacing={2}
-          alignItems={{ xs: "stretch", lg: "flex-end" }}
-          flexWrap="wrap"
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: {
+              xs: "1fr",
+              sm: "repeat(2, 1fr)",
+              md: "repeat(3, 1fr)",
+              lg: "repeat(4, 1fr)",
+            },
+            columnGap: 2,
+            rowGap: 2.25,
+          }}
         >
-          <TextField
-            label="Address / city"
-            placeholder="Mission, 24th St…"
-            value={state.q ?? ""}
-            onChange={(e) => set({ q: e.target.value || undefined })}
-            sx={{ minWidth: 220 }}
-          />
+          {/* Address spans 2 columns when there's space */}
+          <Box sx={{ gridColumn: { xs: "auto", sm: "span 2" } }}>
+            <Field label="Address / city">
+              <TextField
+                placeholder="Mission, 24th St…"
+                value={state.q ?? ""}
+                onChange={(e) => set({ q: e.target.value || undefined })}
+                fullWidth
+              />
+            </Field>
+          </Box>
 
-          <Autocomplete
-            multiple
-            size="small"
-            sx={{ minWidth: 240 }}
-            options={propertyTypeOptions}
-            value={state.propertyTypes ?? []}
-            onChange={(_, value) => set({ propertyTypes: value.length ? value : undefined })}
-            renderInput={(params) => <TextField {...params} label="Property type" />}
-            renderTags={(value, getTagProps) =>
-              value.map((option, index) => {
-                const { key, ...tagProps } = getTagProps({ index });
-                return <Chip key={key} size="small" label={option} {...tagProps} />;
-              })
-            }
-          />
+          <Box sx={{ gridColumn: { xs: "auto", sm: "span 2" } }}>
+            <Field label="Property type">
+              <Autocomplete
+                multiple
+                size="small"
+                options={propertyTypeOptions}
+                value={state.propertyTypes ?? []}
+                onChange={(_, value) => set({ propertyTypes: value.length ? value : undefined })}
+                renderInput={(params) => (
+                  <TextField {...params} placeholder="Any type" />
+                )}
+                renderTags={(value, getTagProps) =>
+                  value.map((option, index) => {
+                    const { key, ...tagProps } = getTagProps({ index });
+                    return <Chip key={key} size="small" label={option} {...tagProps} />;
+                  })
+                }
+              />
+            </Field>
+          </Box>
 
           <NumberRange
             label="Price ($)"
@@ -195,6 +258,7 @@ export function FilterBar() {
             onChange={(pricePerUnit) => set({ pricePerUnit })}
           />
           <NumberRange label="Units" value={state.units} onChange={(units) => set({ units })} />
+
           <NumberRange label="Beds" value={state.beds} onChange={(beds) => set({ beds })} />
           <NumberRange
             label="Year built"
@@ -213,7 +277,7 @@ export function FilterBar() {
             value={state.valueAddWeightedAvg}
             onChange={(valueAddWeightedAvg) => set({ valueAddWeightedAvg })}
           />
-        </Stack>
+        </Box>
       </Collapse>
     </Paper>
   );
@@ -253,7 +317,7 @@ function QuickChips() {
   ];
 
   return (
-    <Stack direction="row" spacing={1}>
+    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
       {chips.map((c) => (
         <Chip
           key={c.key}
