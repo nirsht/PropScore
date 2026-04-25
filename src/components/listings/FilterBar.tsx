@@ -335,14 +335,12 @@ export function FilterBar() {
             value={state.valueAddWeightedAvg}
             onChange={(valueAddWeightedAvg) => set({ valueAddWeightedAvg })}
           />
-          <Box sx={{ gridColumn: { xs: "auto", sm: "span 2" } }}>
-            <DateRange
-              label="Posted"
-              hint="Listing post-date range (inclusive)"
-              value={state.postDate}
-              onChange={(postDate) => set({ postDate })}
-            />
-          </Box>
+          <DateRange
+            label="Posted"
+            hint="Listing post-date range (inclusive)"
+            value={state.postDate}
+            onChange={(postDate) => set({ postDate })}
+          />
         </Box>
       </Collapse>
     </Paper>
