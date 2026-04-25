@@ -21,8 +21,8 @@ export default function SignInPage() {
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("from") ?? "/listings";
 
-  const [email, setEmail] = React.useState("test@propscore.local");
-  const [password, setPassword] = React.useState("123456");
+  const [email, setEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
 
