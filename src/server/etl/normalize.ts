@@ -15,6 +15,7 @@ export type NormalizedListing = {
   status: string;
   propertyType: string;
   sqft: number | null;
+  lotSizeSqft: number | null;
   units: number | null;
   beds: number | null;
   baths: number | null;
@@ -62,6 +63,26 @@ const date = (v: unknown): Date | null => {
   return Number.isFinite(d.getTime()) ? d : null;
 };
 
+const SQFT_PER_ACRE = 43_560;
+
+function computeLotSizeSqft(p: BridgeProperty): number | null {
+  const direct = positiveNum(p.LotSizeSquareFeet);
+  if (direct != null) return Math.round(direct);
+
+  const acres = positiveNum(p.LotSizeAcres);
+  if (acres != null) return Math.round(acres * SQFT_PER_ACRE);
+
+  const area = positiveNum(p.LotSizeArea);
+  if (area != null) {
+    const u = String(p.LotSizeUnits ?? "").toLowerCase();
+    if (u.includes("acre")) return Math.round(area * SQFT_PER_ACRE);
+    if (u.includes("square") || u.includes("sqft") || u === "sf") return Math.round(area);
+    // Unknown unit — assume sqft (most common in residential feeds).
+    return Math.round(area);
+  }
+  return null;
+}
+
 /**
  * Map a raw Bridge property into the Listing row we persist. Returns null for
  * records that lack the bare-minimum identifiers / pricing.
@@ -83,6 +104,14 @@ export function normalizeListing(p: BridgeProperty): NormalizedListing | null {
   // Treat 0 as missing — many MLS rows report 0 sqft / 0 units when unknown,
   // and that produces nonsense $/Sqft and Sqft/Unit ratios downstream.
   const sqft = positiveInt(p.LivingArea ?? p.BuildingAreaTotal);
+
+  // Lot size — MLS may report it in any of three ways:
+  //   1. LotSizeSquareFeet directly
+  //   2. LotSizeAcres (× 43_560 = sqft)
+  //   3. LotSizeArea + LotSizeUnits (with units like "Square Feet" or "Acres")
+  // We normalize everything to square feet.
+  const lotSizeSqft = computeLotSizeSqft(p);
+
   const units = positiveInt(p.NumberOfUnitsTotal);
   const beds = positiveInt(p.BedroomsTotal);
   const baths =
@@ -116,6 +145,7 @@ export function normalizeListing(p: BridgeProperty): NormalizedListing | null {
     status: String(p.StandardStatus ?? "Unknown"),
     propertyType: String(p.PropertySubType ?? p.PropertyType ?? "Unknown"),
     sqft,
+    lotSizeSqft,
     units,
     beds,
     baths,

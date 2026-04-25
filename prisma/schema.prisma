@@ -86,6 +86,7 @@ model Listing {
 
   propertyType                String
   sqft                        Int?
+  lotSizeSqft                 Int?
   units                       Int?
   beds                        Int?
   baths                       Float?

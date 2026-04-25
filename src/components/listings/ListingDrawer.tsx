@@ -148,7 +148,14 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
                 label="$/Unit"
                 value={fmtMoney(deriveRatio(listing.price, listing.units))}
               />
-              <Metric label="Sqft" value={listing.sqft?.toLocaleString() ?? "—"} />
+              <Metric
+                label="Sqft (building)"
+                value={listing.sqft?.toLocaleString() ?? "—"}
+              />
+              <Metric
+                label="Lot (sqft)"
+                value={listing.lotSizeSqft?.toLocaleString() ?? "—"}
+              />
               <Metric label="Units" value={listing.units?.toString() ?? "—"} />
               <Metric label="Beds / Baths" value={`${listing.beds ?? "—"} / ${listing.baths ?? "—"}`} />
               <Metric label="Year built" value={listing.yearBuilt?.toString() ?? "—"} />
@@ -156,6 +163,9 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
               <Metric label="Stories" value={listing.stories?.toString() ?? "—"} />
             </Stack>
           </Paper>
+
+          {/* Lot & extras pulled directly from raw — no extra DB columns. */}
+          <LotAndExtrasCard raw={raw} />
 
           {/* Score breakdown */}
           <Paper variant="outlined" sx={{ p: 2 }}>
@@ -600,4 +610,76 @@ function Line({ label, value }: { label: string; value: string }) {
 function deriveRatio(num: number | null | undefined, den: number | null | undefined) {
   if (num == null || den == null || den === 0) return null;
   return num / den;
+}
+
+function LotAndExtrasCard({ raw }: { raw: Record<string, unknown> }) {
+  const lotFeatures = arrField(raw.LotFeatures);
+  const view = arrField(raw.View);
+  const parking = numField(raw.ParkingTotal);
+  const hoa = numField(raw.AssociationFee);
+  const hoaFreq = strField(raw.AssociationFeeFrequency);
+  const tax = numField(raw.TaxAnnualAmount);
+  const taxYear = numField(raw.TaxYear);
+
+  const hasAny =
+    lotFeatures.length || view.length || parking != null || hoa != null || tax != null;
+  if (!hasAny) return null;
+
+  return (
+    <Paper variant="outlined" sx={{ p: 2 }}>
+      <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+        Lot &amp; details
+      </Typography>
+      <Stack direction="row" spacing={3} flexWrap="wrap" useFlexGap sx={{ mb: lotFeatures.length || view.length ? 1.5 : 0 }}>
+        {parking != null && <Metric label="Parking spaces" value={String(parking)} />}
+        {hoa != null && (
+          <Metric
+            label="HOA"
+            value={`$${Math.round(hoa).toLocaleString()}${hoaFreq ? ` / ${hoaFreq.toLowerCase()}` : ""}`}
+          />
+        )}
+        {tax != null && (
+          <Metric
+            label="Property tax (annual)"
+            value={`$${Math.round(tax).toLocaleString()}${taxYear ? ` (${taxYear})` : ""}`}
+          />
+        )}
+      </Stack>
+      {lotFeatures.length > 0 && (
+        <Box sx={{ mb: view.length ? 1 : 0 }}>
+          <Typography variant="caption" color="text.secondary">
+            Lot features
+          </Typography>
+          <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mt: 0.5 }}>
+            {lotFeatures.map((f, i) => (
+              <Chip key={i} size="small" variant="outlined" label={f} />
+            ))}
+          </Stack>
+        </Box>
+      )}
+      {view.length > 0 && (
+        <Box>
+          <Typography variant="caption" color="text.secondary">
+            View
+          </Typography>
+          <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mt: 0.5 }}>
+            {view.map((v, i) => (
+              <Chip key={i} size="small" variant="outlined" label={v} />
+            ))}
+          </Stack>
+        </Box>
+      )}
+    </Paper>
+  );
+}
+
+function arrField(v: unknown): string[] {
+  return Array.isArray(v) ? (v.filter((x) => typeof x === "string") as string[]) : [];
+}
+function numField(v: unknown): number | null {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+function strField(v: unknown): string | null {
+  return typeof v === "string" && v.length > 0 ? v : null;
 }

@@ -34,6 +34,18 @@ export type BridgeProperty = Record<string, unknown> & {
   YearBuilt?: number;
   StoriesTotal?: number;
   Stories?: number;
+  LotSizeSquareFeet?: number;
+  LotSizeAcres?: number;
+  LotSizeArea?: number;
+  LotSizeUnits?: string;
+  LotFeatures?: string[];
+  ParkingTotal?: number;
+  View?: string[];
+  AssociationFee?: number;
+  AssociationFeeFrequency?: string;
+  TaxAnnualAmount?: number;
+  TaxYear?: number;
+  PreviousListPrice?: number;
   Latitude?: number;
   Longitude?: number;
   UnparsedAddress?: string;
@@ -67,6 +79,7 @@ const DEFAULT_SELECT = [
   "ListingId",
   "StandardStatus",
   "ListPrice",
+  "PreviousListPrice",
   "DaysOnMarket",
   "ListingContractDate",
   "ModificationTimestamp",
@@ -75,12 +88,25 @@ const DEFAULT_SELECT = [
   "PropertySubType",
   "LivingArea",
   "BuildingAreaTotal",
+  // Lot — needed for buildings where the MLS doesn't populate building sqft
+  // but does populate the parcel; matches what Zillow falls back to.
+  "LotSizeArea",
+  "LotSizeUnits",
+  "LotSizeSquareFeet",
+  "LotSizeAcres",
+  "LotFeatures",
   "NumberOfUnitsTotal",
   "BedroomsTotal",
   "BathroomsTotalInteger",
   "YearBuilt",
   "StoriesTotal",
   "Stories",
+  "ParkingTotal",
+  "View",
+  "AssociationFee",
+  "AssociationFeeFrequency",
+  "TaxAnnualAmount",
+  "TaxYear",
   "Latitude",
   "Longitude",
   "UnparsedAddress",
