@@ -8,6 +8,17 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    # Prisma `validate` and `generate` need DATABASE_URL to *exist* even
+    # though CI never touches the database. A dummy URL is enough — the
+    # real one lives in Render's env for production.
+    env:
+      DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci?schema=public"
+      NEXTAUTH_SECRET: "ci-dummy-secret-min-16-chars-long"
+      NEXTAUTH_URL: "http://localhost:3020"
+      BRIDGE_SERVER_TOKEN: "ci-dummy"
+      BRIDGE_DATASET: "sfar"
+      OPENAI_API_KEY: "ci-dummy"
+
     steps:
       - uses: actions/checkout@v4
 
