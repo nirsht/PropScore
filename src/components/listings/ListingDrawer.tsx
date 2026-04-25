@@ -25,6 +25,7 @@ import PublicRoundedIcon from "@mui/icons-material/PublicRounded";
 import LayersRoundedIcon from "@mui/icons-material/LayersRounded";
 import WaterDamageRoundedIcon from "@mui/icons-material/WaterDamageRounded";
 import HomeWorkRoundedIcon from "@mui/icons-material/HomeWorkRounded";
+import DirectionsWalkRoundedIcon from "@mui/icons-material/DirectionsWalkRounded";
 import {
   Bar,
   BarChart,
@@ -216,19 +217,19 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
                 label="Zillow"
               />
               <ToolLink
-                href={`https://www.redfin.com/zipcode/${listing.postalCode ?? ""}`}
+                href={`https://www.redfin.com/stingray/do/location-autocomplete?location=${encodeURIComponent(fullAddress)}&v=2`}
                 icon={<HomeWorkRoundedIcon fontSize="small" />}
                 label="Redfin"
               />
               <ToolLink
-                href={`https://propertymap.sfplanning.org/?search=${encodeURIComponent(address)}`}
-                icon={<LayersRoundedIcon fontSize="small" />}
-                label="SF Planning PIM"
+                href={`https://www.walkscore.com/score/${encodeURIComponent(fullAddress)}`}
+                icon={<DirectionsWalkRoundedIcon fontSize="small" />}
+                label="WalkScore"
               />
               <ToolLink
-                href="https://sfassessor.org/property-information"
+                href={`https://www.bing.com/maps?q=${encodeURIComponent(fullAddress)}&style=h`}
                 icon={<LayersRoundedIcon fontSize="small" />}
-                label="SF Assessor"
+                label="Bing Aerial"
               />
               <ToolLink
                 href={`https://msc.fema.gov/portal/search?AddressQuery=${encodeURIComponent(fullAddress)}`}

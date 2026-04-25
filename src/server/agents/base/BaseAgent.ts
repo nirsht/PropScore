@@ -93,9 +93,12 @@ export class BaseAgent<TIn, TOut> {
           model: this.cfg.model ?? OPENAI_MODEL,
           messages,
           ...(toolDefs.length > 0 ? { tools: toolDefs, tool_choice: "auto" as const } : {}),
-          // We only request structured output when no tools are pending —
-          // otherwise the model needs to be free to emit tool_calls.
-          ...(toolDefs.length === 0 ? { response_format: responseFormat } : {}),
+          // Always send response_format — gpt-4o accepts tools + response_format
+          // together. When the model wants to use a tool it emits tool_calls
+          // with content=null (response_format is ignored on that turn); when
+          // it finalizes, it emits JSON-shaped content. Without this, the
+          // final-turn content was free-form text and failed schema validation.
+          response_format: responseFormat,
         });
 
         totalTokens += completion.usage?.total_tokens ?? 0;
