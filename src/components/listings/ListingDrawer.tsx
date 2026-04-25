@@ -20,6 +20,7 @@ import {
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
 import LocationOnRoundedIcon from "@mui/icons-material/LocationOnRounded";
+import HelpOutlineRoundedIcon from "@mui/icons-material/HelpOutlineRounded";
 import StreetviewRoundedIcon from "@mui/icons-material/StreetviewRounded";
 import PublicRoundedIcon from "@mui/icons-material/PublicRounded";
 import LayersRoundedIcon from "@mui/icons-material/LayersRounded";
@@ -173,10 +174,23 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
               <Typography variant="subtitle2">Opportunity scores</Typography>
               {score?.computedBy === "AI" && <Chip size="small" color="primary" label="AI" />}
+              <Tooltip
+                arrow
+                placement="top"
+                title={
+                  score?.computedBy === "AI"
+                    ? "Bars compare GPT's reasoned score (current) against the deterministic heuristic baseline (recomputed from the listing data on every read). Hover any bar pair to see the values and the Δ."
+                    : "These are heuristic scores computed during ETL. Click 'AI score' to re-score with GPT — once you do, the chart will show both alongside each other so you can see the AI's delta."
+                }
+              >
+                <HelpOutlineRoundedIcon
+                  sx={{ fontSize: 16, opacity: 0.55, cursor: "help" }}
+                />
+              </Tooltip>
               <Box sx={{ flex: 1 }} />
               <EnrichWithAIButton mlsId={listing.mlsId} />
             </Stack>
-            <ScoreBars score={score} />
+            <ScoreBars score={score} heuristic={listing.heuristicSnapshot ?? null} />
           </Paper>
 
           {/* Rent-growth potential */}
@@ -429,18 +443,27 @@ function ToolLink({
   );
 }
 
+type ScoreLike = {
+  densityScore: number;
+  vacancyScore: number;
+  motivationScore: number;
+  valueAddWeightedAvg: number;
+  computedBy?: "HEURISTIC" | "AI";
+};
+
+const METRIC_COLORS: Record<string, string> = {
+  Density: "#7c5cff",
+  Vacancy: "#23d29a",
+  Motivation: "#ffb86b",
+  "Value-Add": "#ff6b8a",
+};
+
 function ScoreBars({
   score,
+  heuristic,
 }: {
-  score:
-    | {
-        densityScore: number;
-        vacancyScore: number;
-        motivationScore: number;
-        valueAddWeightedAvg: number;
-      }
-    | null
-    | undefined;
+  score: ScoreLike | null | undefined;
+  heuristic: ScoreLike | null | undefined;
 }) {
   if (!score) {
     return (
@@ -449,15 +472,39 @@ function ScoreBars({
       </Typography>
     );
   }
+
+  const showCompare = score.computedBy === "AI" && !!heuristic;
+
   const data = [
-    { name: "Density", value: score.densityScore, color: "#7c5cff" },
-    { name: "Vacancy", value: score.vacancyScore, color: "#23d29a" },
-    { name: "Motivation", value: score.motivationScore, color: "#ffb86b" },
-    { name: "Value-Add", value: score.valueAddWeightedAvg, color: "#ff6b8a" },
+    {
+      name: "Density",
+      current: score.densityScore,
+      heuristic: heuristic?.densityScore ?? null,
+    },
+    {
+      name: "Vacancy",
+      current: score.vacancyScore,
+      heuristic: heuristic?.vacancyScore ?? null,
+    },
+    {
+      name: "Motivation",
+      current: score.motivationScore,
+      heuristic: heuristic?.motivationScore ?? null,
+    },
+    {
+      name: "Value-Add",
+      current: score.valueAddWeightedAvg,
+      heuristic: heuristic?.valueAddWeightedAvg ?? null,
+    },
   ];
+
   return (
-    <ResponsiveContainer width="100%" height={150}>
-      <BarChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+    <ResponsiveContainer width="100%" height={170}>
+      <BarChart
+        data={data}
+        margin={{ top: 8, right: 8, left: 8, bottom: 0 }}
+        barCategoryGap="22%"
+      >
         <XAxis
           dataKey="name"
           tick={{ fontSize: 11, fill: "var(--mui-palette-text-secondary)" }}
@@ -466,35 +513,106 @@ function ScoreBars({
         />
         <RechartsTooltip
           cursor={{ fill: "rgba(255,255,255,0.04)" }}
-          contentStyle={CHART_TOOLTIP_CONTENT_STYLE}
-          labelStyle={CHART_TOOLTIP_LABEL_STYLE}
-          itemStyle={CHART_TOOLTIP_ITEM_STYLE}
+          content={<ScoreTooltip showCompare={showCompare} />}
         />
-        <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+        <Bar dataKey="current" name="Current" radius={[6, 6, 0, 0]}>
           {data.map((d) => (
-            <Cell key={d.name} fill={d.color} />
+            <Cell key={`current-${d.name}`} fill={METRIC_COLORS[d.name]} />
           ))}
         </Bar>
+        {showCompare && (
+          <Bar dataKey="heuristic" name="Heuristic" radius={[6, 6, 0, 0]}>
+            {data.map((d) => (
+              <Cell
+                key={`heur-${d.name}`}
+                fill={METRIC_COLORS[d.name]}
+                fillOpacity={0.28}
+              />
+            ))}
+          </Bar>
+        )}
       </BarChart>
     </ResponsiveContainer>
   );
 }
 
-const CHART_TOOLTIP_CONTENT_STYLE: React.CSSProperties = {
-  background: "var(--mui-palette-background-paper)",
-  border: "1px solid var(--mui-palette-divider)",
-  borderRadius: 8,
-  fontSize: 12,
-  boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
-  color: "var(--mui-palette-text-primary)",
-};
-const CHART_TOOLTIP_LABEL_STYLE: React.CSSProperties = {
-  color: "var(--mui-palette-text-primary)",
-  fontWeight: 600,
-};
-const CHART_TOOLTIP_ITEM_STYLE: React.CSSProperties = {
-  color: "var(--mui-palette-text-secondary)",
-};
+function ScoreTooltip({
+  active,
+  payload,
+  label,
+  showCompare,
+}: {
+  active?: boolean;
+  payload?: Array<{ dataKey: string; value: number }>;
+  label?: string;
+  showCompare: boolean;
+}) {
+  if (!active || !payload?.length) return null;
+  const current = payload.find((p) => p.dataKey === "current")?.value;
+  const heur = payload.find((p) => p.dataKey === "heuristic")?.value;
+  const diff =
+    typeof current === "number" && typeof heur === "number"
+      ? Math.round((current - heur) * 10) / 10
+      : null;
+
+  return (
+    <Box
+      sx={{
+        background: "var(--mui-palette-background-paper)",
+        border: 1,
+        borderColor: "divider",
+        borderRadius: 1.5,
+        boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+        px: 1.5,
+        py: 1,
+        minWidth: 160,
+      }}
+    >
+      <Typography variant="caption" sx={{ fontWeight: 600, display: "block", mb: 0.5 }}>
+        {label}
+      </Typography>
+      <Stack spacing={0.25}>
+        {typeof current === "number" && (
+          <Stack direction="row" justifyContent="space-between" spacing={2}>
+            <Typography variant="caption" color="text.secondary">
+              {showCompare ? "AI" : "Score"}
+            </Typography>
+            <Typography variant="caption" sx={{ fontWeight: 600 }}>
+              {current.toFixed(1)}
+            </Typography>
+          </Stack>
+        )}
+        {showCompare && typeof heur === "number" && (
+          <Stack direction="row" justifyContent="space-between" spacing={2}>
+            <Typography variant="caption" color="text.secondary">
+              Heuristic
+            </Typography>
+            <Typography variant="caption">{heur.toFixed(1)}</Typography>
+          </Stack>
+        )}
+        {showCompare && diff !== null && (
+          <Stack direction="row" justifyContent="space-between" spacing={2} sx={{ mt: 0.5, pt: 0.5, borderTop: 1, borderColor: "divider" }}>
+            <Typography variant="caption" color="text.secondary">
+              Δ
+            </Typography>
+            <Typography
+              variant="caption"
+              sx={{
+                fontWeight: 700,
+                color:
+                  diff > 0 ? "success.main" : diff < 0 ? "error.main" : "text.secondary",
+              }}
+            >
+              {diff > 0 ? "+" : ""}
+              {diff.toFixed(1)}
+            </Typography>
+          </Stack>
+        )}
+      </Stack>
+    </Box>
+  );
+}
+
 
 function PhotoStrip({
   loading,

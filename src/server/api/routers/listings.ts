@@ -5,6 +5,12 @@ import { protectedProcedure, router } from "../trpc";
 import { FilterInput } from "../schemas/filter";
 import { countListings, searchListings } from "../listings-search";
 import { fetchListingMedia, type BridgeMediaItem } from "@/server/etl/bridge-client";
+import { normalizeListing } from "@/server/etl/normalize";
+import { computeHeuristicScore } from "@/server/etl/scoring";
+
+function round1(n: number) {
+  return Math.round(n * 10) / 10;
+}
 
 export const listingsRouter = router({
   search: protectedProcedure.input(FilterInput).query(({ input }) => searchListings(input)),
@@ -19,7 +25,22 @@ export const listingsRouter = router({
         include: { score: true, enrichments: { orderBy: { createdAt: "desc" }, take: 5 } },
       });
       if (!listing) throw new TRPCError({ code: "NOT_FOUND" });
-      return listing;
+
+      // Heuristic snapshot — recomputed from the listing's raw data on every
+      // read. Used by the drawer to show AI ↔ heuristic deltas even after an
+      // AI score has overwritten the persisted heuristic in `Score`.
+      const normalized = normalizeListing(listing.raw as Record<string, unknown>);
+      const h = normalized ? computeHeuristicScore(normalized) : null;
+      const heuristicSnapshot = h
+        ? {
+            densityScore: round1(h.densityScore),
+            vacancyScore: round1(h.vacancyScore),
+            motivationScore: round1(h.motivationScore),
+            valueAddWeightedAvg: round1(h.valueAddWeightedAvg),
+          }
+        : null;
+
+      return { ...listing, heuristicSnapshot };
     }),
 
   getPhotos: protectedProcedure
