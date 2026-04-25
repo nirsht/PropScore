@@ -16,6 +16,7 @@ export const RentGrowthOutput = z.object({
     .object({
       perUnitMonthly: z.number().nullable(),
       totalMonthly: z.number().nullable(),
+      methodology: z.string().nullable(),
     })
     .nullable(),
   monthlyUpside: z.number().nullable(),

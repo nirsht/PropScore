@@ -12,6 +12,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
+import HelpOutlineRoundedIcon from "@mui/icons-material/HelpOutlineRounded";
 import TrendingUpRoundedIcon from "@mui/icons-material/TrendingUpRounded";
 import AutoFixHighOutlinedIcon from "@mui/icons-material/AutoFixHighOutlined";
 import { trpc } from "@/lib/trpc/client";
@@ -92,34 +93,53 @@ export function RentGrowthCard({ mlsId }: { mlsId: string }) {
         <Stack spacing={1.75}>
           <Stack direction="row" spacing={3} flexWrap="wrap" useFlexGap>
             <Metric
-              label="Current rent (mo)"
-              primary={fmtMoney(result.currentRent?.totalMonthly ?? null)}
-              secondary={
-                result.currentRent
-                  ? `${fmtMoney(result.currentRent.perUnitMonthly)}/unit · ${result.currentRent.source}`
-                  : "no signal"
-              }
-            />
-            <Metric
-              label="Market rent (mo)"
+              label="Estimated rent (mo)"
               primary={fmtMoney(result.marketRent?.totalMonthly ?? null)}
               secondary={
                 result.marketRent
                   ? `${fmtMoney(result.marketRent.perUnitMonthly)}/unit`
                   : "—"
               }
-            />
-            <Metric
-              label="Monthly upside"
-              primary={fmtMoney(result.monthlyUpside)}
+              hint={result.marketRent?.methodology ?? undefined}
               emphasis
             />
             <Metric
+              label="Current rent (mo)"
+              primary={fmtMoney(result.currentRent?.totalMonthly ?? null)}
+              secondary={
+                result.currentRent
+                  ? result.currentRent.source === "unknown"
+                    ? "not in description"
+                    : `${fmtMoney(result.currentRent.perUnitMonthly)}/unit · ${result.currentRent.source}`
+                  : "—"
+              }
+            />
+            <Metric
+              label="Monthly upside"
+              primary={
+                result.monthlyUpside != null
+                  ? fmtMoney(result.monthlyUpside)
+                  : "—"
+              }
+            />
+            <Metric
               label="Annual upside"
-              primary={fmtMoney(result.annualUpside)}
+              primary={
+                result.annualUpside != null
+                  ? fmtMoney(result.annualUpside)
+                  : "—"
+              }
             />
             <Metric label="Upside %" primary={fmtPct(result.upsidePercent)} />
           </Stack>
+
+          {result.currentRent?.source === "unknown" && result.marketRent?.totalMonthly != null && (
+            <Alert severity="info" variant="outlined" sx={{ py: 0.5 }}>
+              The description doesn't disclose current rents, so the upside fields
+              are blank. The estimated rent above is a data-driven projection
+              using units, beds, sqft, year built, and city.
+            </Alert>
+          )}
 
           {result.rationale && (
             <Box>
@@ -165,17 +185,28 @@ function Metric({
   primary,
   secondary,
   emphasis,
+  hint,
 }: {
   label: string;
   primary: string;
   secondary?: string;
   emphasis?: boolean;
+  hint?: string;
 }) {
   return (
     <Box>
-      <Typography variant="caption" color="text.secondary">
-        {label}
-      </Typography>
+      <Stack direction="row" spacing={0.5} alignItems="center">
+        <Typography variant="caption" color="text.secondary">
+          {label}
+        </Typography>
+        {hint && (
+          <Tooltip title={hint} arrow placement="top">
+            <HelpOutlineRoundedIcon
+              sx={{ fontSize: 12, opacity: 0.55, cursor: "help" }}
+            />
+          </Tooltip>
+        )}
+      </Stack>
       <Typography
         variant={emphasis ? "h6" : "body1"}
         sx={{
