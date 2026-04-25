@@ -15,7 +15,13 @@ const schema = z.object({
   OPENAI_MODEL: z.string().min(1).default("gpt-4o-2024-11-20"),
 
   NEXTAUTH_SECRET: z.string().min(16),
-  NEXTAUTH_URL: z.string().url().default("http://localhost:3020"),
+  // Render auto-injects RENDER_EXTERNAL_URL. Locally we fall back to
+  // localhost:3020. Setting NEXTAUTH_URL explicitly is rarely needed.
+  NEXTAUTH_URL: z
+    .string()
+    .url()
+    .optional(),
+  RENDER_EXTERNAL_URL: z.string().url().optional(),
 
   NEXT_PUBLIC_MAP_STYLE_URL: z.string().optional().or(z.literal("")),
 });
@@ -30,5 +36,11 @@ if (!parsed.success) {
   );
 }
 
-export const env = parsed.data;
+export const env = {
+  ...parsed.data,
+  NEXTAUTH_URL:
+    parsed.data.NEXTAUTH_URL ??
+    parsed.data.RENDER_EXTERNAL_URL ??
+    `http://localhost:${parsed.data.PORT}`,
+};
 export type Env = typeof env;

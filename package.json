@@ -16,6 +16,8 @@
     "test:watch": "vitest",
     "etl:sync": "tsx --env-file=.env scripts/etl-sync.ts",
     "etl:full": "tsx --env-file=.env scripts/etl-sync.ts --full",
+    "render:sync": "tsx --env-file=.env scripts/render-sync.ts",
+    "render:sync:dry": "tsx --env-file=.env scripts/render-sync.ts --dry-run",
     "bootstrap:bridge": "tsx --env-file=.env scripts/bootstrap-bridge.ts",
     "recompute:scores": "tsx --env-file=.env scripts/recompute-scores.ts",
     "db:generate": "prisma generate",
