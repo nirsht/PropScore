@@ -15,6 +15,10 @@ export const authConfig: NextAuthConfig = {
   adapter: PrismaAdapter(db),
   session: { strategy: "jwt" },
   secret: env.NEXTAUTH_SECRET,
+  // Required on any non-Vercel deployment (Render, Fly, Railway, etc.) —
+  // without this NextAuth refuses to operate on a non-localhost host and
+  // returns the "Server error" config page.
+  trustHost: true,
   pages: {
     signIn: "/sign-in",
   },
