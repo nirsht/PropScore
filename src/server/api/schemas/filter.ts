@@ -46,11 +46,12 @@ export const FilterInput = z.object({
   motivationScore: range(0, 100),
   valueAddWeightedAvg: range(0, 100),
 
-  // Date ranges (ISO YYYY-MM-DD strings — coerced to Date in the SQL builder)
+  // Date ranges (ISO YYYY-MM-DD strings — coerced to Date in the SQL builder).
+  // `min` and `max` are independent: either alone is a valid one-sided range.
   postDate: z
     .object({
-      from: z.string().optional(),
-      to: z.string().optional(),
+      min: z.string().optional(),
+      max: z.string().optional(),
     })
     .optional(),
 

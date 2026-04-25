@@ -61,7 +61,7 @@ function Field({
   );
 }
 
-type DateRangeValue = { from?: string; to?: string };
+type DateRangeValue = { min?: string; max?: string };
 
 function DateRange({
   label,
@@ -74,22 +74,22 @@ function DateRange({
   onChange: (v: DateRangeValue | undefined) => void;
   hint?: string;
 }) {
-  const [from, setFrom] = React.useState(value?.from ?? "");
-  const [to, setTo] = React.useState(value?.to ?? "");
+  const [min, setMin] = React.useState(value?.min ?? "");
+  const [max, setMax] = React.useState(value?.max ?? "");
 
   React.useEffect(() => {
-    setFrom(value?.from ?? "");
-    setTo(value?.to ?? "");
-  }, [value?.from, value?.to]);
+    setMin(value?.min ?? "");
+    setMax(value?.max ?? "");
+  }, [value?.min, value?.max]);
 
-  function commit(nextFrom: string, nextTo: string) {
-    if (!nextFrom && !nextTo) {
+  function commit(nextMin: string, nextMax: string) {
+    if (!nextMin && !nextMax) {
       onChange(undefined);
       return;
     }
     onChange({
-      ...(nextFrom ? { from: nextFrom } : {}),
-      ...(nextTo ? { to: nextTo } : {}),
+      ...(nextMin ? { min: nextMin } : {}),
+      ...(nextMax ? { max: nextMax } : {}),
     });
   }
 
@@ -98,20 +98,24 @@ function DateRange({
       <Stack direction="row" spacing={1}>
         <TextField
           type="date"
-          value={from}
+          label="min"
+          value={min}
           onChange={(e) => {
-            setFrom(e.target.value);
-            commit(e.target.value, to);
+            setMin(e.target.value);
+            commit(e.target.value, max);
           }}
+          slotProps={{ inputLabel: { shrink: true } }}
           fullWidth
         />
         <TextField
           type="date"
-          value={to}
+          label="max"
+          value={max}
           onChange={(e) => {
-            setTo(e.target.value);
-            commit(from, e.target.value);
+            setMax(e.target.value);
+            commit(min, e.target.value);
           }}
+          slotProps={{ inputLabel: { shrink: true } }}
           fullWidth
         />
       </Stack>
@@ -419,7 +423,7 @@ function countActive(s: ReturnType<typeof useFilter>["state"]): number {
     const v = s[k];
     if (v && (v.min != null || v.max != null)) n++;
   }
-  if (s.postDate && (s.postDate.from || s.postDate.to)) n++;
+  if (s.postDate && (s.postDate.min || s.postDate.max)) n++;
   if (s.radius) n++;
   if (s.polygon) n++;
   return n;

@@ -97,11 +97,11 @@ function buildWhere(
   pushRange(where, '"motivationScore"', input.motivationScore);
   pushRange(where, '"valueAddWeightedAvg"', input.valueAddWeightedAvg);
 
-  if (input.postDate?.from) {
-    where.push(Prisma.sql`"postDate" >= ${new Date(input.postDate.from)}`);
+  if (input.postDate?.min) {
+    where.push(Prisma.sql`"postDate" >= ${new Date(input.postDate.min)}`);
   }
-  if (input.postDate?.to) {
-    where.push(Prisma.sql`"postDate" <= ${new Date(input.postDate.to)}`);
+  if (input.postDate?.max) {
+    where.push(Prisma.sql`"postDate" <= ${new Date(input.postDate.max)}`);
   }
 
   if (input.radius) {
