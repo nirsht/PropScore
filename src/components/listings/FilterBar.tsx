@@ -16,6 +16,7 @@ import {
 } from "@mui/material";
 import RefreshOutlinedIcon from "@mui/icons-material/RefreshOutlined";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
+import type { RenovationLevel } from "@prisma/client";
 import { trpc } from "@/lib/trpc/client";
 import { useFilter } from "./filterStore";
 
@@ -236,6 +237,7 @@ export function FilterBar() {
         <Box sx={{ flex: 1 }} />
 
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+          <RenovationChips />
           <QuickChips />
           <Tooltip title="Reset all filters">
             <span>
@@ -400,10 +402,55 @@ function QuickChips() {
   );
 }
 
+const RENO_OPTIONS: Array<{ value: RenovationLevel; label: string; color: "error" | "warning" | "info" | "success" }> = [
+  { value: "DISTRESSED", label: "Distressed", color: "error" },
+  { value: "ORIGINAL", label: "Original", color: "warning" },
+  { value: "UPDATED", label: "Updated", color: "info" },
+  { value: "RENOVATED", label: "Renovated", color: "success" },
+];
+
+function RenovationChips() {
+  const { state, set } = useFilter();
+  const active = state.renovationLevel ?? [];
+
+  const toggle = (value: RenovationLevel) => {
+    const next = active.includes(value)
+      ? active.filter((v) => v !== value)
+      : [...active, value];
+    set({ renovationLevel: next.length ? next : undefined });
+  };
+
+  return (
+    <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        sx={{ alignSelf: "center", mr: 0.5, fontWeight: 600 }}
+      >
+        Reno:
+      </Typography>
+      {RENO_OPTIONS.map((opt) => {
+        const isActive = active.includes(opt.value);
+        return (
+          <Chip
+            key={opt.value}
+            size="small"
+            label={opt.label}
+            color={isActive ? opt.color : "default"}
+            variant={isActive ? "filled" : "outlined"}
+            onClick={() => toggle(opt.value)}
+          />
+        );
+      })}
+    </Stack>
+  );
+}
+
 function countActive(s: ReturnType<typeof useFilter>["state"]): number {
   let n = 0;
   if (s.q) n++;
   if (s.propertyTypes?.length) n++;
+  if (s.renovationLevel?.length) n++;
   for (const k of [
     "price",
     "pricePerSqft",

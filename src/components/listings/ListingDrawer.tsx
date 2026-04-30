@@ -38,9 +38,11 @@ import {
 } from "recharts";
 import { trpc } from "@/lib/trpc/client";
 import { EnrichWithAIButton } from "./EnrichWithAIButton";
+import { EnrichWithVisionButton } from "./EnrichWithVisionButton";
 import { RentGrowthCard } from "./RentGrowthCard";
 import { PhotoLightbox } from "./PhotoLightbox";
 import { MeasureLotModal } from "./MeasureLotModal";
+import type { RenovationLevel } from "@prisma/client";
 
 const fmtMoney = (n: number | null | undefined) =>
   n == null ? "—" : `$${Math.round(n).toLocaleString()}`;
@@ -143,33 +145,86 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
             </IconButton>
           </Stack>
 
-          {/* Headline metrics */}
-          <Paper variant="outlined" sx={{ p: 2 }}>
-            <Stack direction="row" spacing={3} flexWrap="wrap" useFlexGap>
-              <Metric label="Price" value={fmtMoney(listing.price)} emphasis />
-              <Metric label="$/Sqft" value={fmtMoney(deriveRatio(listing.price, listing.sqft))} />
-              <Metric
-                label="$/Unit"
-                value={fmtMoney(deriveRatio(listing.price, listing.units))}
-              />
-              <Metric
-                label="Sqft (building)"
-                value={listing.sqft?.toLocaleString() ?? "—"}
-              />
-              <Metric
-                label="Lot (sqft)"
-                value={listing.lotSizeSqft?.toLocaleString() ?? "—"}
-              />
-              <Metric label="Units" value={listing.units?.toString() ?? "—"} />
-              <Metric label="Beds / Baths" value={`${listing.beds ?? "—"} / ${listing.baths ?? "—"}`} />
-              <Metric label="Year built" value={listing.yearBuilt?.toString() ?? "—"} />
-              <Metric label="DOM" value={listing.daysOnMls.toString()} />
-              <Metric label="Stories" value={listing.stories?.toString() ?? "—"} />
-            </Stack>
-          </Paper>
+          {/* Headline metrics — uses resolved effective fields with provenance */}
+          {(() => {
+            const sqft = resolveValue(
+              listing.sqft,
+              listing.assessorBuildingSqft,
+              null,
+            );
+            const lotSqft = resolveValue(
+              listing.lotSizeSqft,
+              listing.assessorLotSqft,
+              null,
+            );
+            const units = resolveValue(listing.units, listing.assessorUnits, null);
+            const stories = resolveValue(
+              listing.stories,
+              listing.assessorStories,
+              listing.aiStories,
+            );
+            const yearBuilt = resolveValue(
+              listing.yearBuilt,
+              listing.assessorYearBuilt,
+              null,
+            );
+            return (
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Stack direction="row" spacing={3} flexWrap="wrap" useFlexGap>
+                  <Metric label="Price" value={fmtMoney(listing.price)} emphasis />
+                  <Metric
+                    label="$/Sqft"
+                    value={fmtMoney(deriveRatio(listing.price, sqft.value))}
+                    provenance={sqft.source}
+                  />
+                  <Metric
+                    label="$/Unit"
+                    value={fmtMoney(deriveRatio(listing.price, units.value))}
+                    provenance={units.source}
+                  />
+                  <Metric
+                    label="Sqft (building)"
+                    value={sqft.value?.toLocaleString() ?? "—"}
+                    provenance={sqft.source}
+                  />
+                  <Metric
+                    label="Lot (sqft)"
+                    value={lotSqft.value?.toLocaleString() ?? "—"}
+                    provenance={lotSqft.source}
+                  />
+                  <Metric
+                    label="Units"
+                    value={units.value?.toString() ?? "—"}
+                    provenance={units.source}
+                  />
+                  <Metric
+                    label="Beds / Baths"
+                    value={`${listing.beds ?? "—"} / ${listing.baths ?? "—"}`}
+                  />
+                  <Metric
+                    label="Year built"
+                    value={yearBuilt.value?.toString() ?? "—"}
+                    provenance={yearBuilt.source}
+                  />
+                  <Metric label="DOM" value={listing.daysOnMls.toString()} />
+                  <Metric
+                    label="Stories"
+                    value={stories.value?.toString() ?? "—"}
+                    provenance={stories.source}
+                  />
+                </Stack>
+              </Paper>
+            );
+          })()}
+
+          {/* Source comparison — Bridge MLS vs SF Assessor side-by-side */}
+          <SourceComparisonCard listing={listing} />
 
           {/* Lot & extras pulled directly from raw — no extra DB columns. */}
           <LotAndExtrasCard raw={raw} />
+
+          {/* AI vision — building analysis */}
+          <BuildingVisionCard listing={listing} />
 
           {/* Score breakdown */}
           <Paper variant="outlined" sx={{ p: 2 }}>
@@ -415,20 +470,41 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
   );
 }
 
+type Provenance = "MLS" | "Assessor" | "AI" | null;
+
 function Metric({
   label,
   value,
   emphasis,
+  provenance,
 }: {
   label: string;
   value: string;
   emphasis?: boolean;
+  provenance?: Provenance;
 }) {
   return (
     <Box>
-      <Typography variant="caption" color="text.secondary">
-        {label}
-      </Typography>
+      <Stack direction="row" alignItems="center" spacing={0.5}>
+        <Typography variant="caption" color="text.secondary">
+          {label}
+        </Typography>
+        {provenance && (
+          <Chip
+            size="small"
+            label={provenance}
+            sx={{ height: 14, fontSize: 9, "& .MuiChip-label": { px: 0.5 } }}
+            color={
+              provenance === "MLS"
+                ? "default"
+                : provenance === "Assessor"
+                  ? "info"
+                  : "secondary"
+            }
+            variant="outlined"
+          />
+        )}
+      </Stack>
       <Typography
         variant={emphasis ? "h6" : "body1"}
         sx={{ fontWeight: emphasis ? 700 : 500, lineHeight: 1.2 }}
@@ -437,6 +513,22 @@ function Metric({
       </Typography>
     </Box>
   );
+}
+
+/**
+ * Resolve a value from primary → secondary → tertiary sources, returning the
+ * winning value and its source label. `null` source = no value at all.
+ */
+function resolveValue<T extends number | string | null | undefined>(
+  mls: T,
+  assessor: T,
+  ai: T,
+): { value: NonNullable<T> | null; source: Provenance } {
+  if (mls != null && mls !== 0) return { value: mls as NonNullable<T>, source: "MLS" };
+  if (assessor != null && assessor !== 0)
+    return { value: assessor as NonNullable<T>, source: "Assessor" };
+  if (ai != null && ai !== 0) return { value: ai as NonNullable<T>, source: "AI" };
+  return { value: null, source: null };
 }
 
 function ToolLink({
@@ -824,4 +916,237 @@ function numField(v: unknown): number | null {
 }
 function strField(v: unknown): string | null {
   return typeof v === "string" && v.length > 0 ? v : null;
+}
+
+type ListingForCompare = {
+  sqft: number | null;
+  lotSizeSqft: number | null;
+  units: number | null;
+  beds: number | null;
+  baths: number | null;
+  yearBuilt: number | null;
+  stories: number | null;
+  assessorBuildingSqft: number | null;
+  assessorLotSqft: number | null;
+  assessorUnits: number | null;
+  assessorBedrooms: number | null;
+  assessorBathrooms: number | null;
+  assessorYearBuilt: number | null;
+  assessorStories: number | null;
+  assessorRooms: number | null;
+  assessorFetchedAt: Date | string | null;
+};
+
+function SourceComparisonCard({ listing }: { listing: ListingForCompare }) {
+  if (!listing.assessorFetchedAt) {
+    return (
+      <Paper variant="outlined" sx={{ p: 2 }}>
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.5 }}>
+          <Typography variant="subtitle2">Source comparison</Typography>
+        </Stack>
+        <Typography variant="body2" color="text.secondary">
+          SF Assessor record not yet fetched for this listing. Run{" "}
+          <code>pnpm tsx scripts/enrich-sfpim.ts</code> to populate.
+        </Typography>
+      </Paper>
+    );
+  }
+
+  const rows: Array<{
+    label: string;
+    mls: number | null;
+    assessor: number | null;
+    fmt?: (n: number) => string;
+  }> = [
+    { label: "Sqft", mls: listing.sqft, assessor: listing.assessorBuildingSqft, fmt: (n) => n.toLocaleString() },
+    { label: "Lot Sqft", mls: listing.lotSizeSqft, assessor: listing.assessorLotSqft, fmt: (n) => n.toLocaleString() },
+    { label: "Stories", mls: listing.stories, assessor: listing.assessorStories },
+    { label: "Units", mls: listing.units, assessor: listing.assessorUnits },
+    { label: "Year built", mls: listing.yearBuilt, assessor: listing.assessorYearBuilt },
+    { label: "Beds", mls: listing.beds, assessor: listing.assessorBedrooms },
+    { label: "Baths", mls: listing.baths, assessor: listing.assessorBathrooms },
+    { label: "Rooms", mls: null, assessor: listing.assessorRooms },
+  ];
+
+  return (
+    <Paper variant="outlined" sx={{ p: 2 }}>
+      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
+        <Typography variant="subtitle2">Source comparison</Typography>
+        <Typography variant="caption" color="text.secondary">
+          Bridge MLS vs SF Assessor — diffs &gt; 5% highlighted
+        </Typography>
+      </Stack>
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: "1.2fr 1fr 1fr",
+          rowGap: 0.5,
+          columnGap: 1,
+          alignItems: "center",
+        }}
+      >
+        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+          Field
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+          Bridge MLS
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+          SF Assessor
+        </Typography>
+        {rows.map((r) => {
+          const diverge = isDiverging(r.mls, r.assessor);
+          const fmt = r.fmt ?? ((n: number) => n.toString());
+          return (
+            <React.Fragment key={r.label}>
+              <Typography variant="body2" color="text.secondary">
+                {r.label}
+              </Typography>
+              <CompareCell value={r.mls} fmt={fmt} highlight={diverge} />
+              <CompareCell value={r.assessor} fmt={fmt} highlight={diverge} />
+            </React.Fragment>
+          );
+        })}
+      </Box>
+    </Paper>
+  );
+}
+
+function CompareCell({
+  value,
+  fmt,
+  highlight,
+}: {
+  value: number | null;
+  fmt: (n: number) => string;
+  highlight: boolean;
+}) {
+  return (
+    <Typography
+      variant="body2"
+      sx={{
+        fontWeight: highlight ? 600 : 500,
+        bgcolor: highlight ? "warning.light" : "transparent",
+        color: highlight ? "warning.contrastText" : "text.primary",
+        px: highlight ? 0.75 : 0,
+        py: highlight ? 0.25 : 0,
+        borderRadius: 0.5,
+        display: "inline-block",
+      }}
+    >
+      {value == null ? "—" : fmt(value)}
+    </Typography>
+  );
+}
+
+function isDiverging(a: number | null, b: number | null): boolean {
+  if (a == null || b == null) return false;
+  if (a === 0 && b === 0) return false;
+  const max = Math.max(Math.abs(a), Math.abs(b));
+  if (max === 0) return false;
+  return Math.abs(a - b) / max > 0.05;
+}
+
+const RENO_COLOR: Record<RenovationLevel, "error" | "warning" | "info" | "success"> = {
+  DISTRESSED: "error",
+  ORIGINAL: "warning",
+  UPDATED: "info",
+  RENOVATED: "success",
+};
+
+const RENO_LABEL: Record<RenovationLevel, string> = {
+  DISTRESSED: "Distressed",
+  ORIGINAL: "Original",
+  UPDATED: "Updated",
+  RENOVATED: "Renovated",
+};
+
+type ListingForVision = {
+  mlsId: string;
+  aiStories: number | null;
+  aiHasBasement: boolean | null;
+  aiHasPenthouse: boolean | null;
+  aiBestPhotoUrl: string | null;
+  renovationLevel: RenovationLevel | null;
+  renovationConfidence: number | null;
+  visionFetchedAt: Date | string | null;
+};
+
+function BuildingVisionCard({ listing }: { listing: ListingForVision }) {
+  return (
+    <Paper variant="outlined" sx={{ p: 2 }}>
+      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
+        <Typography variant="subtitle2">Building analysis (AI vision)</Typography>
+        {listing.renovationLevel && (
+          <Chip
+            size="small"
+            color={RENO_COLOR[listing.renovationLevel]}
+            label={RENO_LABEL[listing.renovationLevel]}
+          />
+        )}
+        <Box sx={{ flex: 1 }} />
+        <EnrichWithVisionButton mlsId={listing.mlsId} />
+      </Stack>
+      {!listing.visionFetchedAt ? (
+        <Typography variant="body2" color="text.secondary">
+          Click &ldquo;Analyze building&rdquo; to pick the best exterior photo and
+          extract stories, basement / penthouse presence, and renovation level.
+        </Typography>
+      ) : (
+        <Stack direction="row" spacing={2} alignItems="flex-start">
+          {listing.aiBestPhotoUrl && (
+            <Box
+              component="img"
+              src={listing.aiBestPhotoUrl}
+              alt="Best exterior photo"
+              loading="lazy"
+              sx={{
+                width: 180,
+                height: 120,
+                objectFit: "cover",
+                borderRadius: 1,
+                border: 1,
+                borderColor: "divider",
+                flexShrink: 0,
+              }}
+            />
+          )}
+          <Stack direction="row" spacing={3} flexWrap="wrap" useFlexGap>
+            <Metric
+              label="Stories (AI)"
+              value={listing.aiStories?.toString() ?? "—"}
+            />
+            <Metric
+              label="Basement"
+              value={
+                listing.aiHasBasement == null
+                  ? "—"
+                  : listing.aiHasBasement
+                    ? "Yes"
+                    : "No"
+              }
+            />
+            <Metric
+              label="Penthouse"
+              value={
+                listing.aiHasPenthouse == null
+                  ? "—"
+                  : listing.aiHasPenthouse
+                    ? "Yes"
+                    : "No"
+              }
+            />
+            <Metric
+              label="Reno confidence"
+              value={
+                listing.renovationConfidence == null
+                  ? "—"
+                  : `${Math.round(listing.renovationConfidence * 100)}%`
+              }
+            />
+          </Stack>
+        </Stack>
+      )}
+    </Paper>
+  );
 }

@@ -8,6 +8,14 @@ const range = (min: number, max: number) =>
     })
     .optional();
 
+export const RenovationLevelSchema = z.enum([
+  "DISTRESSED",
+  "ORIGINAL",
+  "UPDATED",
+  "RENOVATED",
+]);
+export type RenovationLevelFilter = z.infer<typeof RenovationLevelSchema>;
+
 export const SortKey = z.enum([
   "valueAdd",
   "price",
@@ -27,6 +35,9 @@ export const FilterInput = z.object({
 
   // Type / status
   propertyTypes: z.array(z.string()).optional(),
+
+  // Building vision: renovation level (multi-select).
+  renovationLevel: z.array(RenovationLevelSchema).optional(),
 
   // Numeric ranges
   price: range(0, 1_000_000_000),

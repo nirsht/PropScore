@@ -10,11 +10,26 @@ import {
 } from "@mui/x-data-grid";
 import HelpOutlineRoundedIcon from "@mui/icons-material/HelpOutlineRounded";
 import { keepPreviousData } from "@tanstack/react-query";
+import type { RenovationLevel } from "@prisma/client";
 import { trpc } from "@/lib/trpc/client";
 import { useFilter } from "./filterStore";
 import type { SortKey } from "@/server/api/schemas/filter";
 import type { ListingRow } from "@/server/api/listings-search";
 import { EnrichWithAIButton } from "./EnrichWithAIButton";
+
+const RENO_COLOR: Record<RenovationLevel, "error" | "warning" | "info" | "success"> = {
+  DISTRESSED: "error",
+  ORIGINAL: "warning",
+  UPDATED: "info",
+  RENOVATED: "success",
+};
+
+const RENO_LABEL: Record<RenovationLevel, string> = {
+  DISTRESSED: "Distressed",
+  ORIGINAL: "Original",
+  UPDATED: "Updated",
+  RENOVATED: "Renovated",
+};
 
 const PAGE_SIZE = 50;
 
@@ -127,7 +142,33 @@ const columns: GridColDef<ListingRow>[] = [
     valueFormatter: (v) => fmtDecimal(v as number | null, 0),
   },
   { field: "propertyType", headerName: "Type", width: 130 },
-  { field: "sqft", headerName: "Sqft", width: 90, type: "number" },
+  {
+    field: "renovationLevel",
+    width: 110,
+    renderHeader: () => (
+      <HeaderTooltip
+        label="Reno"
+        hint="Renovation level from AI vision: Distressed → Original → Updated → Renovated. A 4th input to the value-add weighted average."
+      />
+    ),
+    renderCell: ({ value }: GridRenderCellParams<ListingRow>) => {
+      const v = value as RenovationLevel | null;
+      if (!v) return <Typography variant="caption" color="text.secondary">—</Typography>;
+      return <Chip size="small" color={RENO_COLOR[v]} label={RENO_LABEL[v]} />;
+    },
+  },
+  {
+    field: "effectiveSqft",
+    headerName: "Sqft",
+    width: 90,
+    type: "number",
+    renderHeader: () => (
+      <HeaderTooltip
+        label="Sqft"
+        hint="Resolved building sqft: Bridge MLS, falling back to SF Assessor. Drives $/Sqft and density scoring."
+      />
+    ),
+  },
   {
     field: "pricePerSqft",
     width: 100,
@@ -139,7 +180,18 @@ const columns: GridColDef<ListingRow>[] = [
     ),
     valueFormatter: (v) => fmtMoney(v as number | null),
   },
-  { field: "units", headerName: "Units", width: 80, type: "number" },
+  {
+    field: "effectiveUnits",
+    headerName: "Units",
+    width: 80,
+    type: "number",
+    renderHeader: () => (
+      <HeaderTooltip
+        label="Units"
+        hint="Resolved unit count: Bridge MLS, falling back to SF Assessor. Drives $/Unit and density scoring."
+      />
+    ),
+  },
   {
     field: "sqftPerUnit",
     width: 100,
@@ -169,7 +221,18 @@ const columns: GridColDef<ListingRow>[] = [
       v == null ? "—" : `${(Number(v) * 100).toFixed(0)}%`,
   },
   { field: "yearBuilt", headerName: "Year Built", width: 100, type: "number" },
-  { field: "stories", headerName: "Stori", width: 80, type: "number" },
+  {
+    field: "effectiveStories",
+    headerName: "Stories",
+    width: 80,
+    type: "number",
+    renderHeader: () => (
+      <HeaderTooltip
+        label="Stories"
+        hint="Resolved story count: Bridge MLS → AI vision → SF Assessor."
+      />
+    ),
+  },
   {
     field: "_actions",
     headerName: "",
@@ -215,6 +278,7 @@ export function ListingsGrid({ onSelectListing }: Props) {
   }, [
     state.q,
     state.propertyTypes,
+    state.renovationLevel,
     state.price,
     state.pricePerSqft,
     state.pricePerUnit,

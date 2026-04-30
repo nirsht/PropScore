@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, type RenovationLevel } from "@prisma/client";
 import { db } from "@/lib/db";
 import { FILTER_DEFAULTS, type FilterInput, type SortKey } from "./schemas/filter";
 
@@ -23,6 +23,20 @@ export type ListingRow = {
   occupancy: number | null;
   yearBuilt: number | null;
   stories: number | null;
+  effectiveSqft: number | null;
+  effectiveLotSizeSqft: number | null;
+  effectiveStories: number | null;
+  effectiveUnits: number | null;
+  assessorBuildingSqft: number | null;
+  assessorLotSqft: number | null;
+  assessorUnits: number | null;
+  assessorYearBuilt: number | null;
+  assessorStories: number | null;
+  renovationLevel: RenovationLevel | null;
+  renovationConfidence: number | null;
+  aiStories: number | null;
+  aiHasBasement: boolean | null;
+  aiHasPenthouse: boolean | null;
   pricePerSqft: number | null;
   pricePerUnit: number | null;
   sqftPerUnit: number | null;
@@ -82,11 +96,17 @@ function buildWhere(
     where.push(Prisma.sql`"propertyType" = ANY(${input.propertyTypes}::text[])`);
   }
 
+  if (input.renovationLevel?.length) {
+    where.push(
+      Prisma.sql`"renovationLevel" = ANY(${input.renovationLevel}::"RenovationLevel"[])`,
+    );
+  }
+
   pushRange(where, '"price"', input.price);
   pushRange(where, '"pricePerSqft"', input.pricePerSqft);
   pushRange(where, '"pricePerUnit"', input.pricePerUnit);
-  pushRange(where, '"sqft"', input.sqft);
-  pushRange(where, '"units"', input.units);
+  pushRange(where, '"effectiveSqft"', input.sqft);
+  pushRange(where, '"effectiveUnits"', input.units);
   pushRange(where, '"beds"', input.beds);
   pushRange(where, '"baths"', input.baths);
   pushRange(where, '"yearBuilt"', input.yearBuilt);
@@ -156,6 +176,11 @@ export async function searchListings(input: FilterInput): Promise<SearchResult> 
         "lat", "lng",
         "price", "daysOnMls", "postDate", "listingUpdatedAt", "status", "propertyType",
         "sqft", "units", "beds", "baths", "occupancy", "yearBuilt", "stories",
+        "effectiveSqft", "effectiveLotSizeSqft", "effectiveStories", "effectiveUnits",
+        "assessorBuildingSqft", "assessorLotSqft", "assessorUnits",
+        "assessorYearBuilt", "assessorStories",
+        "renovationLevel", "renovationConfidence",
+        "aiStories", "aiHasBasement", "aiHasPenthouse",
         "pricePerSqft", "pricePerUnit", "sqftPerUnit",
         "densityScore", "vacancyScore", "motivationScore", "valueAddWeightedAvg",
         "scoreComputedBy"

@@ -68,7 +68,12 @@ async function main() {
         continue;
       }
 
-      const s = computeHeuristicScore(norm);
+      const s = computeHeuristicScore(norm, {
+        effectiveSqft: l.sqft ?? l.assessorBuildingSqft,
+        effectiveUnits: l.units ?? l.assessorUnits,
+        effectiveStories: l.stories ?? l.aiStories ?? l.assessorStories,
+        renovationLevel: l.renovationLevel,
+      });
       await db.score.upsert({
         where: { listingMlsId: l.mlsId },
         create: {

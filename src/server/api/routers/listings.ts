@@ -30,7 +30,15 @@ export const listingsRouter = router({
       // read. Used by the drawer to show AI ↔ heuristic deltas even after an
       // AI score has overwritten the persisted heuristic in `Score`.
       const normalized = normalizeListing(listing.raw as Record<string, unknown>);
-      const h = normalized ? computeHeuristicScore(normalized) : null;
+      const h = normalized
+        ? computeHeuristicScore(normalized, {
+            effectiveSqft: listing.sqft ?? listing.assessorBuildingSqft,
+            effectiveUnits: listing.units ?? listing.assessorUnits,
+            effectiveStories:
+              listing.stories ?? listing.aiStories ?? listing.assessorStories,
+            renovationLevel: listing.renovationLevel,
+          })
+        : null;
       const heuristicSnapshot = h
         ? {
             densityScore: round1(h.densityScore),

@@ -94,10 +94,42 @@ model Listing {
   yearBuilt                   Int?
   stories                     Int?
 
+  // SF Assessor (Socrata i8ew-h6z7) — official parcel record. Filled by
+  // the second-pass enrichment script `scripts/enrich-sfpim.ts`; never
+  // overwrites the Bridge MLS fields above.
+  blockLot                 String?
+  block                    String?
+  lot                      String?
+  assessorBuildingSqft     Int?
+  assessorLotSqft          Int?
+  assessorYearBuilt        Int?
+  assessorStories          Int?
+  assessorUnits            Int?
+  assessorRooms            Int?
+  assessorBedrooms         Int?
+  assessorBathrooms        Float?
+  assessorUseType          String?
+  assessorConstructionType String?
+  assessorBasement         String?
+  assessorFetchedAt        DateTime?
+
+  // AI building vision (gpt-4o vision). Headline fields denormalized onto
+  // the Listing row for fast filtering; full output lives in AIEnrichment.
+  aiStories            Int?
+  aiHasBasement        Boolean?
+  aiHasPenthouse       Boolean?
+  aiBestPhotoUrl       String?
+  renovationLevel      RenovationLevel?
+  renovationConfidence Float?
+  visionFetchedAt      DateTime?
+
   // generated columns added in raw SQL migration:
-  //   pricePerSqft  numeric  GENERATED ALWAYS AS (price::numeric / NULLIF(sqft,0)) STORED
-  //   pricePerUnit  numeric  GENERATED ALWAYS AS (price::numeric / NULLIF(units,0)) STORED
-  //   sqftPerUnit   numeric  GENERATED ALWAYS AS (sqft::numeric / NULLIF(units,0)) STORED
+  //   effectiveSqft         int      GENERATED ALWAYS AS (COALESCE(sqft, assessor_building_sqft)) STORED
+  //   effectiveLotSizeSqft  int      GENERATED ALWAYS AS (COALESCE(lot_size_sqft, assessor_lot_sqft)) STORED
+  //   effectiveStories      int      GENERATED ALWAYS AS (COALESCE(stories, ai_stories, assessor_stories)) STORED
+  //   pricePerSqft          numeric  GENERATED ALWAYS AS (price / NULLIF(effectiveSqft, 0)) STORED
+  //   pricePerUnit          numeric  GENERATED ALWAYS AS (price / NULLIF(COALESCE(units, assessor_units), 0)) STORED
+  //   sqftPerUnit           numeric  GENERATED ALWAYS AS (effectiveSqft / NULLIF(COALESCE(units, assessor_units), 0)) STORED
 
   raw                         Json
   bridgeModificationTimestamp DateTime
@@ -112,6 +144,15 @@ model Listing {
   @@index([yearBuilt])
   @@index([status])
   @@index([bridgeModificationTimestamp])
+  @@index([blockLot])
+  @@index([renovationLevel])
+}
+
+enum RenovationLevel {
+  DISTRESSED
+  ORIGINAL
+  UPDATED
+  RENOVATED
 }
 
 enum ScoreSource {
