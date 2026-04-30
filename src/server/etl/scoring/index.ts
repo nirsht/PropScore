@@ -1,8 +1,14 @@
+import type { RenovationLevel } from "@prisma/client";
 import type { NormalizedListing } from "../normalize";
 import { densityScore } from "./density";
 import { motivationScore } from "./motivation";
 import { vacancyScore } from "./vacancy";
-import { VALUE_ADD_WEIGHTS, weightedValueAdd } from "./valueAdd";
+import {
+  RENOVATION_UPSIDE,
+  VALUE_ADD_WEIGHTS,
+  renovationUpsideScore,
+  weightedValueAdd,
+} from "./valueAdd";
 
 export type ComputedScore = {
   densityScore: number;
@@ -12,14 +18,30 @@ export type ComputedScore = {
   breakdown: Record<string, unknown>;
 };
 
-export function computeHeuristicScore(l: NormalizedListing): ComputedScore {
-  const density = densityScore(l);
+export type HeuristicContext = {
+  /** Building sqft to use for density (Bridge MLS, falling back to Assessor). */
+  effectiveSqft?: number | null;
+  /** Resolved unit count (Bridge units, falling back to Assessor units). */
+  effectiveUnits?: number | null;
+  /** Resolved story count (Bridge → AI vision → Assessor). */
+  effectiveStories?: number | null;
+  /** Renovation level from the vision pass, if available. */
+  renovationLevel?: RenovationLevel | null;
+};
+
+export function computeHeuristicScore(
+  l: NormalizedListing,
+  ctx: HeuristicContext = {},
+): ComputedScore {
+  const density = densityScore(l, ctx);
   const vacancy = vacancyScore(l);
   const motivation = motivationScore(l);
+  const renovation = renovationUpsideScore(ctx.renovationLevel ?? null);
   const valueAddWeightedAvg = weightedValueAdd({
     densityScore: density,
     vacancyScore: vacancy,
     motivationScore: motivation,
+    renovationScore: renovation,
   });
 
   return {
@@ -29,15 +51,18 @@ export function computeHeuristicScore(l: NormalizedListing): ComputedScore {
     valueAddWeightedAvg,
     breakdown: {
       weights: VALUE_ADD_WEIGHTS,
+      renovationUpside: RENOVATION_UPSIDE,
       inputs: {
         daysOnMls: l.daysOnMls,
-        units: l.units,
+        units: ctx.effectiveUnits ?? l.units,
         propertyType: l.propertyType,
         beds: l.beds,
-        stories: l.stories,
+        stories: ctx.effectiveStories ?? l.stories,
+        sqft: ctx.effectiveSqft ?? l.sqft,
         occupancy: l.occupancy,
+        renovationLevel: ctx.renovationLevel ?? null,
       },
-      version: 1,
+      version: 2,
     },
   };
 }

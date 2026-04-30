@@ -25,6 +25,10 @@ export const agentsRouter = router({
     .input(z.object({ mlsId: z.string() }))
     .mutation(({ ctx, input }) => agents.rentGrowth.run(input.mlsId, ctx.user.id)),
 
+  buildingVision: protectedProcedure
+    .input(z.object({ mlsId: z.string() }))
+    .mutation(({ ctx, input }) => agents.buildingVision.run(input.mlsId, ctx.user.id)),
+
   /**
    * Latest cached rent-growth estimate for a listing, if any. Used by the
    * drawer to render the result without re-running the agent.

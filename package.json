@@ -20,6 +20,8 @@
     "render:sync:dry": "tsx --env-file=.env scripts/render-sync.ts --dry-run",
     "bootstrap:bridge": "tsx --env-file=.env scripts/bootstrap-bridge.ts",
     "recompute:scores": "tsx --env-file=.env scripts/recompute-scores.ts",
+    "enrich:sfpim": "tsx --env-file=.env scripts/enrich-sfpim.ts",
+    "enrich:vision": "tsx --env-file=.env scripts/enrich-vision.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
