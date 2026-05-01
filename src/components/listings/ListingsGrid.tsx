@@ -534,9 +534,6 @@ export function ListingsGrid({ onSelectListing }: Props) {
   const sortDir = state.sortDir ?? "desc";
   const sortField = SORT_KEY_TO_FIELD[sortBy] ?? "valueAddWeightedAvg";
 
-  // Stable refs so DataGrid doesn't re-fire onSortModelChange /
-  // onPaginationModelChange during the parent render commit (which was
-  // producing "state update on a component that hasn't mounted yet").
   const sortModel = React.useMemo<GridSortModel>(
     () => [{ field: sortField, sort: sortDir }],
     [sortField, sortDir],
@@ -546,17 +543,26 @@ export function ListingsGrid({ onSelectListing }: Props) {
     [page],
   );
 
-  // DataGrid fires its change callbacks synchronously inside a layout
-  // effect during its own mount, which lands inside ListingsGrid's render
-  // commit and trips React 19's "state update on a component that hasn't
-  // mounted yet" warning. Defer the parent/local state updates to a
-  // microtask so they run after the current commit.
+  // DataGrid emits onSortModelChange / onPaginationModelChange from its
+  // mount layout effect, which lands inside ListingsGrid's first commit
+  // and trips React 19's "state update on a component that hasn't mounted
+  // yet" warning. Skip callbacks until our own mount effect has run —
+  // user-driven sort/pagination always fires post-mount.
+  const mountedRef = React.useRef(false);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   const handleSort = React.useCallback(
     (model: GridSortModel) => {
+      if (!mountedRef.current) return;
       const item = model[0];
       if (!item) {
         if (sortBy !== "valueAdd" || sortDir !== "desc") {
-          queueMicrotask(() => set({ sortBy: "valueAdd", sortDir: "desc" }));
+          set({ sortBy: "valueAdd", sortDir: "desc" });
         }
         return;
       }
@@ -564,7 +570,7 @@ export function ListingsGrid({ onSelectListing }: Props) {
       if (!key) return;
       const nextDir = item.sort === "asc" ? "asc" : "desc";
       if (key === sortBy && nextDir === sortDir) return;
-      queueMicrotask(() => set({ sortBy: key, sortDir: nextDir }));
+      set({ sortBy: key, sortDir: nextDir });
     },
     [sortBy, sortDir, set],
   );
@@ -573,19 +579,18 @@ export function ListingsGrid({ onSelectListing }: Props) {
   const nextCursor = query.data?.nextCursor;
   const handlePagination = React.useCallback(
     (model: { page: number; pageSize: number }) => {
+      if (!mountedRef.current) return;
       const next = model.page;
       if (next === page) return;
-      queueMicrotask(() => {
-        if (next > page) {
-          setCursors((prev) => {
-            if (prev[next] !== undefined) return prev;
-            const copy = [...prev];
-            copy[next] = nextCursor ?? null;
-            return copy;
-          });
-        }
-        setPage(next);
-      });
+      if (next > page) {
+        setCursors((prev) => {
+          if (prev[next] !== undefined) return prev;
+          const copy = [...prev];
+          copy[next] = nextCursor ?? null;
+          return copy;
+        });
+      }
+      setPage(next);
     },
     [page, nextCursor],
   );
