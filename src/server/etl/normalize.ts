@@ -91,6 +91,12 @@ export function normalizeListing(p: BridgeProperty): NormalizedListing | null {
   const mlsId = String(p.ListingKey ?? p.ListingId ?? "").trim();
   if (!mlsId) return null;
 
+  // Defensive guard — leases/rentals carry a monthly rent in ListPrice and
+  // should never enter the for-sale dataset. The Bridge OData filter already
+  // excludes them; this catches any drift if that filter is ever loosened.
+  const rawPropertyType = String(p.PropertyType ?? "");
+  if (/lease/i.test(rawPropertyType)) return null;
+
   const price = int(p.ListPrice);
   if (price == null || price <= 0) return null;
 

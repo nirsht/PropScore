@@ -176,7 +176,13 @@ export async function runSync(opts: SyncOptions = {}): Promise<SyncSummary> {
 }
 
 function buildFilter(since: Date | null): string {
-  const parts = ["StandardStatus eq 'Active'"];
+  // Exclude lease/rental listings — their ListPrice is a monthly rent (e.g.
+  // $2,500/mo for a retail space) not a sale price, which corrupts every
+  // downstream ratio (price, $/Sqft, Value-Add) when treated as for-sale.
+  const parts = [
+    "StandardStatus eq 'Active'",
+    "not contains(PropertyType, 'Lease')",
+  ];
   if (since) {
     parts.push(`BridgeModificationTimestamp gt ${since.toISOString()}`);
   }
