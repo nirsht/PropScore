@@ -68,11 +68,23 @@ async function main() {
         continue;
       }
 
+      const um = l.extractedUnitMix as Array<{ count?: number }> | null;
+      const extractedUnitsTotal = Array.isArray(um) && um.length
+        ? um.reduce((sum, e) => sum + (e.count ?? 0), 0) || null
+        : null;
+
       const s = computeHeuristicScore(norm, {
-        effectiveSqft: l.sqft ?? l.assessorBuildingSqft,
-        effectiveUnits: l.units ?? l.assessorUnits,
-        effectiveStories: l.stories ?? l.aiStories ?? l.assessorStories,
+        effectiveSqft: l.assessorBuildingSqft ?? l.sqft,
+        effectiveUnits: l.assessorUnits ?? l.units ?? extractedUnitsTotal,
+        effectiveStories: l.assessorStories ?? l.stories ?? l.aiStories,
         renovationLevel: l.renovationLevel,
+        mlsSqft: l.sqft,
+        assessorSqft: l.assessorBuildingSqft,
+        assessorBuildingValue: l.assessorBuildingValue,
+        assessorLandValue: l.assessorLandValue,
+        extractedOccupancy: l.extractedOccupancy,
+        extractedUnitsTotal,
+        aduPotential: l.aduPotential as "LOW" | "MEDIUM" | "HIGH" | null,
       });
       await db.score.upsert({
         where: { listingMlsId: l.mlsId },

@@ -33,6 +33,10 @@ export const FilterInput = z.object({
   // Text
   q: z.string().trim().max(200).optional(),
 
+  // City — multi-select (e.g. ["San Francisco"]). Default in the UI is
+  // ["San Francisco"]; the user can uncheck it to see all cities.
+  city: z.array(z.string()).optional(),
+
   // Type / status
   propertyTypes: z.array(z.string()).optional(),
 
@@ -56,6 +60,11 @@ export const FilterInput = z.object({
   vacancyScore: range(0, 100),
   motivationScore: range(0, 100),
   valueAddWeightedAvg: range(0, 100),
+
+  // Tri-state: undefined/null = all, true = only listings with MLS↔Assessor
+  // size disagreement (>5% on any of sqft/lotSqft/units/stories),
+  // false = only listings without disagreement.
+  hasSizeDiscrepancy: z.boolean().nullable().optional(),
 
   // Date ranges (ISO YYYY-MM-DD strings — coerced to Date in the SQL builder).
   // `min` and `max` are independent: either alone is a valid one-sided range.

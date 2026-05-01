@@ -29,6 +29,10 @@ export const agentsRouter = router({
     .input(z.object({ mlsId: z.string() }))
     .mutation(({ ctx, input }) => agents.buildingVision.run(input.mlsId, ctx.user.id)),
 
+  listingExtract: protectedProcedure
+    .input(z.object({ mlsId: z.string() }))
+    .mutation(({ ctx, input }) => agents.listingExtract.run(input.mlsId, ctx.user.id)),
+
   /**
    * Latest cached rent-growth estimate for a listing, if any. Used by the
    * drawer to render the result without re-running the agent.
@@ -38,6 +42,19 @@ export const agentsRouter = router({
     .query(async ({ ctx, input }) => {
       const row = await ctx.db.aIEnrichment.findFirst({
         where: { listingMlsId: input.mlsId, agentName: "rent-growth" },
+        orderBy: { createdAt: "desc" },
+      });
+      return row;
+    }),
+
+  /**
+   * Latest cached listing-extract output. Drawer renders without re-run.
+   */
+  latestListingExtract: protectedProcedure
+    .input(z.object({ mlsId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const row = await ctx.db.aIEnrichment.findFirst({
+        where: { listingMlsId: input.mlsId, agentName: "listing-extract" },
         orderBy: { createdAt: "desc" },
       });
       return row;

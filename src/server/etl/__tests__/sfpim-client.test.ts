@@ -3,24 +3,25 @@ import { mapSfpimRow, parseAddress, type SfpimRow } from "../sfpim-client";
 
 describe("mapSfpimRow", () => {
   it("maps a representative parcel row", () => {
-    // The screenshotted record for parcel 0216013 — 1480-1490 Clay St:
+    // Real 2024 row for parcel 0216013 — 1480-1490 Clay St:
     // 9,995 building sqft, 7 units, 4 stories, 42 rooms, built 1909.
     const row: SfpimRow = {
-      blklot: "0216013",
+      parcel_number: "0216013",
       block: "0216",
       lot: "013",
-      property_location: "1480 CLAY ST",
-      bldg_sqft: "9995",
-      lot_area: "3397",
-      year_built: "1909",
-      num_stories: "4",
-      num_units: "7",
-      num_rooms: "42",
-      num_bedrooms: "14",
-      num_bathrooms: "7",
-      use_definition: "Apartment 5+ Units",
-      construction_type: "Wood Frame",
-      basement: "Full Basement",
+      property_location: "1490 1480 CLAY                ST0000",
+      property_area: "9995.0",
+      lot_area: "3397.0",
+      year_property_built: "1909",
+      number_of_stories: "4.0",
+      number_of_units: "7.0",
+      number_of_rooms: "42.0",
+      number_of_bedrooms: "21.0",
+      number_of_bathrooms: "7.0",
+      use_definition: "Multi-Family Residential",
+      construction_type: "D",
+      basement_area: "1200.0",
+      closed_roll_year: "2024",
     };
     const out = mapSfpimRow(row);
     expect(out.blockLot).toBe("0216013");
@@ -30,19 +31,26 @@ describe("mapSfpimRow", () => {
     expect(out.stories).toBe(4);
     expect(out.units).toBe(7);
     expect(out.rooms).toBe(42);
-    expect(out.bedrooms).toBe(14);
+    expect(out.bedrooms).toBe(21);
     expect(out.bathrooms).toBe(7);
-    expect(out.useType).toBe("Apartment 5+ Units");
-    expect(out.basement).toBe("Full Basement");
+    expect(out.useType).toBe("Multi-Family Residential");
+    expect(out.basement).toBe("1200 sqft");
+  });
+
+  it("renders zero/missing basement_area as null", () => {
+    const zero = mapSfpimRow({ parcel_number: "0001001", basement_area: "0.0" });
+    expect(zero.basement).toBeNull();
+    const missing = mapSfpimRow({ parcel_number: "0001001" });
+    expect(missing.basement).toBeNull();
   });
 
   it("treats 0 / empty / non-numeric as null for positive-only fields", () => {
     const out = mapSfpimRow({
-      blklot: "0001001",
-      bldg_sqft: "0",
+      parcel_number: "0001001",
+      property_area: "0",
       lot_area: "",
-      year_built: "1900",
-      num_units: "n/a",
+      year_property_built: "1900",
+      number_of_units: "n/a",
     });
     expect(out.buildingSqft).toBeNull();
     expect(out.lotSqft).toBeNull();
@@ -52,7 +60,7 @@ describe("mapSfpimRow", () => {
 
   it("trims whitespace and treats blanks as null on string fields", () => {
     const out = mapSfpimRow({
-      blklot: "0001001",
+      parcel_number: "0001001",
       use_definition: "   ",
       construction_type: "Steel ",
     });

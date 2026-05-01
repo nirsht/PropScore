@@ -30,13 +30,37 @@ export const listingsRouter = router({
       // read. Used by the drawer to show AI ↔ heuristic deltas even after an
       // AI score has overwritten the persisted heuristic in `Score`.
       const normalized = normalizeListing(listing.raw as Record<string, unknown>);
+      // Sum the AI-extracted unit-mix counts when MLS units missing.
+      const extractedUnitsTotal = (() => {
+        const um = listing.extractedUnitMix as
+          | Array<{ count?: number }>
+          | null
+          | undefined;
+        if (!Array.isArray(um) || um.length === 0) return null;
+        const total = um.reduce((s, e) => s + (e.count ?? 0), 0);
+        return total > 0 ? total : null;
+      })();
+
       const h = normalized
         ? computeHeuristicScore(normalized, {
-            effectiveSqft: listing.sqft ?? listing.assessorBuildingSqft,
-            effectiveUnits: listing.units ?? listing.assessorUnits,
+            // Assessor-first resolution to match the table.
+            effectiveSqft: listing.assessorBuildingSqft ?? listing.sqft,
+            effectiveUnits:
+              listing.assessorUnits ?? listing.units ?? extractedUnitsTotal,
             effectiveStories:
-              listing.stories ?? listing.aiStories ?? listing.assessorStories,
+              listing.assessorStories ?? listing.stories ?? listing.aiStories,
             renovationLevel: listing.renovationLevel,
+            mlsSqft: listing.sqft,
+            assessorSqft: listing.assessorBuildingSqft,
+            assessorBuildingValue: listing.assessorBuildingValue,
+            assessorLandValue: listing.assessorLandValue,
+            extractedOccupancy: listing.extractedOccupancy,
+            extractedUnitsTotal,
+            aduPotential: listing.aduPotential as
+              | "LOW"
+              | "MEDIUM"
+              | "HIGH"
+              | null,
           })
         : null;
       const heuristicSnapshot = h

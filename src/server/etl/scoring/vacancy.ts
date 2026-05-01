@@ -1,14 +1,21 @@
 import type { NormalizedListing } from "../normalize";
+import type { HeuristicContext } from "./index";
 
 /**
  * Vacancy score — 0..100. Higher = more likely vacant / under-occupied.
- * Direct occupancy is rarely populated in MLS feeds, so we fall back to
- * heuristics: explicit occupancy, language hints in remarks (handled later
- * by AI enrichment), and DOM as a soft signal.
+ *
+ * Direct occupancy is rarely populated in MLS feeds. Resolution order:
+ *   1. AI-extracted occupancy from PublicRemarks (most reliable when present)
+ *   2. The MLS-normalized `l.occupancy` field (rare)
+ *   3. Heuristic from remarks language + DOM
  */
-export function vacancyScore(l: NormalizedListing): number {
-  if (l.occupancy != null) {
-    return clamp(100 - l.occupancy * 100);
+export function vacancyScore(
+  l: NormalizedListing,
+  ctx: HeuristicContext = {},
+): number {
+  const occ = ctx.extractedOccupancy ?? l.occupancy;
+  if (occ != null) {
+    return clamp(100 - occ * 100);
   }
 
   const remarks = String(l.raw.PublicRemarks ?? "").toLowerCase();

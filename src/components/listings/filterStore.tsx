@@ -8,6 +8,9 @@ export type FilterStateValue = Omit<FilterInput, "cursor" | "limit">;
 const DEFAULT: FilterStateValue = {
   sortBy: "valueAdd",
   sortDir: "desc",
+  // SF is the default scope (assessor enrichment is SF-only). Users can
+  // uncheck the "SF only" chip in the filter bar to see all cities.
+  city: ["San Francisco"],
 };
 
 type Ctx = {

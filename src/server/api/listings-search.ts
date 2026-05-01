@@ -32,14 +32,21 @@ export type ListingRow = {
   assessorUnits: number | null;
   assessorYearBuilt: number | null;
   assessorStories: number | null;
+  assessorBuildingValue: number | null;
+  assessorLandValue: number | null;
   renovationLevel: RenovationLevel | null;
   renovationConfidence: number | null;
   aiStories: number | null;
   aiHasBasement: boolean | null;
   aiHasPenthouse: boolean | null;
+  aduPotential: "LOW" | "MEDIUM" | "HIGH" | null;
+  aduConfidence: number | null;
+  extractedTotalMonthlyRent: number | null;
+  extractedOccupancy: number | null;
   pricePerSqft: number | null;
   pricePerUnit: number | null;
   sqftPerUnit: number | null;
+  hasSizeDiscrepancy: boolean;
   densityScore: number | null;
   vacancyScore: number | null;
   motivationScore: number | null;
@@ -92,6 +99,10 @@ function buildWhere(
     );
   }
 
+  if (input.city?.length) {
+    where.push(Prisma.sql`"city" = ANY(${input.city}::text[])`);
+  }
+
   if (input.propertyTypes?.length) {
     where.push(Prisma.sql`"propertyType" = ANY(${input.propertyTypes}::text[])`);
   }
@@ -116,6 +127,10 @@ function buildWhere(
   pushRange(where, '"vacancyScore"', input.vacancyScore);
   pushRange(where, '"motivationScore"', input.motivationScore);
   pushRange(where, '"valueAddWeightedAvg"', input.valueAddWeightedAvg);
+
+  if (input.hasSizeDiscrepancy != null) {
+    where.push(Prisma.sql`"hasSizeDiscrepancy" = ${input.hasSizeDiscrepancy}`);
+  }
 
   if (input.postDate?.min) {
     where.push(Prisma.sql`"postDate" >= ${new Date(input.postDate.min)}`);
@@ -179,9 +194,13 @@ export async function searchListings(input: FilterInput): Promise<SearchResult> 
         "effectiveSqft", "effectiveLotSizeSqft", "effectiveStories", "effectiveUnits",
         "assessorBuildingSqft", "assessorLotSqft", "assessorUnits",
         "assessorYearBuilt", "assessorStories",
+        "assessorBuildingValue", "assessorLandValue",
         "renovationLevel", "renovationConfidence",
         "aiStories", "aiHasBasement", "aiHasPenthouse",
+        "aduPotential", "aduConfidence",
+        "extractedTotalMonthlyRent", "extractedOccupancy",
         "pricePerSqft", "pricePerUnit", "sqftPerUnit",
+        "hasSizeDiscrepancy",
         "densityScore", "vacancyScore", "motivationScore", "valueAddWeightedAvg",
         "scoreComputedBy"
       FROM "mv_listing_search"

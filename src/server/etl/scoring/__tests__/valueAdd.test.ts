@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   RENOVATION_UPSIDE,
-  VALUE_ADD_WEIGHTS,
+  aduPotentialScore,
+  landRatioScore,
   renovationUpsideScore,
+  sizeDiscrepancyScore,
   weightedValueAdd,
 } from "../valueAdd";
 import { computeHeuristicScore } from "../index";
@@ -51,49 +53,60 @@ describe("RENOVATION_UPSIDE", () => {
   });
 });
 
+describe("sizeDiscrepancyScore", () => {
+  it("returns null when either side missing", () => {
+    expect(sizeDiscrepancyScore(null, 1000)).toBeNull();
+    expect(sizeDiscrepancyScore(1000, null)).toBeNull();
+  });
+  it("scores higher as assessor sqft exceeds MLS sqft", () => {
+    expect(sizeDiscrepancyScore(1000, 1020)!).toBeLessThan(
+      sizeDiscrepancyScore(1000, 1200)!,
+    );
+    expect(sizeDiscrepancyScore(1000, 1200)!).toBeLessThan(
+      sizeDiscrepancyScore(1000, 1500)!,
+    );
+  });
+});
+
+describe("landRatioScore", () => {
+  it("returns 100 when land dominates total value", () => {
+    expect(landRatioScore(1_000_000, 50_000)).toBe(100);
+  });
+  it("returns lower when building dominates", () => {
+    expect(landRatioScore(100_000, 1_000_000)).toBeLessThan(50);
+  });
+});
+
+describe("aduPotentialScore", () => {
+  it("ranks HIGH > MEDIUM > LOW", () => {
+    expect(aduPotentialScore("HIGH")!).toBeGreaterThan(aduPotentialScore("MEDIUM")!);
+    expect(aduPotentialScore("MEDIUM")!).toBeGreaterThan(aduPotentialScore("LOW")!);
+    expect(aduPotentialScore(null)).toBeNull();
+  });
+});
+
 describe("weightedValueAdd", () => {
-  it("uses 4 components when renovation is known", () => {
-    const v = weightedValueAdd({
-      densityScore: 100,
-      vacancyScore: 100,
-      motivationScore: 100,
-      renovationScore: 100,
-    });
-    // All four maxed → exactly 100 (weights sum to 1.0)
-    const sumWeights =
-      VALUE_ADD_WEIGHTS.density +
-      VALUE_ADD_WEIGHTS.vacancy +
-      VALUE_ADD_WEIGHTS.motivation +
-      VALUE_ADD_WEIGHTS.renovation;
-    expect(sumWeights).toBeCloseTo(1.0, 5);
-    expect(v).toBeCloseTo(100, 5);
+  it("returns the input value when all components share the same score", () => {
+    expect(
+      weightedValueAdd({
+        densityScore: 50,
+        vacancyScore: 50,
+        motivationScore: 50,
+        renovationScore: 50,
+        sizeDiscrepancyScore: 50,
+        landRatioScore: 50,
+        aduScore: 50,
+      }),
+    ).toBeCloseTo(50, 5);
   });
 
-  it("falls back to a 3-component weighted mean when renovation unknown", () => {
-    // With renovation=null, divisor drops to (0.25 + 0.45 + 0.10) = 0.80
-    // Pure densities should still be 0..100 — i.e. all-50s should produce 50.
-    const v = weightedValueAdd({
-      densityScore: 50,
-      vacancyScore: 50,
-      motivationScore: 50,
-    });
-    expect(v).toBeCloseTo(50, 5);
-  });
-
-  it("does not penalize listings with unknown renovation level", () => {
+  it("falls back gracefully when renovation/size/land/adu unknown", () => {
     const known = weightedValueAdd({
       densityScore: 80,
       vacancyScore: 80,
       motivationScore: 80,
-      renovationScore: 80,
     });
-    const unknown = weightedValueAdd({
-      densityScore: 80,
-      vacancyScore: 80,
-      motivationScore: 80,
-    });
-    // Equivalent inputs across known weights → same result.
-    expect(unknown).toBeCloseTo(known, 5);
+    expect(known).toBeCloseTo(80, 5);
   });
 
   it("DISTRESSED > RENOVATED for the same other inputs", () => {
@@ -111,9 +124,24 @@ describe("weightedValueAdd", () => {
     });
     expect(distressed).toBeGreaterThan(renovated);
   });
+
+  it("HIGH ADU lifts value-add over no ADU read", () => {
+    const noAdu = weightedValueAdd({
+      densityScore: 50,
+      vacancyScore: 50,
+      motivationScore: 50,
+    });
+    const highAdu = weightedValueAdd({
+      densityScore: 50,
+      vacancyScore: 50,
+      motivationScore: 50,
+      aduScore: aduPotentialScore("HIGH"),
+    });
+    expect(highAdu).toBeGreaterThan(noAdu);
+  });
 });
 
-describe("computeHeuristicScore — renovation context", () => {
+describe("computeHeuristicScore — new context fields", () => {
   it("propagates renovation level into value-add", () => {
     const noReno = computeHeuristicScore(baseListing());
     const distressed = computeHeuristicScore(baseListing(), {
@@ -132,5 +160,34 @@ describe("computeHeuristicScore — renovation context", () => {
       effectiveUnits: 8,
     });
     expect(withAssessor.densityScore).toBeGreaterThan(noContext.densityScore);
+  });
+
+  it("size-discrepancy lifts value-add when assessor sqft >> mls sqft", () => {
+    const baseline = computeHeuristicScore(baseListing());
+    const lifted = computeHeuristicScore(baseListing(), {
+      mlsSqft: 4000,
+      assessorSqft: 5200,
+    });
+    expect(lifted.valueAddWeightedAvg).toBeGreaterThan(baseline.valueAddWeightedAvg);
+  });
+
+  it("land-heavy ratio lifts value-add", () => {
+    const baseline = computeHeuristicScore(baseListing());
+    const lifted = computeHeuristicScore(baseListing(), {
+      assessorBuildingValue: 100_000,
+      assessorLandValue: 1_500_000,
+    });
+    expect(lifted.valueAddWeightedAvg).toBeGreaterThan(baseline.valueAddWeightedAvg);
+  });
+
+  it("HIGH ADU potential lifts value-add", () => {
+    const baseline = computeHeuristicScore(baseListing());
+    const lifted = computeHeuristicScore(baseListing(), { aduPotential: "HIGH" });
+    expect(lifted.valueAddWeightedAvg).toBeGreaterThan(baseline.valueAddWeightedAvg);
+  });
+
+  it("uses extractedOccupancy for vacancy when present", () => {
+    const occupied = computeHeuristicScore(baseListing(), { extractedOccupancy: 1.0 });
+    expect(occupied.vacancyScore).toBeLessThanOrEqual(5);
   });
 });

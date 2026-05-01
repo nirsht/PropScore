@@ -28,20 +28,37 @@ services:
       - key: OPENAI_MODEL
         value: gpt-4o-2024-11-20
 
-  - type: cron
-    name: propscore-etl-nightly
-    runtime: node
-    region: ohio
-    branch: main
-    schedule: "0 3 * * *"
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm prisma generate
-    startCommand: pnpm etl:sync
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: BRIDGE_DATASET
-        value: sfar
-      - key: BRIDGE_BASE_URL
-        value: https://api.bridgedataoutput.com/api/v2/OData
-      - key: OPENAI_MODEL
-        value: gpt-4o-2024-11-20
+  # ---------------------------------------------------------------------------
+  # Nightly cron is currently DISABLED. Run `pnpm nightly` manually instead.
+  #
+  # To re-enable:
+  #   1. Uncomment the block below.
+  #   2. `pnpm render:sync` to redeploy the Blueprint.
+  #   3. (If the cron service was previously suspended/deleted in the Render
+  #      dashboard, the redeploy will recreate it.)
+  # ---------------------------------------------------------------------------
+  # - type: cron
+  #   name: propscore-etl-nightly
+  #   runtime: node
+  #   region: ohio
+  #   branch: main
+  #   schedule: "0 3 * * *"
+  #   buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm prisma generate
+  #   # Single nightly orchestrator. Each step is delta-only (skips listings
+  #   # already enriched) so AI tokens are spent on new listings only:
+  #   #   etl:sync         — incremental Bridge pull (cursor-based)
+  #   #   enrich:sfpim     — assessor (free Socrata API)
+  #   #   enrich:vision    — gpt-4o vision (~$0.005/listing, NEW listings only)
+  #   #   enrich:listings  — gpt-5-mini text extract (~$0.0007/listing, NEW only)
+  #   #   recompute:scores — re-run heuristic so new enrichment data feeds the
+  #   #                       value-add score (no AI calls, free).
+  #   startCommand: pnpm nightly
+  #   envVars:
+  #     - key: NODE_ENV
+  #       value: production
+  #     - key: BRIDGE_DATASET
+  #       value: sfar
+  #     - key: BRIDGE_BASE_URL
+  #       value: https://api.bridgedataoutput.com/api/v2/OData
+  #     - key: OPENAI_MODEL
+  #       value: gpt-4o-2024-11-20

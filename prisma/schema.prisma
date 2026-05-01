@@ -94,9 +94,9 @@ model Listing {
   yearBuilt                   Int?
   stories                     Int?
 
-  // SF Assessor (Socrata i8ew-h6z7) — official parcel record. Filled by
-  // the second-pass enrichment script `scripts/enrich-sfpim.ts`; never
-  // overwrites the Bridge MLS fields above.
+  // SF Assessor Secured Property Tax Roll (Socrata wv5m-vpq2) — official
+  // parcel record. Filled by the second-pass enrichment script
+  // `scripts/enrich-sfpim.ts`; never overwrites the Bridge MLS fields above.
   blockLot                 String?
   block                    String?
   lot                      String?
@@ -111,6 +111,8 @@ model Listing {
   assessorUseType          String?
   assessorConstructionType String?
   assessorBasement         String?
+  assessorBuildingValue    Int?
+  assessorLandValue        Int?
   assessorFetchedAt        DateTime?
 
   // AI building vision (gpt-4o vision). Headline fields denormalized onto
@@ -123,13 +125,28 @@ model Listing {
   renovationConfidence Float?
   visionFetchedAt      DateTime?
 
-  // generated columns added in raw SQL migration:
-  //   effectiveSqft         int      GENERATED ALWAYS AS (COALESCE(sqft, assessor_building_sqft)) STORED
-  //   effectiveLotSizeSqft  int      GENERATED ALWAYS AS (COALESCE(lot_size_sqft, assessor_lot_sqft)) STORED
-  //   effectiveStories      int      GENERATED ALWAYS AS (COALESCE(stories, ai_stories, assessor_stories)) STORED
+  // AI listing-extract (gpt-4o-mini). Parses the public/private remarks for
+  // unit mix, rent roll, capex, ADU potential. Headline fields denormalized
+  // onto Listing for filtering/scoring; full output in AIEnrichment.
+  extractedUnitMix          Json?
+  extractedRentRoll         Json?
+  extractedTotalMonthlyRent Int?
+  extractedOccupancy        Float?
+  recentCapex               Json?
+  aduPotential              String?
+  aduConfidence             Float?
+  aduRationale              String?
+  extractFetchedAt          DateTime?
+
+  // generated columns added in raw SQL migration. Resolution order is now
+  // ASSESSOR-first (most reliable), falling back to MLS, then AI:
+  //   effectiveSqft         int      GENERATED ALWAYS AS (COALESCE(assessor_building_sqft, sqft)) STORED
+  //   effectiveLotSizeSqft  int      GENERATED ALWAYS AS (COALESCE(assessor_lot_sqft, lot_size_sqft)) STORED
+  //   effectiveStories      int      GENERATED ALWAYS AS (COALESCE(assessor_stories, stories, ai_stories)) STORED
   //   pricePerSqft          numeric  GENERATED ALWAYS AS (price / NULLIF(effectiveSqft, 0)) STORED
-  //   pricePerUnit          numeric  GENERATED ALWAYS AS (price / NULLIF(COALESCE(units, assessor_units), 0)) STORED
-  //   sqftPerUnit           numeric  GENERATED ALWAYS AS (effectiveSqft / NULLIF(COALESCE(units, assessor_units), 0)) STORED
+  //   pricePerUnit          numeric  GENERATED ALWAYS AS (price / NULLIF(COALESCE(assessor_units, units), 0)) STORED
+  //   sqftPerUnit           numeric  GENERATED ALWAYS AS (effectiveSqft / NULLIF(COALESCE(assessor_units, units), 0)) STORED
+  //   hasSizeDiscrepancy    bool     GENERATED ALWAYS AS (any pair of MLS↔Assessor sqft/lot/units/stories differs >5%) STORED
 
   raw                         Json
   bridgeModificationTimestamp DateTime

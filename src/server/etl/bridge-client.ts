@@ -56,6 +56,14 @@ export type BridgeProperty = Record<string, unknown> & {
   PostalCode?: string;
   PublicRemarks?: string;
   PrivateRemarks?: string;
+  ListAgentFullName?: string;
+  ListAgentMlsId?: string;
+  ListAgentDirectPhone?: string;
+  ListAgentOfficePhone?: string;
+  ListAgentEmail?: string;
+  CoListAgentFullName?: string;
+  CoListAgentDirectPhone?: string;
+  CoListAgentEmail?: string;
 };
 
 export type SearchOptions = {
@@ -114,6 +122,15 @@ const DEFAULT_SELECT = [
   "StateOrProvince",
   "PostalCode",
   "PublicRemarks",
+  // Listing agent contact info — surfaces as click-to-call/email in the drawer.
+  "ListAgentFullName",
+  "ListAgentMlsId",
+  "ListAgentDirectPhone",
+  "ListAgentOfficePhone",
+  "ListAgentEmail",
+  "CoListAgentFullName",
+  "CoListAgentDirectPhone",
+  "CoListAgentEmail",
 ];
 
 let lastRequestAt = 0;

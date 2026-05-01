@@ -355,7 +355,23 @@ export function FilterBar() {
 
 function QuickChips() {
   const { state, set } = useFilter();
+  const sfActive = state.city?.includes("San Francisco") ?? false;
   const chips = [
+    {
+      key: "sf-only",
+      label: "SF only",
+      active: sfActive,
+      apply: () => {
+        // Toggle SF in the city array. Removing the only entry clears the
+        // filter entirely so all cities are returned.
+        if (sfActive) {
+          const remaining = (state.city ?? []).filter((c) => c !== "San Francisco");
+          set({ city: remaining.length ? remaining : undefined });
+        } else {
+          set({ city: [...(state.city ?? []), "San Francisco"] });
+        }
+      },
+    },
     {
       key: "ppsf-600",
       label: "$/Sqft < $600",
@@ -383,6 +399,26 @@ function QuickChips() {
           valueAddWeightedAvg:
             state.valueAddWeightedAvg?.min === 70 ? undefined : { min: 70 },
         }),
+    },
+    {
+      // Tri-state cycle: undefined → true → false → undefined
+      key: "size-diff",
+      label:
+        state.hasSizeDiscrepancy === true
+          ? "Size diff: yes"
+          : state.hasSizeDiscrepancy === false
+            ? "Size diff: no"
+            : "Size diff: any",
+      active: state.hasSizeDiscrepancy != null,
+      apply: () => {
+        const next =
+          state.hasSizeDiscrepancy == null
+            ? true
+            : state.hasSizeDiscrepancy
+              ? false
+              : undefined;
+        set({ hasSizeDiscrepancy: next });
+      },
     },
   ];
 
@@ -449,6 +485,7 @@ function RenovationChips() {
 function countActive(s: ReturnType<typeof useFilter>["state"]): number {
   let n = 0;
   if (s.q) n++;
+  if (s.city?.length) n++;
   if (s.propertyTypes?.length) n++;
   if (s.renovationLevel?.length) n++;
   for (const k of [
@@ -471,6 +508,7 @@ function countActive(s: ReturnType<typeof useFilter>["state"]): number {
     if (v && (v.min != null || v.max != null)) n++;
   }
   if (s.postDate && (s.postDate.min || s.postDate.max)) n++;
+  if (s.hasSizeDiscrepancy != null) n++;
   if (s.radius) n++;
   if (s.polygon) n++;
   return n;

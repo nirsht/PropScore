@@ -16,6 +16,7 @@ import { useFilter } from "./filterStore";
 import type { SortKey } from "@/server/api/schemas/filter";
 import type { ListingRow } from "@/server/api/listings-search";
 import { EnrichWithAIButton } from "./EnrichWithAIButton";
+import { getDiscrepancyTone } from "@/lib/diff";
 
 const RENO_COLOR: Record<RenovationLevel, "error" | "warning" | "info" | "success"> = {
   DISTRESSED: "error",
@@ -32,6 +33,7 @@ const RENO_LABEL: Record<RenovationLevel, string> = {
 };
 
 const PAGE_SIZE = 50;
+const EMPTY_ROWS: ListingRow[] = [];
 
 const fmtMoney = (n: number | null | undefined) =>
   n == null ? "—" : `$${Math.round(n).toLocaleString()}`;
@@ -47,6 +49,53 @@ function HeaderTooltip({ label, hint }: { label: string; hint: string }) {
         </Typography>
         <HelpOutlineRoundedIcon sx={{ fontSize: 13, opacity: 0.55 }} />
       </Stack>
+    </Tooltip>
+  );
+}
+
+/**
+ * Cell renderer that shows the resolved value (Assessor-first) and
+ * highlights it green when assessor > MLS (upside) or red when assessor <
+ * MLS (overstatement). Tooltip shows both numbers + tone.
+ */
+function DiscrepancyCell({
+  preferred,
+  mls,
+  assessor,
+  fmt,
+}: {
+  preferred: number | null | undefined;
+  mls: number | null | undefined;
+  assessor: number | null | undefined;
+  fmt: (n: number) => string;
+}) {
+  const tone = getDiscrepancyTone(mls, assessor);
+  const sx: Record<string, unknown> = {
+    px: 0.75,
+    py: 0.25,
+    borderRadius: 0.5,
+    fontWeight: tone === "neutral" ? 500 : 600,
+    display: "inline-block",
+  };
+  if (tone === "positive") {
+    sx.bgcolor = "success.light";
+    sx.color = "success.contrastText";
+  } else if (tone === "negative") {
+    sx.bgcolor = "error.light";
+    sx.color = "error.contrastText";
+  }
+  const node = (
+    <Box component="span" sx={sx}>
+      {preferred == null ? "—" : fmt(preferred)}
+    </Box>
+  );
+  if (tone === "neutral") return node;
+  const tip =
+    `MLS: ${mls != null ? fmt(mls) : "—"} · Assessor: ${assessor != null ? fmt(assessor) : "—"} ` +
+    `(${tone === "positive" ? "Assessor larger — upside" : "Assessor smaller — MLS overstates"})`;
+  return (
+    <Tooltip title={tip} arrow placement="top">
+      {node}
     </Tooltip>
   );
 }
@@ -160,12 +209,20 @@ const columns: GridColDef<ListingRow>[] = [
   {
     field: "effectiveSqft",
     headerName: "Sqft",
-    width: 90,
+    width: 110,
     type: "number",
     renderHeader: () => (
       <HeaderTooltip
         label="Sqft"
-        hint="Resolved building sqft: Bridge MLS, falling back to SF Assessor. Drives $/Sqft and density scoring."
+        hint="Resolved building sqft: SF Assessor first, then Bridge MLS. Cell color shows MLS↔Assessor disagreement (>5%): green = assessor larger (upside), red = assessor smaller."
+      />
+    ),
+    renderCell: ({ row }) => (
+      <DiscrepancyCell
+        preferred={row.effectiveSqft}
+        mls={row.sqft}
+        assessor={row.assessorBuildingSqft}
+        fmt={(n) => Math.round(n).toLocaleString()}
       />
     ),
   },
@@ -183,12 +240,20 @@ const columns: GridColDef<ListingRow>[] = [
   {
     field: "effectiveUnits",
     headerName: "Units",
-    width: 80,
+    width: 90,
     type: "number",
     renderHeader: () => (
       <HeaderTooltip
         label="Units"
-        hint="Resolved unit count: Bridge MLS, falling back to SF Assessor. Drives $/Unit and density scoring."
+        hint="Resolved unit count: SF Assessor first, then Bridge MLS. Color = MLS↔Assessor disagreement (green = assessor larger)."
+      />
+    ),
+    renderCell: ({ row }) => (
+      <DiscrepancyCell
+        preferred={row.effectiveUnits}
+        mls={row.units}
+        assessor={row.assessorUnits}
+        fmt={(n) => n.toString()}
       />
     ),
   },
@@ -224,12 +289,20 @@ const columns: GridColDef<ListingRow>[] = [
   {
     field: "effectiveStories",
     headerName: "Stories",
-    width: 80,
+    width: 95,
     type: "number",
     renderHeader: () => (
       <HeaderTooltip
         label="Stories"
-        hint="Resolved story count: Bridge MLS → AI vision → SF Assessor."
+        hint="Resolved story count: SF Assessor → Bridge MLS → AI vision. Color = MLS↔Assessor disagreement (green = assessor larger)."
+      />
+    ),
+    renderCell: ({ row }) => (
+      <DiscrepancyCell
+        preferred={row.effectiveStories}
+        mls={row.stories}
+        assessor={row.assessorStories}
+        fmt={(n) => n.toString()}
       />
     ),
   },
@@ -277,6 +350,7 @@ export function ListingsGrid({ onSelectListing }: Props) {
     setCursors([null]);
   }, [
     state.q,
+    state.city,
     state.propertyTypes,
     state.renovationLevel,
     state.price,
@@ -292,6 +366,7 @@ export function ListingsGrid({ onSelectListing }: Props) {
     state.vacancyScore,
     state.motivationScore,
     state.valueAddWeightedAvg,
+    state.hasSizeDiscrepancy,
     state.radius,
     state.polygon,
     state.sortBy,
@@ -329,41 +404,46 @@ export function ListingsGrid({ onSelectListing }: Props) {
     [page],
   );
 
+  // DataGrid fires its change callbacks synchronously inside a layout
+  // effect during its own mount, which lands inside ListingsGrid's render
+  // commit and trips React 19's "state update on a component that hasn't
+  // mounted yet" warning. Defer the parent/local state updates to a
+  // microtask so they run after the current commit.
   const handleSort = React.useCallback(
     (model: GridSortModel) => {
       const item = model[0];
       if (!item) {
         if (sortBy !== "valueAdd" || sortDir !== "desc") {
-          set({ sortBy: "valueAdd", sortDir: "desc" });
+          queueMicrotask(() => set({ sortBy: "valueAdd", sortDir: "desc" }));
         }
         return;
       }
       const key = FIELD_TO_SORT_KEY[item.field];
       if (!key) return;
       const nextDir = item.sort === "asc" ? "asc" : "desc";
-      // Bail out if nothing changed — DataGrid fires this during initial
-      // render with the model we already passed in.
       if (key === sortBy && nextDir === sortDir) return;
-      set({ sortBy: key, sortDir: nextDir });
+      queueMicrotask(() => set({ sortBy: key, sortDir: nextDir }));
     },
     [sortBy, sortDir, set],
   );
 
-  const rows = query.data?.rows ?? [];
+  const rows = query.data?.rows ?? EMPTY_ROWS;
   const nextCursor = query.data?.nextCursor;
   const handlePagination = React.useCallback(
     (model: { page: number; pageSize: number }) => {
       const next = model.page;
       if (next === page) return;
-      if (next > page) {
-        setCursors((prev) => {
-          if (prev[next] !== undefined) return prev;
-          const copy = [...prev];
-          copy[next] = nextCursor ?? null;
-          return copy;
-        });
-      }
-      setPage(next);
+      queueMicrotask(() => {
+        if (next > page) {
+          setCursors((prev) => {
+            if (prev[next] !== undefined) return prev;
+            const copy = [...prev];
+            copy[next] = nextCursor ?? null;
+            return copy;
+          });
+        }
+        setPage(next);
+      });
     },
     [page, nextCursor],
   );

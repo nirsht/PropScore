@@ -1,7 +1,7 @@
 /**
  * Enrich every SF Listing with the Assessor's record from the Socrata
- * SF-PIM dataset (i8ew-h6z7). Idempotent + resumable: only touches rows
- * where `assessorFetchedAt IS NULL` (or `--force` is passed).
+ * Secured Property Tax Roll dataset (wv5m-vpq2). Idempotent + resumable:
+ * only touches rows where `assessorFetchedAt IS NULL` (or `--force` is passed).
  *
  * Usage:
  *   pnpm tsx scripts/enrich-sfpim.ts            # full sweep
@@ -85,6 +85,8 @@ async function main() {
             assessorUseType: record.useType,
             assessorConstructionType: record.constructionType,
             assessorBasement: record.basement,
+            assessorBuildingValue: record.buildingValue,
+            assessorLandValue: record.landValue,
             assessorFetchedAt: new Date(),
             raw: mergedRaw,
           },
