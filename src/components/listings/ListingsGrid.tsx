@@ -15,7 +15,6 @@ import { trpc } from "@/lib/trpc/client";
 import { useFilter } from "./filterStore";
 import type { SortKey } from "@/server/api/schemas/filter";
 import type { ListingRow } from "@/server/api/listings-search";
-import { EnrichWithAIButton } from "./EnrichWithAIButton";
 import { getDiscrepancyTone } from "@/lib/diff";
 
 const RENO_COLOR: Record<RenovationLevel, "error" | "warning" | "info" | "success"> = {
@@ -54,6 +53,44 @@ function HeaderTooltip({ label, hint }: { label: string; hint: string }) {
 }
 
 /**
+ * Italic-muted cell used when the primary source is null and we're showing
+ * an alternative (assessor / AI / lot). Always wrapped in a tooltip that
+ * explains where the number came from.
+ */
+function FallbackCell({
+  value,
+  prefix,
+  tooltip,
+}: {
+  value: string;
+  prefix?: string;
+  tooltip: string;
+}) {
+  return (
+    <Tooltip arrow placement="top" title={tooltip}>
+      <Box
+        component="span"
+        sx={{ color: "text.secondary", fontStyle: "italic", fontWeight: 500 }}
+      >
+        {prefix ? `${prefix} ${value}` : value}
+      </Box>
+    </Tooltip>
+  );
+}
+
+function sumUnitMix(mix: unknown): number | null {
+  if (!Array.isArray(mix) || mix.length === 0) return null;
+  let total = 0;
+  for (const entry of mix) {
+    if (entry && typeof entry === "object" && "count" in entry) {
+      const c = (entry as { count?: unknown }).count;
+      if (typeof c === "number" && Number.isFinite(c)) total += c;
+    }
+  }
+  return total > 0 ? total : null;
+}
+
+/**
  * Cell renderer that shows the resolved value (Assessor-first) and
  * highlights it green when assessor > MLS (upside) or red when assessor <
  * MLS (overstatement). Tooltip shows both numbers + tone.
@@ -71,11 +108,12 @@ function DiscrepancyCell({
 }) {
   const tone = getDiscrepancyTone(mls, assessor);
   const sx: Record<string, unknown> = {
-    px: 0.75,
+    px: 1.25,
     py: 0.25,
-    borderRadius: 0.5,
+    borderRadius: 999,
     fontWeight: tone === "neutral" ? 500 : 600,
     display: "inline-block",
+    lineHeight: 1.6,
   };
   if (tone === "positive") {
     sx.bgcolor = "success.light";
@@ -214,17 +252,39 @@ const columns: GridColDef<ListingRow>[] = [
     renderHeader: () => (
       <HeaderTooltip
         label="Sqft"
-        hint="Resolved building sqft: SF Assessor first, then Bridge MLS. Cell color shows MLS↔Assessor disagreement (>5%): green = assessor larger (upside), red = assessor smaller."
+        hint="Resolved building sqft: SF Assessor first, then Bridge MLS. When building sqft is missing, lot sqft is shown instead (italic, prefixed “Lot”). Cell color shows MLS↔Assessor disagreement (>5%): green = assessor larger (upside), red = assessor smaller."
       />
     ),
-    renderCell: ({ row }) => (
-      <DiscrepancyCell
-        preferred={row.effectiveSqft}
-        mls={row.sqft}
-        assessor={row.assessorBuildingSqft}
-        fmt={(n) => Math.round(n).toLocaleString()}
-      />
-    ),
+    renderCell: ({ row }) => {
+      if (row.effectiveSqft == null && row.effectiveLotSizeSqft != null) {
+        return (
+          <Tooltip
+            arrow
+            placement="top"
+            title="No building sqft on file — showing lot size as a fallback."
+          >
+            <Box
+              component="span"
+              sx={{
+                color: "text.secondary",
+                fontStyle: "italic",
+                fontWeight: 500,
+              }}
+            >
+              Lot {Math.round(row.effectiveLotSizeSqft).toLocaleString()}
+            </Box>
+          </Tooltip>
+        );
+      }
+      return (
+        <DiscrepancyCell
+          preferred={row.effectiveSqft}
+          mls={row.sqft}
+          assessor={row.assessorBuildingSqft}
+          fmt={(n) => Math.round(n).toLocaleString()}
+        />
+      );
+    },
   },
   {
     field: "pricePerSqft",
@@ -232,10 +292,34 @@ const columns: GridColDef<ListingRow>[] = [
     renderHeader: () => (
       <HeaderTooltip
         label="$/Sqft"
-        hint="Generated column: price ÷ sqft. Indexed for fast filtering."
+        hint="Generated column: price ÷ sqft. When building sqft is missing, falls back to price ÷ lot sqft (italic, prefixed “Lot”). Indexed for fast filtering."
       />
     ),
-    valueFormatter: (v) => fmtMoney(v as number | null),
+    renderCell: ({ row }) => {
+      if (row.pricePerSqft != null) return <span>{fmtMoney(row.pricePerSqft)}</span>;
+      if (row.effectiveLotSizeSqft && row.effectiveLotSizeSqft > 0) {
+        const lotPpsf = row.price / row.effectiveLotSizeSqft;
+        return (
+          <Tooltip
+            arrow
+            placement="top"
+            title="No building sqft on file — showing price ÷ lot sqft as a fallback."
+          >
+            <Box
+              component="span"
+              sx={{
+                color: "text.secondary",
+                fontStyle: "italic",
+                fontWeight: 500,
+              }}
+            >
+              Lot {fmtMoney(lotPpsf)}
+            </Box>
+          </Tooltip>
+        );
+      }
+      return <span>—</span>;
+    },
   },
   {
     field: "effectiveUnits",
@@ -248,14 +332,28 @@ const columns: GridColDef<ListingRow>[] = [
         hint="Resolved unit count: SF Assessor first, then Bridge MLS. Color = MLS↔Assessor disagreement (green = assessor larger)."
       />
     ),
-    renderCell: ({ row }) => (
-      <DiscrepancyCell
-        preferred={row.effectiveUnits}
-        mls={row.units}
-        assessor={row.assessorUnits}
-        fmt={(n) => n.toString()}
-      />
-    ),
+    renderCell: ({ row }) => {
+      if (row.effectiveUnits == null) {
+        const aiUnits = sumUnitMix(row.extractedUnitMix);
+        if (aiUnits != null) {
+          return (
+            <FallbackCell
+              value={aiUnits.toString()}
+              prefix="AI"
+              tooltip="Inferred from the MLS unit-mix description (AI). No MLS or assessor unit count on file."
+            />
+          );
+        }
+      }
+      return (
+        <DiscrepancyCell
+          preferred={row.effectiveUnits}
+          mls={row.units}
+          assessor={row.assessorUnits}
+          fmt={(n) => n.toString()}
+        />
+      );
+    },
   },
   {
     field: "sqftPerUnit",
@@ -276,8 +374,42 @@ const columns: GridColDef<ListingRow>[] = [
     ),
     valueFormatter: (v) => fmtMoney(v as number | null),
   },
-  { field: "beds", headerName: "Beds", width: 70, type: "number" },
-  { field: "baths", headerName: "Baths", width: 70, type: "number" },
+  {
+    field: "beds",
+    headerName: "Beds",
+    width: 70,
+    type: "number",
+    renderCell: ({ row }) => {
+      if (row.beds != null) return <span>{row.beds}</span>;
+      if (row.assessorBedrooms != null) {
+        return (
+          <FallbackCell
+            value={row.assessorBedrooms.toString()}
+            tooltip="From SF Assessor — no MLS bedrooms on file"
+          />
+        );
+      }
+      return <span>—</span>;
+    },
+  },
+  {
+    field: "baths",
+    headerName: "Baths",
+    width: 70,
+    type: "number",
+    renderCell: ({ row }) => {
+      if (row.baths != null) return <span>{row.baths}</span>;
+      if (row.assessorBathrooms != null) {
+        return (
+          <FallbackCell
+            value={fmtDecimal(row.assessorBathrooms, 1)}
+            tooltip="From SF Assessor — no MLS bathrooms on file"
+          />
+        );
+      }
+      return <span>—</span>;
+    },
+  },
   {
     field: "occupancy",
     headerName: "Occupancy",
@@ -285,7 +417,24 @@ const columns: GridColDef<ListingRow>[] = [
     valueFormatter: (v) =>
       v == null ? "—" : `${(Number(v) * 100).toFixed(0)}%`,
   },
-  { field: "yearBuilt", headerName: "Year Built", width: 100, type: "number" },
+  {
+    field: "yearBuilt",
+    headerName: "Year Built",
+    width: 100,
+    type: "number",
+    renderCell: ({ row }) => {
+      if (row.yearBuilt != null) return <span>{row.yearBuilt}</span>;
+      if (row.assessorYearBuilt != null) {
+        return (
+          <FallbackCell
+            value={row.assessorYearBuilt.toString()}
+            tooltip="From SF Assessor — no MLS year built on file"
+          />
+        );
+      }
+      return <span>—</span>;
+    },
+  },
   {
     field: "effectiveStories",
     headerName: "Stories",
@@ -305,14 +454,6 @@ const columns: GridColDef<ListingRow>[] = [
         fmt={(n) => n.toString()}
       />
     ),
-  },
-  {
-    field: "_actions",
-    headerName: "",
-    width: 130,
-    sortable: false,
-    filterable: false,
-    renderCell: ({ row }) => <EnrichWithAIButton mlsId={row.mlsId} />,
   },
 ];
 
@@ -356,6 +497,7 @@ export function ListingsGrid({ onSelectListing }: Props) {
     state.price,
     state.pricePerSqft,
     state.pricePerUnit,
+    state.sqft,
     state.units,
     state.beds,
     state.baths,

@@ -30,8 +30,11 @@ export type ListingRow = {
   assessorBuildingSqft: number | null;
   assessorLotSqft: number | null;
   assessorUnits: number | null;
+  assessorBedrooms: number | null;
+  assessorBathrooms: number | null;
   assessorYearBuilt: number | null;
   assessorStories: number | null;
+  extractedUnitMix: unknown;
   assessorBuildingValue: number | null;
   assessorLandValue: number | null;
   renovationLevel: RenovationLevel | null;
@@ -116,7 +119,7 @@ function buildWhere(
   pushRange(where, '"price"', input.price);
   pushRange(where, '"pricePerSqft"', input.pricePerSqft);
   pushRange(where, '"pricePerUnit"', input.pricePerUnit);
-  pushRange(where, '"effectiveSqft"', input.sqft);
+  pushRange(where, 'COALESCE("effectiveSqft", "effectiveLotSizeSqft")', input.sqft);
   pushRange(where, '"effectiveUnits"', input.units);
   pushRange(where, '"beds"', input.beds);
   pushRange(where, '"baths"', input.baths);
@@ -219,6 +222,29 @@ export async function searchListings(input: FilterInput): Promise<SearchResult> 
       sortValue: extractSortValue(last, sortBy),
       mlsId: last.mlsId,
     };
+  }
+
+  // Pull a few fields that aren't in `mv_listing_search` yet so the grid can
+  // display assessor / AI fallbacks (Beds, Baths, Units). Indexed PK lookup
+  // for ≤50 rows — cheap.
+  if (trimmed.length) {
+    const ids = trimmed.map((r) => r.mlsId);
+    const extras = await db.listing.findMany({
+      where: { mlsId: { in: ids } },
+      select: {
+        mlsId: true,
+        assessorBedrooms: true,
+        assessorBathrooms: true,
+        extractedUnitMix: true,
+      },
+    });
+    const byId = new Map(extras.map((e) => [e.mlsId, e]));
+    trimmed = trimmed.map((r) => ({
+      ...r,
+      assessorBedrooms: byId.get(r.mlsId)?.assessorBedrooms ?? null,
+      assessorBathrooms: byId.get(r.mlsId)?.assessorBathrooms ?? null,
+      extractedUnitMix: byId.get(r.mlsId)?.extractedUnitMix ?? null,
+    }));
   }
 
   return { rows: trimmed, nextCursor };

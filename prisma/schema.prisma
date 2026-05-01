@@ -132,6 +132,15 @@ model Listing {
   extractedRentRoll         Json?
   extractedTotalMonthlyRent Int?
   extractedOccupancy        Float?
+  // AI-estimated market-rate rents per unit type — emitted alongside
+  // unitMix even when actual rents are present in the listing, so the UI
+  // can fall back to the estimate for unit types not in the rent roll.
+  // Shape: [{ beds, baths, estimatedRent, rationale }].
+  aiRentEstimate            Json?
+  // Same shape as aiRentEstimate, but post a moderate cosmetic renovation
+  // (kitchens/baths refreshed, paint, modern fixtures). Always strictly
+  // higher than aiRentEstimate for the same unit type.
+  postRenovationRentEstimate Json?
   recentCapex               Json?
   aduPotential              String?
   aduConfidence             Float?

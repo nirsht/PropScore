@@ -18,11 +18,27 @@ export const RentRollEntry = z.object({
   baths: z.number().min(0).nullable(),
 });
 
+// AI-estimated market-rate rent for one unit type. Always emitted alongside
+// `unitMix` so the consumer can fill in rent for unit types missing from
+// `rentRoll`. Beds/baths mirror the matching unitMix entry exactly so the
+// consumer joins on (beds, baths).
+export const RentEstimateEntry = z.object({
+  beds: z.number().int().min(0).nullable(),
+  baths: z.number().min(0).nullable(),
+  estimatedRent: z.number().positive(),
+  rationale: z.string().max(160),
+});
+
 export const AduPotentialEnum = z.enum(["LOW", "MEDIUM", "HIGH"]);
 
 export const ListingExtractOutput = z.object({
   unitMix: z.array(UnitMixEntry).nullable(),
   rentRoll: z.array(RentRollEntry).nullable(),
+  aiRentEstimate: z.array(RentEstimateEntry).nullable(),
+  // Same shape as aiRentEstimate, but assumes a moderate cosmetic renovation
+  // (kitchens/baths refreshed, paint, modernized fixtures). Strictly higher
+  // than aiRentEstimate for the same unit type.
+  postRenovationRentEstimate: z.array(RentEstimateEntry).nullable(),
   totalMonthlyRent: z.number().nullable(),
   occupancy: z.number().min(0).max(1).nullable(),
   recentCapex: z.array(z.string()).nullable(),
@@ -39,4 +55,5 @@ export type ListingExtractInput = z.infer<typeof ListingExtractInput>;
 export type ListingExtractOutput = z.infer<typeof ListingExtractOutput>;
 export type UnitMixEntry = z.infer<typeof UnitMixEntry>;
 export type RentRollEntry = z.infer<typeof RentRollEntry>;
+export type RentEstimateEntry = z.infer<typeof RentEstimateEntry>;
 export type AduPotential = z.infer<typeof AduPotentialEnum>;

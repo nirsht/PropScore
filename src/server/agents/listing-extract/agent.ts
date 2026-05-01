@@ -10,6 +10,10 @@ const InternalInput = z.object({
   publicRemarks: z.string().nullable(),
   privateRemarks: z.string().nullable(),
   propertyType: z.string().nullable(),
+  address: z.string().nullable(),
+  city: z.string().nullable(),
+  state: z.string().nullable(),
+  postalCode: z.string().nullable(),
   units: z.number().nullable(),
   buildingSqft: z.number().nullable(),
   lotSqft: z.number().nullable(),
@@ -39,6 +43,10 @@ export async function runListingExtract(mlsId: string, userId: string | null): P
     where: { mlsId },
     select: {
       mlsId: true,
+      address: true,
+      city: true,
+      state: true,
+      postalCode: true,
       propertyType: true,
       units: true,
       assessorUnits: true,
@@ -62,6 +70,10 @@ export async function runListingExtract(mlsId: string, userId: string | null): P
     publicRemarks,
     privateRemarks,
     propertyType: listing.propertyType,
+    address: listing.address,
+    city: listing.city,
+    state: listing.state,
+    postalCode: listing.postalCode,
     units: listing.units ?? listing.assessorUnits ?? null,
     buildingSqft: listing.assessorBuildingSqft ?? listing.sqft ?? null,
     lotSqft: listing.assessorLotSqft ?? listing.lotSizeSqft ?? null,
@@ -74,6 +86,8 @@ export async function runListingExtract(mlsId: string, userId: string | null): P
     const empty: Output = {
       unitMix: null,
       rentRoll: null,
+      aiRentEstimate: null,
+      postRenovationRentEstimate: null,
       totalMonthlyRent: null,
       occupancy: null,
       recentCapex: null,
@@ -105,6 +119,12 @@ async function persist(mlsId: string, out: Output) {
         : Prisma.JsonNull,
       extractedRentRoll: out.rentRoll
         ? (out.rentRoll as unknown as Prisma.InputJsonValue)
+        : Prisma.JsonNull,
+      aiRentEstimate: out.aiRentEstimate
+        ? (out.aiRentEstimate as unknown as Prisma.InputJsonValue)
+        : Prisma.JsonNull,
+      postRenovationRentEstimate: out.postRenovationRentEstimate
+        ? (out.postRenovationRentEstimate as unknown as Prisma.InputJsonValue)
         : Prisma.JsonNull,
       extractedTotalMonthlyRent:
         out.totalMonthlyRent != null ? Math.round(out.totalMonthlyRent) : null,

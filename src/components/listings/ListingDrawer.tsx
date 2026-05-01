@@ -16,6 +16,7 @@ import {
   Link as MuiLink,
   Paper,
   Skeleton,
+  Snackbar,
   Stack,
   Tooltip,
   Typography,
@@ -44,8 +45,6 @@ import {
 } from "recharts";
 import { trpc } from "@/lib/trpc/client";
 import { EnrichWithAIButton } from "./EnrichWithAIButton";
-import { EnrichWithVisionButton } from "./EnrichWithVisionButton";
-import { EnrichWithListingExtractButton } from "./EnrichWithListingExtractButton";
 import { RentGrowthCard } from "./RentGrowthCard";
 import { PhotoLightbox } from "./PhotoLightbox";
 import { MeasureLotModal } from "./MeasureLotModal";
@@ -58,6 +57,30 @@ const fmtDate = (d: Date | string | null | undefined) =>
   d ? new Date(d).toLocaleDateString() : "—";
 const fmtNum = (n: number | null | undefined) =>
   n == null ? "—" : n.toLocaleString();
+
+/**
+ * Spell out a unit-mix entry the way an investor reads it — no MLS
+ * shorthand. "4 x 3 Bedroom + 2 Bathroom" rather than "4× 3BR/2BA".
+ */
+function unitTypeLabel(
+  count: number,
+  beds: number | null,
+  baths: number | null,
+): string {
+  if (beds == null && baths == null) {
+    return `${count} ${count === 1 ? "unit" : "units"}`;
+  }
+  const parts: string[] = [];
+  if (beds === 0) {
+    parts.push("Studio");
+  } else if (beds != null) {
+    parts.push(`${beds} Bedroom`);
+  }
+  if (baths != null) {
+    parts.push(`${baths} Bathroom`);
+  }
+  return `${count} x ${parts.join(" + ")}`;
+}
 
 type Props = {
   mlsId: string | null;
@@ -247,6 +270,12 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
               cards. 3-column MLS / Assessor / AI grid with row highlighting. */}
           <BuildingDetailsCard listing={listing} />
 
+          {/* AI insights — merges photo-vision (renovation, stories) with the new
+              listing-extract output (rent roll, capex, ADU). Sits directly under
+              the building details so AI-derived facts read alongside the source
+              data. */}
+          <AIInsightsCard listing={listing} />
+
           {/* Lot & extras (parking, HOA, tax, lot features, view) */}
           <LotAndExtrasCard raw={raw} />
 
@@ -268,26 +297,6 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
               >
                 {raw.PublicRemarks as string}
               </Typography>
-            </Paper>
-          )}
-
-          {/* Map preview */}
-          {lat != null && lng != null && (
-            <Paper variant="outlined" sx={{ overflow: "hidden" }}>
-              <Box
-                component="iframe"
-                title="Map preview"
-                src={`https://www.google.com/maps?q=${lat},${lng}&z=18&output=embed`}
-                sx={{
-                  width: "100%",
-                  height: 280,
-                  border: 0,
-                  display: "block",
-                  filter: "saturate(0.95)",
-                }}
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-              />
             </Paper>
           )}
 
@@ -329,11 +338,6 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
                 </Box>
               )}
           </Paper>
-
-          {/* AI insights — merges photo-vision (renovation, stories) with the new
-              listing-extract output (unit mix, rent roll, capex, ADU). Replaces the
-              standalone "Building analysis (AI vision)" card. */}
-          <AIInsightsCard listing={listing} fullAddress={fullAddress} />
 
           {/* Opportunity scores — bar chart at top, AI rationale collapsed below */}
           <Paper variant="outlined" sx={{ p: 2 }}>
@@ -419,10 +423,11 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
                 icon={<HomeWorkRoundedIcon fontSize="small" />}
                 label="Zillow"
               />
-              <ToolLink
-                href={`https://www.redfin.com/stingray/do/location-autocomplete?location=${encodeURIComponent(fullAddress)}&v=2`}
+              <CopyAndOpenLink
+                href="https://www.redfin.com"
                 icon={<HomeWorkRoundedIcon fontSize="small" />}
                 label="Redfin"
+                copyText={fullAddress}
               />
               <ToolLink
                 href={`https://www.walkscore.com/score/${encodeURIComponent(fullAddress)}`}
@@ -439,6 +444,18 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
                 icon={<WaterDamageRoundedIcon fontSize="small" />}
                 label="FEMA Flood"
               />
+              <CopyAndOpenLink
+                href="https://sfplanninggis.org/pim"
+                icon={<LayersRoundedIcon fontSize="small" />}
+                label="SF PIM"
+                copyText={fullAddress}
+              />
+              <CopyAndOpenLink
+                href="https://build.symbium.com"
+                icon={<HomeWorkRoundedIcon fontSize="small" />}
+                label="Symbium"
+                copyText={fullAddress}
+              />
               <Tooltip title="Trace the parcel on a satellite map and compare to the API's lot size" arrow>
                 <Button
                   size="small"
@@ -453,6 +470,27 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
               </Tooltip>
             </Stack>
           </Paper>
+
+          {/* Map preview — kept at the bottom as a visual anchor under the
+              data-heavy sections above. */}
+          {lat != null && lng != null && (
+            <Paper variant="outlined" sx={{ overflow: "hidden" }}>
+              <Box
+                component="iframe"
+                title="Map preview"
+                src={`https://www.google.com/maps?q=${lat},${lng}&z=18&output=embed`}
+                sx={{
+                  width: "100%",
+                  height: 280,
+                  border: 0,
+                  display: "block",
+                  filter: "saturate(0.95)",
+                }}
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+              />
+            </Paper>
+          )}
 
           {/* Raw payload, collapsed */}
           <Paper variant="outlined" sx={{ p: 2 }}>
@@ -550,6 +588,68 @@ function ToolLink({
         {label}
       </Button>
     </Tooltip>
+  );
+}
+
+/**
+ * For tools whose URLs don't accept an address search param (SF PIM,
+ * Symbium, Redfin). Copies the full address to the clipboard, surfaces a
+ * Snackbar telling the user to paste, then opens the tool in a new tab.
+ */
+function CopyAndOpenLink({
+  href,
+  label,
+  icon,
+  copyText,
+}: {
+  href: string;
+  label: string;
+  icon: React.ReactNode;
+  copyText: string;
+}) {
+  const [snackbarOpen, setSnackbarOpen] = React.useState(false);
+  const handleClick = async () => {
+    try {
+      await navigator.clipboard.writeText(copyText);
+      setSnackbarOpen(true);
+    } catch {
+      // Clipboard API unavailable (older browsers, insecure context). Still
+      // open the tool — the user can copy the address from the drawer header.
+    }
+    window.open(href, "_blank", "noopener,noreferrer");
+  };
+  return (
+    <>
+      <Tooltip
+        title={`Copies the address, then opens ${label} so you can paste it (no search param available).`}
+        arrow
+      >
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={icon}
+          endIcon={<OpenInNewRoundedIcon sx={{ fontSize: 14 }} />}
+          onClick={handleClick}
+        >
+          {label}
+        </Button>
+      </Tooltip>
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={3000}
+        onClose={() => setSnackbarOpen(false)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert
+          severity="success"
+          variant="filled"
+          onClose={() => setSnackbarOpen(false)}
+          sx={{ width: "100%" }}
+        >
+          Address copied — paste it into {label}.
+        </Alert>
+      </Snackbar>
+    </>
   );
 }
 
@@ -1202,6 +1302,8 @@ type ListingForAI = {
   visionFetchedAt: Date | string | null;
   extractedUnitMix: unknown;
   extractedRentRoll: unknown;
+  aiRentEstimate: unknown;
+  postRenovationRentEstimate: unknown;
   extractedTotalMonthlyRent: number | null;
   extractedOccupancy: number | null;
   recentCapex: unknown;
@@ -1211,19 +1313,31 @@ type ListingForAI = {
   extractFetchedAt: Date | string | null;
 };
 
-function AIInsightsCard({
-  listing,
-  fullAddress,
-}: {
-  listing: ListingForAI;
-  fullAddress: string;
-}) {
+function AIInsightsCard({ listing }: { listing: ListingForAI }) {
   const unitMix = listing.extractedUnitMix as
     | Array<{ count: number; beds: number | null; baths: number | null }>
     | null
     | undefined;
   const rentRoll = listing.extractedRentRoll as
     | Array<{ rent: number; beds: number | null; baths: number | null }>
+    | null
+    | undefined;
+  const aiRentEstimate = listing.aiRentEstimate as
+    | Array<{
+        beds: number | null;
+        baths: number | null;
+        estimatedRent: number;
+        rationale: string;
+      }>
+    | null
+    | undefined;
+  const postRenoEstimate = listing.postRenovationRentEstimate as
+    | Array<{
+        beds: number | null;
+        baths: number | null;
+        estimatedRent: number;
+        rationale: string;
+      }>
     | null
     | undefined;
   const capex = listing.recentCapex as string[] | null | undefined;
@@ -1267,16 +1381,11 @@ function AIInsightsCard({
             />
           </Tooltip>
         )}
-        <Box sx={{ flex: 1 }} />
-        <EnrichWithVisionButton mlsId={listing.mlsId} />
-        <EnrichWithListingExtractButton mlsId={listing.mlsId} />
       </Stack>
 
       {!hasVision && !hasAnyExtract && (
         <Typography variant="body2" color="text.secondary">
-          No AI analysis yet. Click &ldquo;Analyze building&rdquo; to extract photo-derived
-          facts (stories, renovation), or &ldquo;Extract details&rdquo; to parse the
-          public remarks for unit mix, rent roll, capex, and ADU potential.
+          No AI analysis available for this listing yet.
         </Typography>
       )}
 
@@ -1333,36 +1442,225 @@ function AIInsightsCard({
         )}
       </Stack>
 
-      {!!unitMix?.length && (
-        <Box sx={{ mb: 1.5 }}>
-          <Typography variant="caption" color="text.secondary">
-            Unit mix
-          </Typography>
-          <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mt: 0.5 }}>
-            {unitMix.map((u, i) => {
-              const bedsLabel = u.beds == null ? "?" : `${u.beds}BR`;
-              const bathsLabel = u.baths == null ? "?" : `${u.baths}BA`;
-              const isFullyUnknown = u.beds == null && u.baths == null;
-              return (
-                <Chip
-                  key={i}
-                  size="small"
-                  variant="outlined"
-                  label={
-                    isFullyUnknown
-                      ? `${u.count} units`
-                      : `${u.count}× ${bedsLabel}/${bathsLabel}`
-                  }
-                />
-              );
-            })}
-          </Stack>
-        </Box>
-      )}
+      {!!unitMix?.length && (() => {
+        const rows = unitMix.map((u, i) => {
+          const matching = (rentRoll ?? []).filter(
+            (r) => r.beds === u.beds && r.baths === u.baths,
+          );
+          const avgActual =
+            matching.length > 0
+              ? Math.round(
+                  matching.reduce((s, r) => s + r.rent, 0) / matching.length,
+                )
+              : null;
+          const aiEst = (aiRentEstimate ?? []).find(
+            (e) => e.beds === u.beds && e.baths === u.baths,
+          );
+          const postReno = (postRenoEstimate ?? []).find(
+            (e) => e.beds === u.beds && e.baths === u.baths,
+          );
+          return { u, key: i, avgActual, aiEst, postReno };
+        });
 
-      {!!rentRoll?.length && (
+        const sumOf = (
+          getter: (r: (typeof rows)[number]) => number | null | undefined,
+        ): number | null => {
+          if (!rows.every((r) => getter(r) != null)) return null;
+          return rows.reduce((s, r) => s + r.u.count * (getter(r) ?? 0), 0);
+        };
+        const currentSum = sumOf((r) => r.avgActual);
+        const currentTotal = listing.extractedTotalMonthlyRent ?? currentSum;
+        const marketTotal = sumOf((r) => r.aiEst?.estimatedRent);
+        const postRenoTotal = sumOf((r) => r.postReno?.estimatedRent);
+
+        const RentCell = ({
+          value,
+          rationale,
+          italic,
+        }: {
+          value: number | null;
+          rationale?: string;
+          italic: boolean;
+        }) => {
+          const text =
+            value != null ? `$${Math.round(value).toLocaleString()}` : "—";
+          const el = (
+            <Typography
+              variant="body2"
+              sx={{
+                fontWeight: 600,
+                textAlign: "right",
+                fontStyle: italic ? "italic" : "normal",
+                color: italic ? "text.secondary" : "text.primary",
+                cursor: rationale ? "help" : "default",
+              }}
+            >
+              {text}
+            </Typography>
+          );
+          return rationale ? (
+            <Tooltip arrow placement="top" title={rationale}>
+              {el}
+            </Tooltip>
+          ) : (
+            el
+          );
+        };
+
+        return (
+          <Box sx={{ mb: 1.5 }}>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: "block", mb: 0.75 }}
+            >
+              Rent roll
+            </Typography>
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: "1fr auto auto auto",
+                rowGap: 0.5,
+                columnGap: 2,
+                alignItems: "baseline",
+                fontSize: 13,
+              }}
+            >
+              {/* Header row */}
+              <Box />
+              <Tooltip
+                arrow
+                placement="top"
+                title="Per-unit rent reported in the listing remarks (averaged across units of the same type when multiple are listed)."
+              >
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{
+                    fontWeight: 600,
+                    textAlign: "right",
+                    cursor: "help",
+                  }}
+                >
+                  Current
+                </Typography>
+              </Tooltip>
+              <Tooltip
+                arrow
+                placement="top"
+                title="AI estimate of market rent at the unit's current condition — based on neighborhood comps and unit specs."
+              >
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{
+                    fontWeight: 600,
+                    textAlign: "right",
+                    cursor: "help",
+                  }}
+                >
+                  Market
+                </Typography>
+              </Tooltip>
+              <Tooltip
+                arrow
+                placement="top"
+                title="AI estimate of market rent after a moderate cosmetic renovation: kitchens/baths refreshed, paint, modern fixtures."
+              >
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{
+                    fontWeight: 600,
+                    textAlign: "right",
+                    cursor: "help",
+                  }}
+                >
+                  Post-remodel
+                </Typography>
+              </Tooltip>
+
+              {/* Data rows */}
+              {rows.map(({ u, key, avgActual, aiEst, postReno }) => (
+                <React.Fragment key={key}>
+                  <Typography variant="body2">
+                    {unitTypeLabel(u.count, u.beds, u.baths)}
+                  </Typography>
+                  <RentCell value={avgActual} italic={false} />
+                  <RentCell
+                    value={aiEst?.estimatedRent ?? null}
+                    rationale={aiEst?.rationale}
+                    italic
+                  />
+                  <RentCell
+                    value={postReno?.estimatedRent ?? null}
+                    rationale={postReno?.rationale}
+                    italic
+                  />
+                </React.Fragment>
+              ))}
+
+              {/* Totals */}
+              {(currentTotal != null ||
+                marketTotal != null ||
+                postRenoTotal != null) && (
+                <>
+                  <Typography
+                    variant="body2"
+                    sx={{ fontWeight: 700, mt: 0.75 }}
+                  >
+                    Total /mo
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{ fontWeight: 700, mt: 0.75, textAlign: "right" }}
+                  >
+                    {currentTotal != null
+                      ? `$${currentTotal.toLocaleString()}`
+                      : "—"}
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      fontWeight: 700,
+                      mt: 0.75,
+                      textAlign: "right",
+                      fontStyle: "italic",
+                      color: "text.secondary",
+                    }}
+                  >
+                    {marketTotal != null
+                      ? `$${Math.round(marketTotal).toLocaleString()}`
+                      : "—"}
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      fontWeight: 700,
+                      mt: 0.75,
+                      textAlign: "right",
+                      fontStyle: "italic",
+                      color: "text.secondary",
+                    }}
+                  >
+                    {postRenoTotal != null
+                      ? `$${Math.round(postRenoTotal).toLocaleString()}`
+                      : "—"}
+                  </Typography>
+                </>
+              )}
+            </Box>
+          </Box>
+        );
+      })()}
+
+      {!unitMix?.length && !!rentRoll?.length && (
         <Box sx={{ mb: 1.5 }}>
-          <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: "block" }}>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ display: "block", mb: 0.75 }}
+          >
             Rent roll
           </Typography>
           <Box
@@ -1377,13 +1675,13 @@ function AIInsightsCard({
             {rentRoll.map((r, i) => (
               <React.Fragment key={i}>
                 <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  ${r.rent.toLocaleString()}
+                  ${r.rent.toLocaleString()}/mo
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   {r.beds != null && r.baths != null
-                    ? `${r.beds}BR / ${r.baths}BA`
+                    ? `${r.beds} Bedroom + ${r.baths} Bathroom`
                     : r.beds != null
-                      ? `${r.beds}BR`
+                      ? `${r.beds} Bedroom`
                       : "—"}
                 </Typography>
               </React.Fragment>
@@ -1391,14 +1689,14 @@ function AIInsightsCard({
             {listing.extractedTotalMonthlyRent != null && (
               <>
                 <Typography variant="body2" sx={{ fontWeight: 700, mt: 0.5 }}>
-                  ${listing.extractedTotalMonthlyRent.toLocaleString()}
+                  ${listing.extractedTotalMonthlyRent.toLocaleString()}/mo
                 </Typography>
                 <Typography
                   variant="body2"
                   color="text.secondary"
                   sx={{ mt: 0.5 }}
                 >
-                  total / month
+                  total
                 </Typography>
               </>
             )}
@@ -1406,7 +1704,7 @@ function AIInsightsCard({
         </Box>
       )}
 
-      {!rentRoll?.length && listing.extractedTotalMonthlyRent != null && (
+      {!unitMix?.length && !rentRoll?.length && listing.extractedTotalMonthlyRent != null && (
         <Stack direction="row" spacing={3} sx={{ mb: 1.5 }}>
           <Metric
             label="Gross monthly rent"
@@ -1453,19 +1751,6 @@ function AIInsightsCard({
           <Typography variant="body2" sx={{ mt: 0.25 }}>
             {listing.aduRationale ?? "—"}
           </Typography>
-          <Stack direction="row" spacing={1} sx={{ mt: 0.75 }}>
-            <Button
-              component={MuiLink}
-              href={`https://build.symbium.com/?address=${encodeURIComponent(fullAddress)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              size="small"
-              variant="text"
-              endIcon={<OpenInNewRoundedIcon sx={{ fontSize: 14 }} />}
-            >
-              Symbium feasibility check
-            </Button>
-          </Stack>
         </Box>
       )}
     </Paper>
