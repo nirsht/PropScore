@@ -35,6 +35,7 @@ import StraightenRoundedIcon from "@mui/icons-material/StraightenRounded";
 import PhoneRoundedIcon from "@mui/icons-material/PhoneRounded";
 import EmailRoundedIcon from "@mui/icons-material/EmailRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
+import AutoFixHighOutlinedIcon from "@mui/icons-material/AutoFixHighOutlined";
 import {
   Bar,
   BarChart,
@@ -45,7 +46,6 @@ import {
 } from "recharts";
 import { trpc } from "@/lib/trpc/client";
 import { EnrichWithAIButton } from "./EnrichWithAIButton";
-import { RentGrowthCard } from "./RentGrowthCard";
 import { PhotoLightbox } from "./PhotoLightbox";
 import { MeasureLotModal } from "./MeasureLotModal";
 import { isDiverging, rowDiverges } from "@/lib/diff";
@@ -385,9 +385,6 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
               </Accordion>
             )}
           </Paper>
-
-          {/* Rent-growth potential */}
-          <RentGrowthCard mlsId={listing.mlsId} />
 
           {/* GIS tools row */}
           <Paper variant="outlined" sx={{ p: 2 }}>
@@ -1293,6 +1290,8 @@ const ADU_COLOR: Record<"LOW" | "MEDIUM" | "HIGH", "default" | "warning" | "succ
 // ============================================================================
 type ListingForAI = {
   mlsId: string;
+  lat: number | null;
+  lng: number | null;
   aiStories: number | null;
   aiHasBasement: boolean | null;
   aiHasPenthouse: boolean | null;
@@ -1313,6 +1312,580 @@ type ListingForAI = {
   extractFetchedAt: Date | string | null;
 };
 
+// ---------------------------------------------------------------------------
+// Rent roll — single section that merges actual per-apartment rents,
+// AI-or-comp-grounded market estimates, and post-remodel projections. The
+// previous "Rent-growth Potential" card was redundant once this grid carries
+// totals + upside, so it has been removed.
+// ---------------------------------------------------------------------------
+
+type RentRollEntryUI = {
+  rent: number;
+  beds: number | null;
+  baths: number | null;
+  sqft?: number | null;
+  unitLabel?: string | null;
+};
+
+type UnitMixEntryUI = {
+  count: number;
+  beds: number | null;
+  baths: number | null;
+};
+
+type RentEstimateEntryUI = {
+  beds: number | null;
+  baths: number | null;
+  estimatedRent: number;
+  rationale: string;
+  sqft?: number | null;
+  unitLabel?: string | null;
+  source?: "gpt" | "comps";
+};
+
+type RentCompBucketUI = {
+  beds: number | null;
+  baths: number | null;
+  count: number;
+  medianRent: number | null;
+  medianPricePerSqft: number | null;
+  medianSqft: number | null;
+};
+
+type RentCompsOutputUI = {
+  totalComps: number;
+  radiusMiles: number;
+  monthsBack: number;
+  buckets: RentCompBucketUI[];
+  summary: string;
+};
+
+function bedsBathsLabel(beds: number | null, baths: number | null): string {
+  if (beds == null && baths == null) return "—";
+  if (beds === 0) return baths != null ? `Studio · ${baths}BA` : "Studio";
+  const b = beds != null ? `${beds}BR` : "?BR";
+  const ba = baths != null ? `${baths}BA` : "?BA";
+  return `${b} · ${ba}`;
+}
+
+function compEstimateFor(
+  buckets: RentCompBucketUI[],
+  target: { beds: number | null; baths: number | null; sqft?: number | null },
+): { rent: number; rationale: string } | null {
+  const match = buckets.find(
+    (b) => b.beds === target.beds && b.baths === target.baths,
+  );
+  if (!match || match.count === 0) return null;
+  if (target.sqft && match.medianPricePerSqft != null) {
+    const rent = Math.round((match.medianPricePerSqft * target.sqft) / 50) * 50;
+    const ppsf = match.medianPricePerSqft.toFixed(2);
+    return {
+      rent,
+      rationale: `${match.count} closed SFAR lease${match.count === 1 ? "" : "s"} · median $${ppsf}/sf × ${target.sqft.toLocaleString()} sf`,
+    };
+  }
+  if (match.medianRent != null) {
+    return {
+      rent: Math.round(match.medianRent / 50) * 50,
+      rationale: `${match.count} closed SFAR lease${match.count === 1 ? "" : "s"} · median $${Math.round(match.medianRent).toLocaleString()}/mo`,
+    };
+  }
+  return null;
+}
+
+function matchEstimate<
+  T extends {
+    beds: number | null;
+    baths: number | null;
+    sqft?: number | null;
+    unitLabel?: string | null;
+  },
+>(
+  estimates: T[] | null | undefined,
+  target: {
+    beds: number | null;
+    baths: number | null;
+    sqft?: number | null;
+    unitLabel?: string | null;
+    index: number;
+  },
+): T | null {
+  if (!estimates?.length) return null;
+  // 1. Same unit label (most specific)
+  if (target.unitLabel) {
+    const m = estimates.find(
+      (e) => !!e.unitLabel && e.unitLabel === target.unitLabel,
+    );
+    if (m) return m;
+  }
+  // 2. Same index (when the agent emitted estimates in lockstep with rent roll)
+  const indexed = estimates[target.index];
+  if (indexed && indexed.beds === target.beds && indexed.baths === target.baths) {
+    return indexed;
+  }
+  // 3. Same (beds, baths) and sqft within ±15%
+  if (target.sqft) {
+    const m = estimates.find(
+      (e) =>
+        e.beds === target.beds &&
+        e.baths === target.baths &&
+        !!e.sqft &&
+        Math.abs(e.sqft - target.sqft!) / target.sqft! < 0.15,
+    );
+    if (m) return m;
+  }
+  // 4. First (beds, baths) match
+  return (
+    estimates.find((e) => e.beds === target.beds && e.baths === target.baths) ??
+    null
+  );
+}
+
+function RentRollSection({ listing }: { listing: ListingForAI }) {
+  const utils = trpc.useUtils();
+  const compsQuery = trpc.agents.latestRentComps.useQuery({
+    mlsId: listing.mlsId,
+  });
+  const compsMutation = trpc.agents.rentComps.useMutation({
+    onSuccess: () => {
+      void utils.agents.latestRentComps.invalidate({ mlsId: listing.mlsId });
+    },
+  });
+
+  const rentRoll = listing.extractedRentRoll as
+    | RentRollEntryUI[]
+    | null
+    | undefined;
+  const unitMix = listing.extractedUnitMix as
+    | UnitMixEntryUI[]
+    | null
+    | undefined;
+  const aiRentEstimate = listing.aiRentEstimate as
+    | RentEstimateEntryUI[]
+    | null
+    | undefined;
+  const postRenoEstimate = listing.postRenovationRentEstimate as
+    | RentEstimateEntryUI[]
+    | null
+    | undefined;
+
+  const compsOutput =
+    (compsQuery.data?.output as RentCompsOutputUI | undefined) ?? null;
+  const compsCachedAt = compsQuery.data?.createdAt ?? null;
+
+  const hasUnits = !!rentRoll?.length || !!unitMix?.length;
+
+  // No unit-level data — fall back to a one-line gross/occupancy summary.
+  if (!hasUnits) {
+    if (
+      listing.extractedTotalMonthlyRent == null &&
+      listing.extractedOccupancy == null
+    ) {
+      return null;
+    }
+    return (
+      <Stack direction="row" spacing={3} sx={{ mb: 1.5 }}>
+        {listing.extractedTotalMonthlyRent != null && (
+          <Metric
+            label="Gross monthly rent"
+            value={fmtMoney(listing.extractedTotalMonthlyRent)}
+          />
+        )}
+        {listing.extractedOccupancy != null && (
+          <Metric
+            label="Occupancy"
+            value={`${Math.round(listing.extractedOccupancy * 100)}%`}
+          />
+        )}
+      </Stack>
+    );
+  }
+
+  // Per-apartment rows when rent roll exists; grouped by unit type otherwise.
+  type Row = {
+    weight: number;
+    actualRent: number | null;
+    beds: number | null;
+    baths: number | null;
+    sqft: number | null;
+    unitLabel: string | null;
+    sourceIndex: number;
+    isGrouped: boolean;
+  };
+  const rows: Row[] = rentRoll?.length
+    ? rentRoll.map((r, i) => ({
+        weight: 1,
+        actualRent: r.rent,
+        beds: r.beds,
+        baths: r.baths,
+        sqft: r.sqft ?? null,
+        unitLabel: r.unitLabel ?? null,
+        sourceIndex: i,
+        isGrouped: false,
+      }))
+    : (unitMix ?? []).map((u, i) => ({
+        weight: u.count,
+        actualRent: null,
+        beds: u.beds,
+        baths: u.baths,
+        sqft: null,
+        unitLabel: null,
+        sourceIndex: i,
+        isGrouped: true,
+      }));
+
+  const enriched = rows.map((row) => {
+    let market:
+      | { rent: number; rationale: string; source: "gpt" | "comps" }
+      | null = null;
+    if (compsOutput) {
+      const c = compEstimateFor(compsOutput.buckets, row);
+      if (c) market = { ...c, source: "comps" };
+    }
+    if (!market) {
+      const ai = matchEstimate(aiRentEstimate, {
+        beds: row.beds,
+        baths: row.baths,
+        sqft: row.sqft,
+        unitLabel: row.unitLabel,
+        index: row.sourceIndex,
+      });
+      if (ai) {
+        market = {
+          rent: ai.estimatedRent,
+          rationale: ai.rationale,
+          source: ai.source ?? "gpt",
+        };
+      }
+    }
+    const reno = matchEstimate(postRenoEstimate, {
+      beds: row.beds,
+      baths: row.baths,
+      sqft: row.sqft,
+      unitLabel: row.unitLabel,
+      index: row.sourceIndex,
+    });
+    return {
+      ...row,
+      market,
+      postReno: reno
+        ? { rent: reno.estimatedRent, rationale: reno.rationale }
+        : null,
+    };
+  });
+
+  const currentTotal = (() => {
+    if (rentRoll?.length) {
+      const sum = enriched.reduce((s, r) => s + (r.actualRent ?? 0), 0);
+      return sum > 0 ? sum : null;
+    }
+    return listing.extractedTotalMonthlyRent ?? null;
+  })();
+  const marketTotal =
+    enriched.length > 0 && enriched.every((r) => r.market != null)
+      ? enriched.reduce((s, r) => s + r.market!.rent * r.weight, 0)
+      : null;
+  const renoTotal =
+    enriched.length > 0 && enriched.every((r) => r.postReno != null)
+      ? enriched.reduce((s, r) => s + r.postReno!.rent * r.weight, 0)
+      : null;
+
+  const monthlyUpside =
+    currentTotal != null && marketTotal != null
+      ? Math.round(marketTotal - currentTotal)
+      : null;
+  const upsidePercent =
+    monthlyUpside != null && currentTotal != null && currentTotal > 0
+      ? Math.round((monthlyUpside / currentTotal) * 100)
+      : null;
+  const compsBased = enriched.some((r) => r.market?.source === "comps");
+  const totalUnitCount = rows.reduce((s, r) => s + r.weight, 0);
+  const hasLatLng = listing.lat != null && listing.lng != null;
+
+  const RentCell = ({
+    value,
+    rationale,
+    italic,
+  }: {
+    value: number | null;
+    rationale?: string;
+    italic: boolean;
+  }) => {
+    const text = value != null ? `$${Math.round(value).toLocaleString()}` : "—";
+    const el = (
+      <Typography
+        variant="body2"
+        sx={{
+          fontWeight: 600,
+          textAlign: "right",
+          fontStyle: italic ? "italic" : "normal",
+          color: italic ? "text.secondary" : "text.primary",
+          cursor: rationale ? "help" : "default",
+        }}
+      >
+        {text}
+      </Typography>
+    );
+    return rationale ? (
+      <Tooltip arrow placement="top" title={rationale}>
+        {el}
+      </Tooltip>
+    ) : (
+      el
+    );
+  };
+
+  return (
+    <Box sx={{ mb: 1.5 }}>
+      <Stack
+        direction="row"
+        alignItems="center"
+        spacing={1}
+        sx={{ mb: 0.75 }}
+        flexWrap="wrap"
+        useFlexGap
+      >
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{
+            fontWeight: 600,
+            letterSpacing: 0.4,
+            textTransform: "uppercase",
+          }}
+        >
+          Rent roll · {totalUnitCount}{" "}
+          {totalUnitCount === 1 ? "unit" : "units"}
+        </Typography>
+        {monthlyUpside != null && monthlyUpside > 0 && (
+          <Tooltip
+            arrow
+            placement="top"
+            title="Monthly upside = market rent total − current rent total. Source: SFAR closed-lease comps when available, AI estimate as fallback."
+          >
+            <Chip
+              size="small"
+              color="success"
+              label={`+$${monthlyUpside.toLocaleString()}/mo${
+                upsidePercent != null ? ` · +${upsidePercent}%` : ""
+              }`}
+              sx={{ height: 20, cursor: "help" }}
+            />
+          </Tooltip>
+        )}
+      </Stack>
+
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: "1fr auto auto auto auto",
+          rowGap: 0.5,
+          columnGap: 2,
+          alignItems: "baseline",
+          fontSize: 13,
+        }}
+      >
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ fontWeight: 600 }}
+        >
+          Unit
+        </Typography>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ fontWeight: 600, textAlign: "right" }}
+        >
+          Size
+        </Typography>
+        <Tooltip
+          arrow
+          placement="top"
+          title="Rent disclosed in the listing remarks. Blank when remarks don't list it."
+        >
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ fontWeight: 600, textAlign: "right", cursor: "help" }}
+          >
+            Current
+          </Typography>
+        </Tooltip>
+        <Tooltip
+          arrow
+          placement="top"
+          title={
+            compsBased
+              ? "Estimated market rent grounded in SFAR closed-lease comps near this property. Hover any number for the comp count and median $/sf."
+              : "AI estimate of market rent at the unit's current condition. Run rent comps below to ground it in real SFAR lease data."
+          }
+        >
+          <Typography
+            variant="caption"
+            color={compsBased ? "success.main" : "text.secondary"}
+            sx={{ fontWeight: 600, textAlign: "right", cursor: "help" }}
+          >
+            Market{compsBased ? " (comps)" : " (AI)"}
+          </Typography>
+        </Tooltip>
+        <Tooltip
+          arrow
+          placement="top"
+          title="AI estimate of market rent after a moderate cosmetic remodel: kitchens/baths refreshed, paint, modern fixtures."
+        >
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ fontWeight: 600, textAlign: "right", cursor: "help" }}
+          >
+            Post-remodel
+          </Typography>
+        </Tooltip>
+
+        {enriched.map((row, key) => (
+          <React.Fragment key={key}>
+            <Typography variant="body2">
+              {row.isGrouped
+                ? unitTypeLabel(row.weight, row.beds, row.baths)
+                : `${row.unitLabel ? row.unitLabel + " · " : ""}${bedsBathsLabel(row.beds, row.baths)}`}
+            </Typography>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ textAlign: "right" }}
+            >
+              {row.sqft ? `${row.sqft.toLocaleString()} sf` : "—"}
+            </Typography>
+            <RentCell value={row.actualRent} italic={false} />
+            <RentCell
+              value={row.market?.rent ?? null}
+              rationale={row.market?.rationale}
+              italic
+            />
+            <RentCell
+              value={row.postReno?.rent ?? null}
+              rationale={row.postReno?.rationale}
+              italic
+            />
+          </React.Fragment>
+        ))}
+
+        {(currentTotal != null ||
+          marketTotal != null ||
+          renoTotal != null) && (
+          <>
+            <Typography variant="body2" sx={{ fontWeight: 700, mt: 0.75 }}>
+              Total /mo
+            </Typography>
+            <Box />
+            <Typography
+              variant="body2"
+              sx={{ fontWeight: 700, mt: 0.75, textAlign: "right" }}
+            >
+              {currentTotal != null
+                ? `$${currentTotal.toLocaleString()}`
+                : "—"}
+            </Typography>
+            <Typography
+              variant="body2"
+              sx={{
+                fontWeight: 700,
+                mt: 0.75,
+                textAlign: "right",
+                fontStyle: "italic",
+                color: "text.secondary",
+              }}
+            >
+              {marketTotal != null
+                ? `$${Math.round(marketTotal).toLocaleString()}`
+                : "—"}
+            </Typography>
+            <Typography
+              variant="body2"
+              sx={{
+                fontWeight: 700,
+                mt: 0.75,
+                textAlign: "right",
+                fontStyle: "italic",
+                color: "text.secondary",
+              }}
+            >
+              {renoTotal != null
+                ? `$${Math.round(renoTotal).toLocaleString()}`
+                : "—"}
+            </Typography>
+          </>
+        )}
+      </Box>
+
+      <Stack
+        direction="row"
+        alignItems="center"
+        spacing={1}
+        sx={{
+          mt: 1.25,
+          pt: 1,
+          borderTop: 1,
+          borderColor: "divider",
+        }}
+        flexWrap="wrap"
+        useFlexGap
+      >
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ flex: 1, minWidth: 200 }}
+        >
+          {compsOutput
+            ? compsOutput.totalComps > 0
+              ? `${compsOutput.summary}${compsCachedAt ? ` · cached ${new Date(compsCachedAt).toLocaleDateString()}` : ""}`
+              : `${compsOutput.summary}${compsCachedAt ? ` · checked ${new Date(compsCachedAt).toLocaleDateString()}` : ""} — Market column is an AI estimate.`
+            : hasLatLng
+              ? "Market column is an AI estimate from listing remarks. Run rent comps to ground it in SFAR closed-lease data within 1 mi (last 24 mo)."
+              : "Market column is an AI estimate. Rent-comp grounding needs lat/lng on this listing."}
+        </Typography>
+        {compsMutation.error && (
+          <Typography variant="caption" color="error.main">
+            {compsMutation.error.message}
+          </Typography>
+        )}
+        <Tooltip
+          arrow
+          placement="top"
+          title={
+            hasLatLng
+              ? "Pulls SFAR closed leases within 1 mi over the last 24 months and re-medians per (beds, baths) bucket."
+              : "Listing has no lat/lng — cannot fetch comps."
+          }
+        >
+          <span>
+            <Button
+              size="small"
+              variant={compsOutput ? "outlined" : "contained"}
+              startIcon={
+                compsMutation.isPending ? (
+                  <CircularProgress size={12} />
+                ) : (
+                  <AutoFixHighOutlinedIcon fontSize="small" />
+                )
+              }
+              disabled={compsMutation.isPending || !hasLatLng}
+              onClick={() => compsMutation.mutate({ mlsId: listing.mlsId })}
+            >
+              {compsMutation.isPending
+                ? "Fetching…"
+                : compsOutput
+                  ? "Re-estimate"
+                  : "Run rent comps"}
+            </Button>
+          </span>
+        </Tooltip>
+      </Stack>
+    </Box>
+  );
+}
+
 function AIInsightsCard({ listing }: { listing: ListingForAI }) {
   const unitMix = listing.extractedUnitMix as
     | Array<{ count: number; beds: number | null; baths: number | null }>
@@ -1320,24 +1893,6 @@ function AIInsightsCard({ listing }: { listing: ListingForAI }) {
     | undefined;
   const rentRoll = listing.extractedRentRoll as
     | Array<{ rent: number; beds: number | null; baths: number | null }>
-    | null
-    | undefined;
-  const aiRentEstimate = listing.aiRentEstimate as
-    | Array<{
-        beds: number | null;
-        baths: number | null;
-        estimatedRent: number;
-        rationale: string;
-      }>
-    | null
-    | undefined;
-  const postRenoEstimate = listing.postRenovationRentEstimate as
-    | Array<{
-        beds: number | null;
-        baths: number | null;
-        estimatedRent: number;
-        rationale: string;
-      }>
     | null
     | undefined;
   const capex = listing.recentCapex as string[] | null | undefined;
@@ -1442,293 +1997,7 @@ function AIInsightsCard({ listing }: { listing: ListingForAI }) {
         )}
       </Stack>
 
-      {!!unitMix?.length && (() => {
-        const rows = unitMix.map((u, i) => {
-          const matching = (rentRoll ?? []).filter(
-            (r) => r.beds === u.beds && r.baths === u.baths,
-          );
-          const avgActual =
-            matching.length > 0
-              ? Math.round(
-                  matching.reduce((s, r) => s + r.rent, 0) / matching.length,
-                )
-              : null;
-          const aiEst = (aiRentEstimate ?? []).find(
-            (e) => e.beds === u.beds && e.baths === u.baths,
-          );
-          const postReno = (postRenoEstimate ?? []).find(
-            (e) => e.beds === u.beds && e.baths === u.baths,
-          );
-          return { u, key: i, avgActual, aiEst, postReno };
-        });
-
-        const sumOf = (
-          getter: (r: (typeof rows)[number]) => number | null | undefined,
-        ): number | null => {
-          if (!rows.every((r) => getter(r) != null)) return null;
-          return rows.reduce((s, r) => s + r.u.count * (getter(r) ?? 0), 0);
-        };
-        const currentSum = sumOf((r) => r.avgActual);
-        const currentTotal = listing.extractedTotalMonthlyRent ?? currentSum;
-        const marketTotal = sumOf((r) => r.aiEst?.estimatedRent);
-        const postRenoTotal = sumOf((r) => r.postReno?.estimatedRent);
-
-        const RentCell = ({
-          value,
-          rationale,
-          italic,
-        }: {
-          value: number | null;
-          rationale?: string;
-          italic: boolean;
-        }) => {
-          const text =
-            value != null ? `$${Math.round(value).toLocaleString()}` : "—";
-          const el = (
-            <Typography
-              variant="body2"
-              sx={{
-                fontWeight: 600,
-                textAlign: "right",
-                fontStyle: italic ? "italic" : "normal",
-                color: italic ? "text.secondary" : "text.primary",
-                cursor: rationale ? "help" : "default",
-              }}
-            >
-              {text}
-            </Typography>
-          );
-          return rationale ? (
-            <Tooltip arrow placement="top" title={rationale}>
-              {el}
-            </Tooltip>
-          ) : (
-            el
-          );
-        };
-
-        return (
-          <Box sx={{ mb: 1.5 }}>
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ display: "block", mb: 0.75 }}
-            >
-              Rent roll
-            </Typography>
-            <Box
-              sx={{
-                display: "grid",
-                gridTemplateColumns: "1fr auto auto auto",
-                rowGap: 0.5,
-                columnGap: 2,
-                alignItems: "baseline",
-                fontSize: 13,
-              }}
-            >
-              {/* Header row */}
-              <Box />
-              <Tooltip
-                arrow
-                placement="top"
-                title="Per-unit rent reported in the listing remarks (averaged across units of the same type when multiple are listed)."
-              >
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{
-                    fontWeight: 600,
-                    textAlign: "right",
-                    cursor: "help",
-                  }}
-                >
-                  Current
-                </Typography>
-              </Tooltip>
-              <Tooltip
-                arrow
-                placement="top"
-                title="AI estimate of market rent at the unit's current condition — based on neighborhood comps and unit specs."
-              >
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{
-                    fontWeight: 600,
-                    textAlign: "right",
-                    cursor: "help",
-                  }}
-                >
-                  Market
-                </Typography>
-              </Tooltip>
-              <Tooltip
-                arrow
-                placement="top"
-                title="AI estimate of market rent after a moderate cosmetic renovation: kitchens/baths refreshed, paint, modern fixtures."
-              >
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{
-                    fontWeight: 600,
-                    textAlign: "right",
-                    cursor: "help",
-                  }}
-                >
-                  Post-remodel
-                </Typography>
-              </Tooltip>
-
-              {/* Data rows */}
-              {rows.map(({ u, key, avgActual, aiEst, postReno }) => (
-                <React.Fragment key={key}>
-                  <Typography variant="body2">
-                    {unitTypeLabel(u.count, u.beds, u.baths)}
-                  </Typography>
-                  <RentCell value={avgActual} italic={false} />
-                  <RentCell
-                    value={aiEst?.estimatedRent ?? null}
-                    rationale={aiEst?.rationale}
-                    italic
-                  />
-                  <RentCell
-                    value={postReno?.estimatedRent ?? null}
-                    rationale={postReno?.rationale}
-                    italic
-                  />
-                </React.Fragment>
-              ))}
-
-              {/* Totals */}
-              {(currentTotal != null ||
-                marketTotal != null ||
-                postRenoTotal != null) && (
-                <>
-                  <Typography
-                    variant="body2"
-                    sx={{ fontWeight: 700, mt: 0.75 }}
-                  >
-                    Total /mo
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    sx={{ fontWeight: 700, mt: 0.75, textAlign: "right" }}
-                  >
-                    {currentTotal != null
-                      ? `$${currentTotal.toLocaleString()}`
-                      : "—"}
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      fontWeight: 700,
-                      mt: 0.75,
-                      textAlign: "right",
-                      fontStyle: "italic",
-                      color: "text.secondary",
-                    }}
-                  >
-                    {marketTotal != null
-                      ? `$${Math.round(marketTotal).toLocaleString()}`
-                      : "—"}
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      fontWeight: 700,
-                      mt: 0.75,
-                      textAlign: "right",
-                      fontStyle: "italic",
-                      color: "text.secondary",
-                    }}
-                  >
-                    {postRenoTotal != null
-                      ? `$${Math.round(postRenoTotal).toLocaleString()}`
-                      : "—"}
-                  </Typography>
-                </>
-              )}
-            </Box>
-          </Box>
-        );
-      })()}
-
-      {!unitMix?.length && !!rentRoll?.length && (
-        <Box sx={{ mb: 1.5 }}>
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ display: "block", mb: 0.75 }}
-          >
-            Rent roll
-          </Typography>
-          <Box
-            sx={{
-              display: "grid",
-              gridTemplateColumns: "auto 1fr",
-              rowGap: 0.25,
-              columnGap: 2,
-              fontSize: 13,
-            }}
-          >
-            {rentRoll.map((r, i) => (
-              <React.Fragment key={i}>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  ${r.rent.toLocaleString()}/mo
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {r.beds != null && r.baths != null
-                    ? `${r.beds} Bedroom + ${r.baths} Bathroom`
-                    : r.beds != null
-                      ? `${r.beds} Bedroom`
-                      : "—"}
-                </Typography>
-              </React.Fragment>
-            ))}
-            {listing.extractedTotalMonthlyRent != null && (
-              <>
-                <Typography variant="body2" sx={{ fontWeight: 700, mt: 0.5 }}>
-                  ${listing.extractedTotalMonthlyRent.toLocaleString()}/mo
-                </Typography>
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{ mt: 0.5 }}
-                >
-                  total
-                </Typography>
-              </>
-            )}
-          </Box>
-        </Box>
-      )}
-
-      {!unitMix?.length && !rentRoll?.length && listing.extractedTotalMonthlyRent != null && (
-        <Stack direction="row" spacing={3} sx={{ mb: 1.5 }}>
-          <Metric
-            label="Gross monthly rent"
-            value={fmtMoney(listing.extractedTotalMonthlyRent)}
-          />
-          {listing.extractedOccupancy != null && (
-            <Metric
-              label="Occupancy"
-              value={`${Math.round(listing.extractedOccupancy * 100)}%`}
-            />
-          )}
-        </Stack>
-      )}
-
-      {listing.extractedOccupancy != null &&
-        !rentRoll?.length &&
-        listing.extractedTotalMonthlyRent == null && (
-          <Stack direction="row" spacing={3} sx={{ mb: 1.5 }}>
-            <Metric
-              label="Occupancy"
-              value={`${Math.round(listing.extractedOccupancy * 100)}%`}
-            />
-          </Stack>
-        )}
+      <RentRollSection listing={listing} />
 
       {!!capex?.length && (
         <Box sx={{ mb: 1.5 }}>

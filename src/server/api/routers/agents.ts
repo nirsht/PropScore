@@ -21,10 +21,6 @@ export const agentsRouter = router({
     .input(z.object({ mlsId: z.string() }))
     .mutation(({ ctx, input }) => agents.aiScoring.run(input.mlsId, ctx.user.id)),
 
-  rentGrowth: protectedProcedure
-    .input(z.object({ mlsId: z.string() }))
-    .mutation(({ ctx, input }) => agents.rentGrowth.run(input.mlsId, ctx.user.id)),
-
   buildingVision: protectedProcedure
     .input(z.object({ mlsId: z.string() }))
     .mutation(({ ctx, input }) => agents.buildingVision.run(input.mlsId, ctx.user.id)),
@@ -33,15 +29,19 @@ export const agentsRouter = router({
     .input(z.object({ mlsId: z.string() }))
     .mutation(({ ctx, input }) => agents.listingExtract.run(input.mlsId, ctx.user.id)),
 
+  rentComps: protectedProcedure
+    .input(z.object({ mlsId: z.string() }))
+    .mutation(({ ctx, input }) => agents.rentComps.run(input.mlsId, ctx.user.id)),
+
   /**
-   * Latest cached rent-growth estimate for a listing, if any. Used by the
-   * drawer to render the result without re-running the agent.
+   * Latest cached SFAR rental-comps result. The drawer reads this to
+   * render comp-grounded estimates without re-fetching from Bridge.
    */
-  latestRentGrowth: protectedProcedure
+  latestRentComps: protectedProcedure
     .input(z.object({ mlsId: z.string() }))
     .query(async ({ ctx, input }) => {
       const row = await ctx.db.aIEnrichment.findFirst({
-        where: { listingMlsId: input.mlsId, agentName: "rent-growth" },
+        where: { listingMlsId: input.mlsId, agentName: "rent-comps" },
         orderBy: { createdAt: "desc" },
       });
       return row;

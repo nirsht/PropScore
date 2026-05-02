@@ -16,17 +16,29 @@ export const RentRollEntry = z.object({
   rent: z.number().positive(),
   beds: z.number().int().min(0).nullable(),
   baths: z.number().min(0).nullable(),
+  // Optional per-apartment context — extracted when remarks list it
+  // ("Unit A: 850 sf · 2BR/1BA · $2,400"). Lets the UI render distinct
+  // rows for two same-bed/bath units of different sizes, and lets the
+  // estimator scale by sqft.
+  sqft: z.number().positive().nullable().optional(),
+  unitLabel: z.string().max(40).nullable().optional(),
 });
 
-// AI-estimated market-rate rent for one unit type. Always emitted alongside
-// `unitMix` so the consumer can fill in rent for unit types missing from
-// `rentRoll`. Beds/baths mirror the matching unitMix entry exactly so the
-// consumer joins on (beds, baths).
+// AI-estimated market-rate rent for one unit. Emitted alongside `unitMix`
+// (one entry per unit type) when the rent roll is empty, OR per
+// rent-roll entry (matched by index OR unitLabel) when sizes differ.
+// Consumer match priority: unitLabel > (beds, baths, sqft within 15%) > (beds, baths).
 export const RentEstimateEntry = z.object({
   beds: z.number().int().min(0).nullable(),
   baths: z.number().min(0).nullable(),
   estimatedRent: z.number().positive(),
   rationale: z.string().max(160),
+  // Optional — populated when the estimate is per-apartment (see RentRollEntry).
+  sqft: z.number().positive().nullable().optional(),
+  unitLabel: z.string().max(40).nullable().optional(),
+  // "gpt" = GPT training-data prior; "comps" = grounded in SFAR closed leases
+  // via the rent-comps agent. UI prefers "comps" when both exist.
+  source: z.enum(["gpt", "comps"]).optional(),
 });
 
 export const AduPotentialEnum = z.enum(["LOW", "MEDIUM", "HIGH"]);

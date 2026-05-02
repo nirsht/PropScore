@@ -46,12 +46,15 @@ services:
   #   buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm prisma generate
   #   # Single nightly orchestrator. Each step is delta-only (skips listings
   #   # already enriched) so AI tokens are spent on new listings only:
-  #   #   etl:sync         — incremental Bridge pull (cursor-based)
-  #   #   enrich:sfpim     — assessor (free Socrata API)
-  #   #   enrich:vision    — gpt-4o vision (~$0.005/listing, NEW listings only)
-  #   #   enrich:listings  — gpt-5-mini text extract (~$0.0007/listing, NEW only)
-  #   #   recompute:scores — re-run heuristic so new enrichment data feeds the
-  #   #                       value-add score (no AI calls, free).
+  #   #   etl:sync          — incremental Bridge pull (cursor-based)
+  #   #   enrich:sfpim      — assessor (free Socrata API)
+  #   #   enrich:vision     — gpt-4o vision (~$0.005/listing, NEW listings only)
+  #   #   enrich:listings   — gpt-5-mini text extract (~$0.0007/listing, NEW only)
+  #   #   enrich:rent-comps — Bridge SFAR Residential Lease comps within 1mi/24mo,
+  #   #                        bucketed by (beds, baths). Deterministic, no
+  #   #                        LLM cost; refreshes every 7 days per listing.
+  #   #   recompute:scores  — re-run heuristic so new enrichment data feeds the
+  #   #                        value-add score (no AI calls, free).
   #   startCommand: pnpm nightly
   #   envVars:
   #     - key: NODE_ENV
