@@ -16,7 +16,6 @@ const COMP_SELECT = [
   "ListingId",
   "BedroomsTotal",
   "BathroomsTotalInteger",
-  "BathroomsTotalDecimal",
   "LivingArea",
   "BuildingAreaTotal",
   "ListPrice",
@@ -161,10 +160,7 @@ export async function runRentComps(
     comps.push({
       listingKey: String(r.ListingKey ?? r.ListingId ?? ""),
       beds: (r.BedroomsTotal as number | undefined) ?? null,
-      baths:
-        (r.BathroomsTotalInteger as number | undefined) ??
-        (r.BathroomsTotalDecimal as number | undefined) ??
-        null,
+      baths: (r.BathroomsTotalInteger as number | undefined) ?? null,
       sqft: sqft && sqft > 0 ? Math.round(sqft) : null,
       monthlyRent: Math.round(rent),
       closeDate: (r.CloseDate as string | undefined) ?? null,
