@@ -276,69 +276,6 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
               data. */}
           <AIInsightsCard listing={listing} />
 
-          {/* Lot & extras (parking, HOA, tax, lot features, view) */}
-          <LotAndExtrasCard raw={raw} />
-
-          {/* Public remarks — moved above map */}
-          {(raw.PublicRemarks as string | undefined) && (
-            <Paper variant="outlined" sx={{ p: 2 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                Public remarks
-              </Typography>
-              <Typography
-                component="pre"
-                variant="body2"
-                sx={{
-                  whiteSpace: "pre-wrap",
-                  fontFamily: "inherit",
-                  m: 0,
-                  color: "text.primary",
-                }}
-              >
-                {raw.PublicRemarks as string}
-              </Typography>
-            </Paper>
-          )}
-
-          {/* Photos */}
-          <Paper variant="outlined" sx={{ p: 2 }}>
-            <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-              <Typography variant="subtitle2">Photos</Typography>
-              {photosQuery.isLoading && <CircularProgress size={14} />}
-              {photosQuery.data?.via && photosQuery.data.via !== "none" && (
-                <Chip
-                  size="small"
-                  variant="outlined"
-                  label={photosQuery.data.via}
-                  sx={{ fontSize: 10 }}
-                />
-              )}
-              <Box sx={{ flex: 1 }} />
-              <Typography variant="caption" color="text.secondary">
-                {photosQuery.data?.items.length ?? 0} photos
-              </Typography>
-              <Button size="small" variant="text" onClick={refreshPhotos}>
-                Refresh
-              </Button>
-            </Stack>
-            <PhotoStrip
-              loading={photosQuery.isLoading}
-              items={photoItems}
-              onOpen={openPhoto}
-            />
-            {photosQuery.data &&
-              !photosQuery.data.items.length &&
-              photosQuery.data.via === "none" &&
-              photosQuery.data.attempts.length > 0 && (
-                <Box sx={{ mt: 1.5 }}>
-                  <Typography variant="caption" color="text.secondary">
-                    Tried {photosQuery.data.attempts.length} Bridge endpoints — none returned media.
-                    Run <code>pnpm bootstrap:bridge</code> to inspect what `sfar` exposes.
-                  </Typography>
-                </Box>
-              )}
-          </Paper>
-
           {/* Opportunity scores — bar chart at top, AI rationale collapsed below */}
           <Paper variant="outlined" sx={{ p: 2 }}>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
@@ -466,6 +403,69 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
                 </Button>
               </Tooltip>
             </Stack>
+          </Paper>
+
+          {/* Lot & extras (parking, HOA, tax, lot features, view) */}
+          <LotAndExtrasCard raw={raw} />
+
+          {/* Public remarks — moved above map */}
+          {(raw.PublicRemarks as string | undefined) && (
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Public remarks
+              </Typography>
+              <Typography
+                component="pre"
+                variant="body2"
+                sx={{
+                  whiteSpace: "pre-wrap",
+                  fontFamily: "inherit",
+                  m: 0,
+                  color: "text.primary",
+                }}
+              >
+                {raw.PublicRemarks as string}
+              </Typography>
+            </Paper>
+          )}
+
+          {/* Photos */}
+          <Paper variant="outlined" sx={{ p: 2 }}>
+            <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+              <Typography variant="subtitle2">Photos</Typography>
+              {photosQuery.isLoading && <CircularProgress size={14} />}
+              {photosQuery.data?.via && photosQuery.data.via !== "none" && (
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  label={photosQuery.data.via}
+                  sx={{ fontSize: 10 }}
+                />
+              )}
+              <Box sx={{ flex: 1 }} />
+              <Typography variant="caption" color="text.secondary">
+                {photosQuery.data?.items.length ?? 0} photos
+              </Typography>
+              <Button size="small" variant="text" onClick={refreshPhotos}>
+                Refresh
+              </Button>
+            </Stack>
+            <PhotoStrip
+              loading={photosQuery.isLoading}
+              items={photoItems}
+              onOpen={openPhoto}
+            />
+            {photosQuery.data &&
+              !photosQuery.data.items.length &&
+              photosQuery.data.via === "none" &&
+              photosQuery.data.attempts.length > 0 && (
+                <Box sx={{ mt: 1.5 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    Tried {photosQuery.data.attempts.length} Bridge endpoints — none returned media.
+                    Run <code>pnpm bootstrap:bridge</code> to inspect what `sfar` exposes.
+                  </Typography>
+                </Box>
+              )}
           </Paper>
 
           {/* Map preview — kept at the bottom as a visual anchor under the
@@ -706,7 +706,7 @@ function ScoreBars({
   ];
 
   return (
-    <ResponsiveContainer width="100%" height={170}>
+    <ResponsiveContainer width="100%" height={130}>
       <BarChart
         data={data}
         margin={{ top: 8, right: 8, left: 8, bottom: 0 }}
