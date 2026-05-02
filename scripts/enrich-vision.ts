@@ -12,9 +12,10 @@
  *    same listing isn't retried on every nightly run.
  *
  * Usage:
- *   pnpm tsx scripts/enrich-vision.ts             # full sweep
- *   pnpm tsx scripts/enrich-vision.ts --limit=5   # cap rows this run
- *   pnpm tsx scripts/enrich-vision.ts --force     # re-analyze even if done
+ *   pnpm tsx scripts/enrich-vision.ts                   # full sweep
+ *   pnpm tsx scripts/enrich-vision.ts --limit=5         # cap rows this run
+ *   pnpm tsx scripts/enrich-vision.ts --force           # re-analyze even if done
+ *   pnpm tsx scripts/enrich-vision.ts --missing-reno    # listings missing renovationLevel
  */
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -25,13 +26,19 @@ const args = process.argv.slice(2);
 const limitArg = args.find((a) => a.startsWith("--limit="));
 const limit = limitArg ? Number(limitArg.split("=")[1]) : undefined;
 const force = args.includes("--force");
+const missingReno = args.includes("--missing-reno");
 
 async function main() {
-  const where = force ? {} : { visionFetchedAt: null };
+  const where = missingReno
+    ? { renovationLevel: null }
+    : force
+      ? {}
+      : { visionFetchedAt: null };
 
   const total = await db.listing.count({ where });
+  const mode = missingReno ? " (missing-reno)" : force ? " (force)" : "";
   console.log(
-    `[vision] candidates: ${total}${limit ? ` (limited to ${limit})` : ""}${force ? " (force)" : ""}`,
+    `[vision] candidates: ${total}${limit ? ` (limited to ${limit})` : ""}${mode}`,
   );
 
   let processed = 0;
