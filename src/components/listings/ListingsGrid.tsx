@@ -543,22 +543,18 @@ export function ListingsGrid({ onSelectListing }: Props) {
     [page],
   );
 
-  // DataGrid emits onSortModelChange / onPaginationModelChange from its
-  // mount layout effect, which lands inside ListingsGrid's first commit
-  // and trips React 19's "state update on a component that hasn't mounted
-  // yet" warning. Skip callbacks until our own mount effect has run —
-  // user-driven sort/pagination always fires post-mount.
-  const mountedRef = React.useRef(false);
+  // DataGrid v7 + React 19: DataGrid schedules state updates during its
+  // first commit (controlled paginationModel/sortModel reconciliation),
+  // which fires before ListingsGrid finishes mounting and trips React 19's
+  // "state update on a component that hasn't mounted yet" warning. Defer
+  // mounting DataGrid by one tick so its callbacks land on a mounted parent.
+  const [postMount, setPostMount] = React.useState(false);
   React.useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
+    setPostMount(true);
   }, []);
 
   const handleSort = React.useCallback(
     (model: GridSortModel) => {
-      if (!mountedRef.current) return;
       const item = model[0];
       if (!item) {
         if (sortBy !== "valueAdd" || sortDir !== "desc") {
@@ -579,7 +575,6 @@ export function ListingsGrid({ onSelectListing }: Props) {
   const nextCursor = query.data?.nextCursor;
   const handlePagination = React.useCallback(
     (model: { page: number; pageSize: number }) => {
-      if (!mountedRef.current) return;
       const next = model.page;
       if (next === page) return;
       if (next > page) {
@@ -612,34 +607,36 @@ export function ListingsGrid({ onSelectListing }: Props) {
     <Paper variant="outlined" sx={{ borderColor: "divider" }}>
       {query.isFetching && <LinearProgress />}
       <Box sx={{ height: "calc(100vh - 360px)", minHeight: 400 }}>
-        <DataGrid<ListingRow>
-          rows={rows}
-          columns={columns}
-          getRowId={getRowId}
-          density="compact"
-          disableRowSelectionOnClick
-          disableColumnMenu
-          loading={query.isLoading}
-          sortingMode="server"
-          sortModel={sortModel}
-          onSortModelChange={handleSort}
-          paginationMode="server"
-          rowCount={totalCount}
-          paginationModel={paginationModel}
-          pageSizeOptions={[PAGE_SIZE]}
-          onPaginationModelChange={handlePagination}
-          onRowClick={handleRowClick}
-          sx={{
-            border: 0,
-            cursor: "pointer",
-            "& .MuiDataGrid-columnHeaders": {
-              backgroundColor: "background.default",
-            },
-            "& .MuiDataGrid-row:hover": {
-              backgroundColor: "action.hover",
-            },
-          }}
-        />
+        {postMount && (
+          <DataGrid<ListingRow>
+            rows={rows}
+            columns={columns}
+            getRowId={getRowId}
+            density="compact"
+            disableRowSelectionOnClick
+            disableColumnMenu
+            loading={query.isLoading}
+            sortingMode="server"
+            sortModel={sortModel}
+            onSortModelChange={handleSort}
+            paginationMode="server"
+            rowCount={totalCount}
+            paginationModel={paginationModel}
+            pageSizeOptions={[PAGE_SIZE]}
+            onPaginationModelChange={handlePagination}
+            onRowClick={handleRowClick}
+            sx={{
+              border: 0,
+              cursor: "pointer",
+              "& .MuiDataGrid-columnHeaders": {
+                backgroundColor: "background.default",
+              },
+              "& .MuiDataGrid-row:hover": {
+                backgroundColor: "action.hover",
+              },
+            }}
+          />
+        )}
       </Box>
     </Paper>
   );
