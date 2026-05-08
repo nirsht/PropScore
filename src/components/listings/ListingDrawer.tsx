@@ -130,17 +130,20 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
     const state = listing?.state?.trim();
     const city = listing?.city?.trim();
     const zip = listing?.postalCode?.trim();
-    const sn = raw.StreetNumber;
-    const streetNumber =
-      typeof sn === "number" ? String(sn) : strField(sn);
-    const streetName = strField(raw.StreetName);
     let street: string | undefined;
-    if (streetNumber && streetName) {
-      street = `${streetNumber} ${streetName}`.trim();
-    } else if (listing?.address) {
-      // Fallback: UnparsedAddress is "123 Foo St, City, ST 12345" — take
-      // everything before the first comma as the street.
+    // Prefer UnparsedAddress's first segment — it preserves the street
+    // suffix ("St", "Ave"), which Bridge's StreetName field omits.
+    if (listing?.address?.includes(",")) {
       street = listing.address.split(",")[0]?.trim();
+    } else {
+      const sn = raw.StreetNumber;
+      const streetNumber =
+        typeof sn === "number" ? String(sn) : strField(sn);
+      const streetName = strField(raw.StreetName);
+      const streetSuffix = strField(raw.StreetSuffix);
+      const parts = [streetNumber, streetName, streetSuffix].filter(Boolean);
+      if (parts.length >= 2) street = parts.join(" ");
+      else if (listing?.address) street = listing.address.trim();
     }
     if (!state || !city || !street || !zip) return "https://www.redfin.com";
     const suffixMap: Record<string, string> = {
