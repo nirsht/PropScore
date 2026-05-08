@@ -28,6 +28,20 @@ export const listingsRouter = router({
           neighborhoodRel: {
             select: { name: true, crimeScore: true, crimeUpdatedAt: true },
           },
+          contact: {
+            select: {
+              source: true,
+              agentName: true,
+              agentPhone: true,
+              agentEmail: true,
+              agentWebsite: true,
+              officeName: true,
+              officePhone: true,
+              officeEmail: true,
+              officeWebsite: true,
+              fetchedAt: true,
+            },
+          },
         },
       });
       if (!listing) throw new TRPCError({ code: "NOT_FOUND" });
