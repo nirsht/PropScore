@@ -1,29 +1,23 @@
--- =========================================================================
--- ADU feasibility split: replace single LOW/MEDIUM/HIGH `aduPotential` with
--- two parallel 0–100 scores — `detachedAduScore` (vacant-yard ADU) and
--- `convertedAduScore` (repurpose basement/garage). Adds `convertedAduSource`
--- and a numeric `assessorBasementSqft` to drive the converted score.
--- =========================================================================
+-- Score schema v4: surface location + ADU as first-class component scores
+-- so the listings view can ORDER BY a user-configurable weighted blend of
+-- (vacancy, location, density, adu, motivation) rather than relying on a
+-- single precomputed `valueAddWeightedAvg` baked at write-time.
+--
+-- Both columns are nullable: existing rows are backfilled via
+-- `pnpm recompute-scores` rather than in this migration so that ADU/
+-- location absences propagate correctly through the null-aware divisor
+-- in `weightedValueAdd`.
 
--- Drop the materialized view first; it references aduPotential / aduConfidence.
+ALTER TABLE "Score"
+  ADD COLUMN "locationScore" DOUBLE PRECISION,
+  ADD COLUMN "aduScore"      DOUBLE PRECISION;
+
+CREATE INDEX "Score_locationScore_idx" ON "Score" ("locationScore" DESC);
+CREATE INDEX "Score_aduScore_idx"      ON "Score" ("aduScore" DESC);
+
+-- Refresh the listings materialized view to expose the new columns.
 DROP MATERIALIZED VIEW IF EXISTS "mv_listing_search";
 
--- ---------- Drop old columns ----------
-ALTER TABLE "Listing"
-  DROP COLUMN IF EXISTS "aduPotential",
-  DROP COLUMN IF EXISTS "aduConfidence",
-  DROP COLUMN IF EXISTS "aduRationale";
-
--- ---------- New columns ----------
-ALTER TABLE "Listing"
-  ADD COLUMN "assessorBasementSqft"   INTEGER,
-  ADD COLUMN "detachedAduScore"       INTEGER,
-  ADD COLUMN "detachedAduRationale"   TEXT,
-  ADD COLUMN "convertedAduScore"      INTEGER,
-  ADD COLUMN "convertedAduRationale"  TEXT,
-  ADD COLUMN "convertedAduSource"     TEXT;
-
--- ---------- Recreate the materialized view ----------
 CREATE MATERIALIZED VIEW "mv_listing_search" AS
 SELECT
   l."mlsId",
@@ -63,17 +57,31 @@ SELECT
   l."aiStories",
   l."aiHasBasement",
   l."aiHasPenthouse",
-  l."detachedAduScore",
-  l."convertedAduScore",
+  l."aduPotential",
+  l."aduConfidence",
   l."extractedTotalMonthlyRent",
   l."extractedOccupancy",
   l."pricePerSqft",
   l."pricePerUnit",
   l."sqftPerUnit",
   l."hasSizeDiscrepancy",
+  l."locationScore"       AS "listingLocationScore",
   s."densityScore",
   s."vacancyScore",
   s."motivationScore",
+  -- Prefer Score.locationScore (snapshotted at score time) but fall back
+  -- to Listing.locationScore when an older Score row predates the v4
+  -- backfill. Same idea for aduScore via Listing.aduPotential mapping.
+  COALESCE(s."locationScore", l."locationScore") AS "locationScore",
+  COALESCE(
+    s."aduScore",
+    CASE l."aduPotential"
+      WHEN 'HIGH'   THEN 100
+      WHEN 'MEDIUM' THEN 55
+      WHEN 'LOW'    THEN 15
+      ELSE NULL
+    END
+  ) AS "aduScore",
   s."valueAddWeightedAvg",
   s."computedBy"   AS "scoreComputedBy",
   s."computedAt"   AS "scoreComputedAt"
@@ -92,3 +100,5 @@ CREATE INDEX "mv_listing_search_renovationLevel_idx"          ON "mv_listing_sea
 CREATE INDEX "mv_listing_search_geom_gist"                    ON "mv_listing_search" USING GIST ("geom");
 CREATE INDEX "mv_listing_search_address_trgm"                 ON "mv_listing_search" USING GIN ("address" gin_trgm_ops);
 CREATE INDEX "mv_listing_search_hasSizeDiscrepancy_idx"       ON "mv_listing_search" ("hasSizeDiscrepancy") WHERE "hasSizeDiscrepancy" = TRUE;
+CREATE INDEX "mv_listing_search_locationScore_idx"            ON "mv_listing_search" ("locationScore" DESC NULLS LAST);
+CREATE INDEX "mv_listing_search_aduScore_idx"                 ON "mv_listing_search" ("aduScore" DESC NULLS LAST);

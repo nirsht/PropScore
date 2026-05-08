@@ -64,6 +64,7 @@ export const listingsRouter = router({
             extractedUnitsTotal,
             detachedAduScore: listing.detachedAduScore,
             convertedAduScore: listing.convertedAduScore,
+            locationScore: listing.locationScore,
           })
         : null;
       const heuristicSnapshot = h

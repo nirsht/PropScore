@@ -8,12 +8,19 @@ export const scoringRouter = router({
   recomputeHeuristic: protectedProcedure
     .input(z.object({ mlsIds: z.array(z.string()).min(1).max(500) }))
     .mutation(async ({ ctx, input }) => {
-      const listings = await ctx.db.listing.findMany({ where: { mlsId: { in: input.mlsIds } } });
+      const listings = await ctx.db.listing.findMany({
+        where: { mlsId: { in: input.mlsIds } },
+        include: { neighborhoodRel: { select: { crimeScore: true } } },
+      });
       let updated = 0;
       for (const l of listings) {
         const normalized = normalizeListing(l.raw as Record<string, unknown>);
         if (!normalized) continue;
-        const score = computeHeuristicScore(normalized);
+        const score = computeHeuristicScore(normalized, {
+          locationScore: l.locationScore,
+          detachedAduScore: l.detachedAduScore,
+          convertedAduScore: l.convertedAduScore,
+        });
         await ctx.db.score.upsert({
           where: { listingMlsId: l.mlsId },
           create: {
@@ -21,6 +28,8 @@ export const scoringRouter = router({
             densityScore: score.densityScore,
             vacancyScore: score.vacancyScore,
             motivationScore: score.motivationScore,
+            locationScore: score.locationScore,
+            aduScore: score.aduScore,
             valueAddWeightedAvg: score.valueAddWeightedAvg,
             breakdown: score.breakdown as Prisma.InputJsonValue,
             computedBy: "HEURISTIC",
@@ -29,6 +38,8 @@ export const scoringRouter = router({
             densityScore: score.densityScore,
             vacancyScore: score.vacancyScore,
             motivationScore: score.motivationScore,
+            locationScore: score.locationScore,
+            aduScore: score.aduScore,
             valueAddWeightedAvg: score.valueAddWeightedAvg,
             breakdown: score.breakdown as Prisma.InputJsonValue,
             computedBy: "HEURISTIC",

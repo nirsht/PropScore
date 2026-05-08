@@ -3,21 +3,33 @@ import type { RenovationLevel } from "@prisma/client";
 /**
  * Value-Add weighted average — the default sort key for the grid.
  *
- * Updated 2026-05-01: added three new components driven by the new data
- * we capture (size discrepancy, land-heavy ratio, ADU potential). Weights
- * are computed dynamically — null components drop out of the divisor so
- * unscored listings are not penalized.
+ * Updated 2026-05-08: collapsed to a 5-component scheme aligned with how
+ * we actually pitch deals (vacancy is king, location and density tie for
+ * second, ADU is a tiebreaker, motivation is a small thumb on the scale).
+ * Renovation upside, size discrepancy, and land ratio are still computed
+ * for the breakdown but no longer move the weighted average.
+ *
+ * Weights are exposed so the UI can let users re-rank with their own.
+ * Null components drop out of the divisor so unscored listings aren't
+ * penalized.
  */
 export const VALUE_ADD_WEIGHTS = {
-  density: 0.18,
-  vacancy: 0.32,
-  motivation: 0.10,
-  renovation: 0.15,
-  // New components (2026-05-01)
-  sizeDiscrepancy: 0.10, // Assessor sees more building than MLS reports → upside
-  landRatio: 0.08,        // Land-heavy → redevelopment play
-  adu: 0.07,              // Backyard ADU adds a unit → cash-flow upside
+  vacancy: 0.35,
+  location: 0.25,
+  density: 0.25,
+  adu: 0.10,
+  motivation: 0.05,
 } as const;
+
+export type WeightKey = keyof typeof VALUE_ADD_WEIGHTS;
+
+export const WEIGHT_KEYS: ReadonlyArray<WeightKey> = [
+  "vacancy",
+  "location",
+  "density",
+  "adu",
+  "motivation",
+];
 
 /**
  * Higher = more value-add upside available. RENOVATED is a near-zero floor
@@ -35,11 +47,6 @@ export function renovationUpsideScore(level: RenovationLevel | null | undefined)
   return RENOVATION_UPSIDE[level];
 }
 
-/**
- * Size-discrepancy upside. When the Assessor's measured building sqft exceeds
- * the MLS-listed sqft, the building is actually larger than priced — the seller
- * (or their agent) under-measured. Stronger gap = bigger opportunity.
- */
 export function sizeDiscrepancyScore(
   mlsSqft: number | null | undefined,
   assessorSqft: number | null | undefined,
@@ -47,16 +54,12 @@ export function sizeDiscrepancyScore(
   if (mlsSqft == null || assessorSqft == null) return null;
   if (mlsSqft <= 0 || assessorSqft <= 0) return null;
   const ratio = assessorSqft / mlsSqft;
-  if (ratio < 1.05) return 20;  // negligible
-  if (ratio < 1.15) return 50;  // meaningful difference
-  if (ratio < 1.30) return 80;  // major (likely lazy MLS measurement)
-  return 95;                    // huge — strong opportunity
+  if (ratio < 1.05) return 20;
+  if (ratio < 1.15) return 50;
+  if (ratio < 1.30) return 80;
+  return 95;
 }
 
-/**
- * Land-heavy ratio. When the Assessor's land value dominates the building
- * value, the parcel is a redevelopment / scrape-and-rebuild play.
- */
 export function landRatioScore(
   landValue: number | null | undefined,
   buildingValue: number | null | undefined,
@@ -66,7 +69,7 @@ export function landRatioScore(
   const total = landValue + buildingValue;
   if (total <= 0) return null;
   const landPct = landValue / total;
-  if (landPct > 0.85) return 100; // dirt deal
+  if (landPct > 0.85) return 100;
   if (landPct > 0.70) return 75;
   if (landPct > 0.55) return 50;
   return 25;
@@ -92,33 +95,47 @@ export function aduCombinedScore(
   return Math.max(...candidates);
 }
 
-export function weightedValueAdd(scores: {
-  densityScore: number;
-  vacancyScore: number;
-  motivationScore: number;
-  renovationScore?: number | null;
-  sizeDiscrepancyScore?: number | null;
-  landRatioScore?: number | null;
-  aduScore?: number | null;
-}): number {
-  const w = VALUE_ADD_WEIGHTS;
-  const components: Array<{ value: number; weight: number }> = [
-    { value: scores.densityScore, weight: w.density },
-    { value: scores.vacancyScore, weight: w.vacancy },
-    { value: scores.motivationScore, weight: w.motivation },
-  ];
-  if (scores.renovationScore != null) {
-    components.push({ value: scores.renovationScore, weight: w.renovation });
+export type WeightedComponents = {
+  vacancyScore: number | null;
+  locationScore: number | null;
+  densityScore: number | null;
+  aduScore: number | null;
+  motivationScore: number | null;
+};
+
+export type WeightOverrides = Partial<Record<WeightKey, number>>;
+
+/**
+ * Normalize a partial weight set so the present keys sum to 1, mirroring
+ * how `weightedValueAdd` drops null components from the divisor. Returns
+ * the canonical defaults when no overrides are supplied.
+ */
+export function resolveWeights(overrides?: WeightOverrides): Record<WeightKey, number> {
+  if (!overrides) return { ...VALUE_ADD_WEIGHTS };
+  const merged: Record<WeightKey, number> = { ...VALUE_ADD_WEIGHTS };
+  for (const k of WEIGHT_KEYS) {
+    const v = overrides[k];
+    if (typeof v === "number" && Number.isFinite(v) && v >= 0) merged[k] = v;
   }
-  if (scores.sizeDiscrepancyScore != null) {
-    components.push({ value: scores.sizeDiscrepancyScore, weight: w.sizeDiscrepancy });
-  }
-  if (scores.landRatioScore != null) {
-    components.push({ value: scores.landRatioScore, weight: w.landRatio });
-  }
-  if (scores.aduScore != null) {
-    components.push({ value: scores.aduScore, weight: w.adu });
-  }
+  const sum = WEIGHT_KEYS.reduce((s, k) => s + merged[k], 0);
+  if (sum <= 0) return { ...VALUE_ADD_WEIGHTS };
+  if (Math.abs(sum - 1) < 1e-9) return merged;
+  const norm: Record<WeightKey, number> = { ...merged };
+  for (const k of WEIGHT_KEYS) norm[k] = merged[k] / sum;
+  return norm;
+}
+
+export function weightedValueAdd(
+  scores: WeightedComponents,
+  overrides?: WeightOverrides,
+): number {
+  const w = resolveWeights(overrides);
+  const components: Array<{ value: number; weight: number }> = [];
+  if (scores.vacancyScore != null) components.push({ value: scores.vacancyScore, weight: w.vacancy });
+  if (scores.locationScore != null) components.push({ value: scores.locationScore, weight: w.location });
+  if (scores.densityScore != null) components.push({ value: scores.densityScore, weight: w.density });
+  if (scores.aduScore != null) components.push({ value: scores.aduScore, weight: w.adu });
+  if (scores.motivationScore != null) components.push({ value: scores.motivationScore, weight: w.motivation });
 
   const totalWeight = components.reduce((sum, c) => sum + c.weight, 0);
   if (totalWeight <= 0) return 0;

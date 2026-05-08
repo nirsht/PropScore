@@ -115,6 +115,7 @@ async function main() {
         extractedUnitsTotal,
         detachedAduScore: l.detachedAduScore,
         convertedAduScore: l.convertedAduScore,
+        locationScore: newLocation,
       });
       await db.score.upsert({
         where: { listingMlsId: l.mlsId },
@@ -123,6 +124,8 @@ async function main() {
           densityScore: s.densityScore,
           vacancyScore: s.vacancyScore,
           motivationScore: s.motivationScore,
+          locationScore: s.locationScore,
+          aduScore: s.aduScore,
           valueAddWeightedAvg: s.valueAddWeightedAvg,
           breakdown: s.breakdown as Prisma.InputJsonValue,
           computedBy: "HEURISTIC",
@@ -131,6 +134,8 @@ async function main() {
           densityScore: s.densityScore,
           vacancyScore: s.vacancyScore,
           motivationScore: s.motivationScore,
+          locationScore: s.locationScore,
+          aduScore: s.aduScore,
           valueAddWeightedAvg: s.valueAddWeightedAvg,
           breakdown: s.breakdown as Prisma.InputJsonValue,
           computedBy: "HEURISTIC",
