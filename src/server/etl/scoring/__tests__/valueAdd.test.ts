@@ -98,10 +98,64 @@ describe("landRatioScore", () => {
 });
 
 describe("aduPotentialScore", () => {
-  it("ranks HIGH > MEDIUM > LOW", () => {
-    expect(aduPotentialScore("HIGH")!).toBeGreaterThan(aduPotentialScore("MEDIUM")!);
-    expect(aduPotentialScore("MEDIUM")!).toBeGreaterThan(aduPotentialScore("LOW")!);
-    expect(aduPotentialScore(null)).toBeNull();
+  it("ranks HIGH > MEDIUM > LOW for the AI signal alone", () => {
+    expect(aduPotentialScore("HIGH").score!).toBeGreaterThan(
+      aduPotentialScore("MEDIUM").score!,
+    );
+    expect(aduPotentialScore("MEDIUM").score!).toBeGreaterThan(
+      aduPotentialScore("LOW").score!,
+    );
+  });
+
+  it("returns null when no AI signal AND no structural feasibility data", () => {
+    expect(aduPotentialScore(null).score).toBeNull();
+    expect(aduPotentialScore(undefined).score).toBeNull();
+  });
+
+  it("returns a baseline score on structural data alone (no AI signal)", () => {
+    const r = aduPotentialScore(null, { landUseCategory: "MIXRES" });
+    expect(r.score).not.toBeNull();
+    expect(r.breakdown.boosts.landUse).toBe(15);
+  });
+
+  it("wood-frame construction adds a boost", () => {
+    const without = aduPotentialScore("MEDIUM");
+    const wood = aduPotentialScore("MEDIUM", {
+      assessorConstructionType: "Wood Frame",
+    });
+    expect(wood.score!).toBeGreaterThan(without.score!);
+    expect(wood.breakdown.boosts.construction).toBe(10);
+  });
+
+  it("MIXRES land use adds more than RESIDENT", () => {
+    const mix = aduPotentialScore("MEDIUM", { landUseCategory: "MIXRES" });
+    const res = aduPotentialScore("MEDIUM", { landUseCategory: "RESIDENT" });
+    expect(mix.breakdown.boosts.landUse).toBeGreaterThan(res.breakdown.boosts.landUse);
+  });
+
+  it("same-block ADU precedent dominates over radius precedent", () => {
+    const block = aduPotentialScore("MEDIUM", {
+      permitsBlockAduRecentCount: 1,
+      permitsRadiusAduRecentCount: 1,
+    });
+    const radiusOnly = aduPotentialScore("MEDIUM", {
+      permitsRadiusAduRecentCount: 1,
+    });
+    // Block precedent +20; radius +10 only when block is 0 (no double-count).
+    expect(block.breakdown.boosts.blockPrecedent).toBe(20);
+    expect(block.breakdown.boosts.radius).toBe(0);
+    expect(radiusOnly.breakdown.boosts.radius).toBe(10);
+  });
+
+  it("caps the score at 100", () => {
+    const r = aduPotentialScore("HIGH", {
+      assessorConstructionType: "Wood Frame",
+      landUseCategory: "MIXRES",
+      permitsOwnParcelAduCount: 1,
+      permitsBlockAduRecentCount: 1,
+      permitsRadiusAduRecentCount: 1,
+    });
+    expect(r.score).toBe(100);
   });
 });
 
@@ -158,7 +212,7 @@ describe("weightedValueAdd", () => {
       vacancyScore: 50,
       locationScore: 50,
       densityScore: 50,
-      aduScore: aduPotentialScore("HIGH"),
+      aduScore: aduPotentialScore("HIGH").score,
       motivationScore: 50,
     });
     expect(highAdu).toBeGreaterThan(noAdu);
@@ -201,8 +255,23 @@ describe("computeHeuristicScore — new signal flow", () => {
   it("HIGH ADU potential lifts value-add", () => {
     const baseline = computeHeuristicScore(baseListing());
     const lifted = computeHeuristicScore(baseListing(), { aduPotential: "HIGH" });
-    expect(lifted.aduScore).toBe(100);
+    // Without structural boosts the AI signal alone scores 80 (the new base).
+    expect(lifted.aduScore).toBe(80);
     expect(lifted.valueAddWeightedAvg).toBeGreaterThan(baseline.valueAddWeightedAvg);
+  });
+
+  it("structural feasibility boosts lift the ADU score above the AI base", () => {
+    const aiOnly = computeHeuristicScore(baseListing(), { aduPotential: "MEDIUM" });
+    const withFeasibility = computeHeuristicScore(baseListing(), {
+      aduPotential: "MEDIUM",
+      assessorConstructionType: "Wood Frame",
+      landUseCategory: "MIXRES",
+      permitsBlockAduRecentCount: 2,
+    });
+    expect(withFeasibility.aduScore!).toBeGreaterThan(aiOnly.aduScore!);
+    expect(withFeasibility.valueAddWeightedAvg).toBeGreaterThan(
+      aiOnly.valueAddWeightedAvg,
+    );
   });
 
   it("uses extractedOccupancy for vacancy when present", () => {
