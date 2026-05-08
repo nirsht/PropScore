@@ -336,7 +336,13 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
               listing-extract output (rent roll, capex, ADU). Sits directly under
               the building details so AI-derived facts read alongside the source
               data. */}
-          <AIInsightsCard listing={listing} />
+          <AIInsightsCard
+            listing={{
+              ...listing,
+              publicRemarks: (raw.PublicRemarks as string | undefined) ?? null,
+              privateRemarks: (raw.PrivateRemarks as string | undefined) ?? null,
+            }}
+          />
 
           {/* Opportunity scores — bar chart at top, AI rationale collapsed below */}
           <Paper variant="outlined" sx={{ p: 2 }}>
@@ -1532,6 +1538,8 @@ type ListingForAI = {
   aduConfidence: number | null;
   aduRationale: string | null;
   extractFetchedAt: Date | string | null;
+  publicRemarks: string | null;
+  privateRemarks: string | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -2104,6 +2112,75 @@ function RentRollSection({ listing }: { listing: ListingForAI }) {
           </span>
         </Tooltip>
       </Stack>
+
+      {(listing.publicRemarks || listing.privateRemarks) && (
+        <Box
+          sx={{
+            mt: 1.25,
+            pt: 1,
+            borderTop: 1,
+            borderColor: "divider",
+          }}
+        >
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{
+              fontWeight: 600,
+              letterSpacing: 0.4,
+              textTransform: "uppercase",
+            }}
+          >
+            From MLS · original source
+          </Typography>
+          {listing.publicRemarks && (
+            <Box sx={{ mt: 0.75 }}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ fontWeight: 600 }}
+              >
+                Public remarks
+              </Typography>
+              <Typography
+                component="pre"
+                variant="body2"
+                sx={{
+                  whiteSpace: "pre-wrap",
+                  fontFamily: "inherit",
+                  m: 0,
+                  mt: 0.25,
+                }}
+              >
+                {listing.publicRemarks}
+              </Typography>
+            </Box>
+          )}
+          {listing.privateRemarks && (
+            <Box sx={{ mt: 1 }}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ fontWeight: 600 }}
+              >
+                Private remarks
+              </Typography>
+              <Typography
+                component="pre"
+                variant="body2"
+                sx={{
+                  whiteSpace: "pre-wrap",
+                  fontFamily: "inherit",
+                  m: 0,
+                  mt: 0.25,
+                }}
+              >
+                {listing.privateRemarks}
+              </Typography>
+            </Box>
+          )}
+        </Box>
+      )}
     </Box>
   );
 }
