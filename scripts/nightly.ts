@@ -4,12 +4,13 @@
  *
  *   1. etl:sync                                              (must be first)
  *   2. parallel:
- *        - enrich:sfpim → enrich:vision   (both write Listing.raw → serial)
+ *        - enrich:sfpim → enrich:vision → enrich:zoning  (all write Listing.raw or Listing → serial)
  *        - enrich:listings                (disjoint columns)
  *        - enrich:rent-comps              (writes AIEnrichment, throttled)
  *        - refresh:walkscore              (Listing.walkScore only)
  *        - refresh:crime                  (Neighborhood table only)
- *   3. recompute:scores                                      (must be last)
+ *   3. refresh:neighborhood-comps         (reads listings/assessor + writes Neighborhood medians)
+ *   4. recompute:scores                                      (must be last)
  *
  * Each stage is a child process so it gets a fresh Prisma client / cursor;
  * we stream each one's stdout/stderr line-tagged into the parent log so
@@ -40,8 +41,12 @@ const PARALLEL_LANES: Stage[][] = [
   [
     stage("sfpim", "enrich:sfpim", ["--concurrency=5"]),
     stage("vision", "enrich:vision", ["--concurrency=5"]),
+    // landuse + permits join on Listing.blockLot (populated by sfpim);
+    // zoning needs assessor lot size for RM-* density-by-area rules, so
+    // they all chain after sfpim in the same lane.
     stage("landuse", "enrich:landuse", ["--concurrency=3"]),
     stage("permits", "enrich:permits", ["--concurrency=3"]),
+    stage("zoning", "enrich:zoning", ["--concurrency=5"]),
   ],
   [stage("extract", "enrich:listings", ["--concurrency=8"])],
   [stage("rent-comps", "enrich:rent-comps", ["--concurrency=3"])],
@@ -52,6 +57,10 @@ const PARALLEL_LANES: Stage[][] = [
   // run in parallel.
   [stage("contacts", "enrich:contacts", ["--concurrency=3"])],
 ];
+// Neighborhood comp medians depend on assessor data being populated, so
+// run after the parallel phase finishes but before recompute:scores reads
+// the medians.
+const NEIGHBORHOOD_COMPS: Stage = stage("nb-comps", "refresh:neighborhood-comps");
 const POST: Stage = stage("recompute", "recompute:scores");
 
 function runStage(s: Stage): Promise<void> {
@@ -101,7 +110,10 @@ async function main() {
   );
   await Promise.all(PARALLEL_LANES.map(runLane));
 
-  console.log(`[nightly] phase 3: ${POST.name}`);
+  console.log(`[nightly] phase 3: ${NEIGHBORHOOD_COMPS.name}`);
+  await runStage(NEIGHBORHOOD_COMPS);
+
+  console.log(`[nightly] phase 4: ${POST.name}`);
   await runStage(POST);
 
   const total = ((Date.now() - overallStart) / 1000).toFixed(1);

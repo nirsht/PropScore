@@ -4,6 +4,11 @@ export type ScoreLike = {
   densityScore: number;
   vacancyScore: number;
   motivationScore: number;
+  locationScore?: number | null;
+  aduScore?: number | null;
+  marketUpsideScore?: number | null;
+  assessmentDeltaScore?: number | null;
+  zoningUpsideScore?: number | null;
   valueAddWeightedAvg: number;
   computedBy?: "HEURISTIC" | "AI";
 };
