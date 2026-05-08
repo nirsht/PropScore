@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   RENOVATION_UPSIDE,
+  VALUE_ADD_WEIGHTS,
   aduPotentialScore,
   landRatioScore,
   renovationUpsideScore,
+  resolveWeights,
   sizeDiscrepancyScore,
   weightedValueAdd,
 } from "../valueAdd";
@@ -37,6 +39,24 @@ const baseListing = (
   bridgeModificationTimestamp: new Date("2026-01-15"),
   raw: {},
   ...overrides,
+});
+
+describe("VALUE_ADD_WEIGHTS", () => {
+  it("sums to 1", () => {
+    const sum =
+      VALUE_ADD_WEIGHTS.vacancy +
+      VALUE_ADD_WEIGHTS.location +
+      VALUE_ADD_WEIGHTS.density +
+      VALUE_ADD_WEIGHTS.adu +
+      VALUE_ADD_WEIGHTS.motivation;
+    expect(sum).toBeCloseTo(1, 9);
+  });
+
+  it("vacancy is the heaviest weight (35%)", () => {
+    expect(VALUE_ADD_WEIGHTS.vacancy).toBe(0.35);
+    expect(VALUE_ADD_WEIGHTS.vacancy).toBeGreaterThan(VALUE_ADD_WEIGHTS.location);
+    expect(VALUE_ADD_WEIGHTS.vacancy).toBeGreaterThan(VALUE_ADD_WEIGHTS.density);
+  });
 });
 
 describe("RENOVATION_UPSIDE", () => {
@@ -85,72 +105,88 @@ describe("aduPotentialScore", () => {
   });
 });
 
+describe("resolveWeights", () => {
+  it("returns canonical defaults when overrides omitted", () => {
+    expect(resolveWeights()).toEqual(VALUE_ADD_WEIGHTS);
+  });
+
+  it("normalizes overrides to sum 1", () => {
+    const r = resolveWeights({ vacancy: 1, location: 1, density: 1, adu: 1, motivation: 1 });
+    expect(r.vacancy).toBeCloseTo(0.2, 9);
+    expect(r.location).toBeCloseTo(0.2, 9);
+  });
+
+  it("zero overrides fall back to defaults", () => {
+    const r = resolveWeights({ vacancy: 0, location: 0, density: 0, adu: 0, motivation: 0 });
+    expect(r).toEqual(VALUE_ADD_WEIGHTS);
+  });
+});
+
 describe("weightedValueAdd", () => {
   it("returns the input value when all components share the same score", () => {
     expect(
       weightedValueAdd({
-        densityScore: 50,
         vacancyScore: 50,
-        motivationScore: 50,
-        renovationScore: 50,
-        sizeDiscrepancyScore: 50,
-        landRatioScore: 50,
+        locationScore: 50,
+        densityScore: 50,
         aduScore: 50,
+        motivationScore: 50,
       }),
     ).toBeCloseTo(50, 5);
   });
 
-  it("falls back gracefully when renovation/size/land/adu unknown", () => {
+  it("falls back gracefully when location/adu unknown", () => {
     const known = weightedValueAdd({
-      densityScore: 80,
       vacancyScore: 80,
+      locationScore: null,
+      densityScore: 80,
+      aduScore: null,
       motivationScore: 80,
     });
     expect(known).toBeCloseTo(80, 5);
   });
 
-  it("DISTRESSED > RENOVATED for the same other inputs", () => {
-    const distressed = weightedValueAdd({
-      densityScore: 50,
-      vacancyScore: 50,
-      motivationScore: 50,
-      renovationScore: RENOVATION_UPSIDE.DISTRESSED,
-    });
-    const renovated = weightedValueAdd({
-      densityScore: 50,
-      vacancyScore: 50,
-      motivationScore: 50,
-      renovationScore: RENOVATION_UPSIDE.RENOVATED,
-    });
-    expect(distressed).toBeGreaterThan(renovated);
-  });
-
   it("HIGH ADU lifts value-add over no ADU read", () => {
     const noAdu = weightedValueAdd({
-      densityScore: 50,
       vacancyScore: 50,
+      locationScore: 50,
+      densityScore: 50,
+      aduScore: null,
       motivationScore: 50,
     });
     const highAdu = weightedValueAdd({
-      densityScore: 50,
       vacancyScore: 50,
-      motivationScore: 50,
+      locationScore: 50,
+      densityScore: 50,
       aduScore: aduPotentialScore("HIGH"),
+      motivationScore: 50,
     });
     expect(highAdu).toBeGreaterThan(noAdu);
   });
+
+  it("respects per-call weight overrides", () => {
+    // All-vacancy weighting → result = vacancyScore
+    const v = weightedValueAdd(
+      {
+        vacancyScore: 100,
+        locationScore: 0,
+        densityScore: 0,
+        aduScore: 0,
+        motivationScore: 0,
+      },
+      { vacancy: 1, location: 0, density: 0, adu: 0, motivation: 0 },
+    );
+    expect(v).toBeCloseTo(100, 5);
+  });
 });
 
-describe("computeHeuristicScore — new context fields", () => {
-  it("propagates renovation level into value-add", () => {
-    const noReno = computeHeuristicScore(baseListing());
-    const distressed = computeHeuristicScore(baseListing(), {
-      renovationLevel: "DISTRESSED",
-    });
-    expect(distressed.valueAddWeightedAvg).toBeGreaterThan(noReno.valueAddWeightedAvg);
-    expect(distressed.breakdown).toMatchObject({
-      inputs: { renovationLevel: "DISTRESSED" },
-    });
+describe("computeHeuristicScore — new signal flow", () => {
+  it("propagates location score into value-add", () => {
+    const noLoc = computeHeuristicScore(baseListing());
+    const highLoc = computeHeuristicScore(baseListing(), { locationScore: 95 });
+    expect(highLoc.locationScore).toBe(95);
+    expect(highLoc.valueAddWeightedAvg).toBeGreaterThan(noLoc.valueAddWeightedAvg);
+    expect(noLoc.locationScore).toBeNull();
   });
 
   it("uses effectiveUnits from context for density (Assessor fallback)", () => {
@@ -162,32 +198,44 @@ describe("computeHeuristicScore — new context fields", () => {
     expect(withAssessor.densityScore).toBeGreaterThan(noContext.densityScore);
   });
 
-  it("size-discrepancy lifts value-add when assessor sqft >> mls sqft", () => {
-    const baseline = computeHeuristicScore(baseListing());
-    const lifted = computeHeuristicScore(baseListing(), {
-      mlsSqft: 4000,
-      assessorSqft: 5200,
-    });
-    expect(lifted.valueAddWeightedAvg).toBeGreaterThan(baseline.valueAddWeightedAvg);
-  });
-
-  it("land-heavy ratio lifts value-add", () => {
-    const baseline = computeHeuristicScore(baseListing());
-    const lifted = computeHeuristicScore(baseListing(), {
-      assessorBuildingValue: 100_000,
-      assessorLandValue: 1_500_000,
-    });
-    expect(lifted.valueAddWeightedAvg).toBeGreaterThan(baseline.valueAddWeightedAvg);
-  });
-
   it("HIGH ADU potential lifts value-add", () => {
     const baseline = computeHeuristicScore(baseListing());
     const lifted = computeHeuristicScore(baseListing(), { aduPotential: "HIGH" });
+    expect(lifted.aduScore).toBe(100);
     expect(lifted.valueAddWeightedAvg).toBeGreaterThan(baseline.valueAddWeightedAvg);
   });
 
   it("uses extractedOccupancy for vacancy when present", () => {
     const occupied = computeHeuristicScore(baseListing(), { extractedOccupancy: 1.0 });
     expect(occupied.vacancyScore).toBeLessThanOrEqual(5);
+  });
+
+  it("a heavily-vacant building scores high regardless of low location", () => {
+    // Mirrors 1137 Folsom: 25/27 units vacant. Vacancy alone (35%) +
+    // density (25%) should push the weighted avg high.
+    const folsomLike = computeHeuristicScore(
+      baseListing({ propertyType: "Multi Family", units: 27 }),
+      {
+        effectiveUnits: 27,
+        extractedOccupancy: 2 / 27, // ~7% occupancy
+        locationScore: 40,
+      },
+    );
+    expect(folsomLike.vacancyScore).toBeGreaterThanOrEqual(90);
+    expect(folsomLike.valueAddWeightedAvg).toBeGreaterThanOrEqual(60);
+  });
+
+  it("breakdown still surfaces legacy components for transparency", () => {
+    const s = computeHeuristicScore(baseListing(), {
+      renovationLevel: "DISTRESSED",
+      mlsSqft: 4000,
+      assessorSqft: 5200,
+      assessorBuildingValue: 100_000,
+      assessorLandValue: 1_500_000,
+    });
+    const components = (s.breakdown as { components: Record<string, number | null> }).components;
+    expect(components.renovation).toBe(100);
+    expect(components.sizeDiscrepancy).toBeGreaterThan(0);
+    expect(components.landRatio).toBe(100);
   });
 });

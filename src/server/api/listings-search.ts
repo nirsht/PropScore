@@ -1,6 +1,7 @@
 import { Prisma, type RenovationLevel } from "@prisma/client";
 import { db } from "@/lib/db";
 import { FILTER_DEFAULTS, type FilterInput, type SortKey } from "./schemas/filter";
+import { resolveWeights, VALUE_ADD_WEIGHTS } from "@/server/etl/scoring/valueAdd";
 
 export type ListingRow = {
   mlsId: string;
@@ -54,6 +55,8 @@ export type ListingRow = {
   vacancyScore: number | null;
   motivationScore: number | null;
   valueAddWeightedAvg: number | null;
+  locationScore: number | null;
+  aduScore: number | null;
   scoreComputedBy: "HEURISTIC" | "AI" | null;
 };
 
@@ -76,13 +79,58 @@ const SORT_COLUMN: Record<SortKey, string> = {
 };
 
 /**
+ * SQL mirror of `weightedValueAdd` from scoring/valueAdd.ts: weighted blend
+ * of 5 component scores with null components dropped from the divisor.
+ * Returns NULL when no components are present.
+ *
+ * Returned as a Prisma.Sql so callers can splice it into ORDER BY *and*
+ * the SELECT list (so cursor pagination can read the same value back).
+ */
+function weightedValueAddExpr(
+  weights: ReturnType<typeof resolveWeights>,
+  alias?: string,
+): Prisma.Sql {
+  const wV = weights.vacancy;
+  const wL = weights.location;
+  const wD = weights.density;
+  const wA = weights.adu;
+  const wM = weights.motivation;
+  const expr = Prisma.sql`(
+    COALESCE(${wV}::float * "vacancyScore", 0) +
+    COALESCE(${wL}::float * "locationScore", 0) +
+    COALESCE(${wD}::float * "densityScore", 0) +
+    COALESCE(${wA}::float * "aduScore", 0) +
+    COALESCE(${wM}::float * "motivationScore", 0)
+  ) / NULLIF(
+    (CASE WHEN "vacancyScore"    IS NOT NULL THEN ${wV}::float ELSE 0 END) +
+    (CASE WHEN "locationScore"   IS NOT NULL THEN ${wL}::float ELSE 0 END) +
+    (CASE WHEN "densityScore"    IS NOT NULL THEN ${wD}::float ELSE 0 END) +
+    (CASE WHEN "aduScore"        IS NOT NULL THEN ${wA}::float ELSE 0 END) +
+    (CASE WHEN "motivationScore" IS NOT NULL THEN ${wM}::float ELSE 0 END),
+    0
+  )`;
+  return alias ? Prisma.sql`${expr} AS ${Prisma.raw(`"${alias}"`)}` : expr;
+}
+
+/** True when the supplied weights differ from VALUE_ADD_WEIGHTS by >1e-9. */
+function weightsDifferFromDefault(
+  weights: ReturnType<typeof resolveWeights>,
+): boolean {
+  const keys = ["vacancy", "location", "density", "adu", "motivation"] as const;
+  for (const k of keys) {
+    if (Math.abs(weights[k] - VALUE_ADD_WEIGHTS[k]) > 1e-9) return true;
+  }
+  return false;
+}
+
+/**
  * Build the WHERE clause used by both `searchListings` (with keyset cursor)
  * and `countListings` (no cursor — we want the total of the filtered set,
  * not the remainder after the current cursor).
  */
 function buildWhere(
   input: FilterInput,
-  opts: { includeCursor: boolean },
+  opts: { includeCursor: boolean; sortExpr?: Prisma.Sql },
 ): { sql: Prisma.Sql } {
   const where: Prisma.Sql[] = [];
 
@@ -161,14 +209,14 @@ function buildWhere(
   if (opts.includeCursor && input.cursor) {
     const sortBy = input.sortBy ?? FILTER_DEFAULTS.sortBy;
     const sortDir = input.sortDir ?? FILTER_DEFAULTS.sortDir;
-    const sortCol = Prisma.raw(SORT_COLUMN[sortBy]);
+    const sortExpr = opts.sortExpr ?? Prisma.raw(SORT_COLUMN[sortBy]);
     const cmp = Prisma.raw(sortDir === "asc" ? ">" : "<");
 
     if (input.cursor.sortValue == null) {
       where.push(Prisma.sql`("mlsId" ${cmp} ${input.cursor.mlsId})`);
     } else {
       where.push(
-        Prisma.sql`(${sortCol} ${cmp} ${input.cursor.sortValue} OR (${sortCol} = ${input.cursor.sortValue} AND "mlsId" ${cmp} ${input.cursor.mlsId}))`,
+        Prisma.sql`(${sortExpr} ${cmp} ${input.cursor.sortValue} OR (${sortExpr} = ${input.cursor.sortValue} AND "mlsId" ${cmp} ${input.cursor.mlsId}))`,
       );
     }
   }
@@ -179,13 +227,34 @@ function buildWhere(
 }
 
 export async function searchListings(input: FilterInput): Promise<SearchResult> {
-  const { sql: whereSql } = buildWhere(input, { includeCursor: true });
   const sortBy = input.sortBy ?? FILTER_DEFAULTS.sortBy;
   const sortDir = input.sortDir ?? FILTER_DEFAULTS.sortDir;
   const pageSize = input.limit ?? FILTER_DEFAULTS.limit;
-  const sortCol = Prisma.raw(SORT_COLUMN[sortBy]);
+
+  // When the user supplied custom weights for a value-add sort, build a
+  // SQL expression that mirrors `weightedValueAdd` and use it for both
+  // ORDER BY and the cursor predicate. Otherwise fall back to the
+  // precomputed (and indexed) `valueAddWeightedAvg` column.
+  const resolvedWeights = resolveWeights(input.scoringWeights);
+  const useDynamic =
+    sortBy === "valueAdd" &&
+    !!input.scoringWeights &&
+    weightsDifferFromDefault(resolvedWeights);
+  const dynamicExpr = useDynamic ? weightedValueAddExpr(resolvedWeights) : null;
+  const sortExpr = dynamicExpr ?? Prisma.raw(SORT_COLUMN[sortBy]);
+
+  const { sql: whereSql } = buildWhere(input, {
+    includeCursor: true,
+    sortExpr: useDynamic ? dynamicExpr! : undefined,
+  });
   const dir = Prisma.raw(sortDir === "asc" ? "ASC" : "DESC");
   const limit = pageSize + 1;
+
+  // When using a dynamic expression, surface its value as `valueAddWeightedAvg`
+  // in the result so the cursor read-back works against the same number.
+  const valueAddSelect = dynamicExpr
+    ? Prisma.sql`${dynamicExpr} AS "valueAddWeightedAvg"`
+    : Prisma.sql`"valueAddWeightedAvg"`;
 
   const rows = await db.$queryRaw<ListingRow[]>(
     Prisma.sql`
@@ -204,11 +273,13 @@ export async function searchListings(input: FilterInput): Promise<SearchResult> 
         "extractedTotalMonthlyRent", "extractedOccupancy",
         "pricePerSqft", "pricePerUnit", "sqftPerUnit",
         "hasSizeDiscrepancy",
-        "densityScore", "vacancyScore", "motivationScore", "valueAddWeightedAvg",
+        "densityScore", "vacancyScore", "motivationScore",
+        "locationScore", "aduScore",
+        ${valueAddSelect},
         "scoreComputedBy"
       FROM "mv_listing_search"
       ${whereSql}
-      ORDER BY ${sortCol} ${dir} NULLS LAST, "mlsId" ${dir}
+      ORDER BY ${sortExpr} ${dir} NULLS LAST, "mlsId" ${dir}
       LIMIT ${limit}
     `,
   );

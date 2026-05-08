@@ -67,6 +67,7 @@ export const listingsRouter = router({
               | "MEDIUM"
               | "HIGH"
               | null,
+            locationScore: listing.locationScore,
           })
         : null;
       const heuristicSnapshot = h

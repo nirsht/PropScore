@@ -1,6 +1,7 @@
 import type { RenovationLevel } from "@prisma/client";
 import type { NormalizedListing } from "../normalize";
 import { densityScore } from "./density";
+import { locationScore } from "./location";
 import { motivationScore } from "./motivation";
 import { vacancyScore } from "./vacancy";
 import {
@@ -11,40 +12,40 @@ import {
   renovationUpsideScore,
   sizeDiscrepancyScore,
   weightedValueAdd,
+  type WeightOverrides,
 } from "./valueAdd";
 
 export type ComputedScore = {
   densityScore: number;
   vacancyScore: number;
   motivationScore: number;
+  locationScore: number | null;
+  aduScore: number | null;
   valueAddWeightedAvg: number;
   breakdown: Record<string, unknown>;
 };
 
 export type HeuristicContext = {
-  /** Building sqft to use for density (Assessor first, falling back to MLS). */
   effectiveSqft?: number | null;
-  /** Resolved unit count (Assessor first, then MLS, then extracted unit-mix sum). */
   effectiveUnits?: number | null;
-  /** Resolved story count (Assessor → MLS → AI vision). */
   effectiveStories?: number | null;
-  /** Renovation level from the vision pass, if available. */
   renovationLevel?: RenovationLevel | null;
-  // ----- New 2026-05-01 signals -----
-  /** Raw MLS-listed sqft for discrepancy scoring. */
   mlsSqft?: number | null;
-  /** Raw Assessor sqft for discrepancy scoring. */
   assessorSqft?: number | null;
-  /** Assessor improvement value. */
   assessorBuildingValue?: number | null;
-  /** Assessor land value. */
   assessorLandValue?: number | null;
-  /** AI-extracted occupancy [0..1]. Beats `l.occupancy` when present. */
   extractedOccupancy?: number | null;
-  /** AI-extracted unit-mix sum (used when MLS units missing). */
   extractedUnitsTotal?: number | null;
-  /** AI-extracted ADU potential. */
   aduPotential?: "LOW" | "MEDIUM" | "HIGH" | null;
+  /** 0–100 location rating (walk + safety). Null when unavailable. */
+  locationScore?: number | null;
+  /**
+   * Optional per-call weight overrides. When omitted, the canonical
+   * `VALUE_ADD_WEIGHTS` are used. Used by the listings pipeline to persist
+   * the canonical weighted avg; user-customized rankings happen at query
+   * time, not at score-write time.
+   */
+  weights?: WeightOverrides;
 };
 
 export function computeHeuristicScore(
@@ -58,21 +59,25 @@ export function computeHeuristicScore(
   const sizeDiff = sizeDiscrepancyScore(ctx.mlsSqft ?? l.sqft, ctx.assessorSqft);
   const landRatio = landRatioScore(ctx.assessorLandValue, ctx.assessorBuildingValue);
   const adu = aduPotentialScore(ctx.aduPotential);
+  const location = ctx.locationScore ?? null;
 
-  const valueAddWeightedAvg = weightedValueAdd({
-    densityScore: density,
-    vacancyScore: vacancy,
-    motivationScore: motivation,
-    renovationScore: renovation,
-    sizeDiscrepancyScore: sizeDiff,
-    landRatioScore: landRatio,
-    aduScore: adu,
-  });
+  const valueAddWeightedAvg = weightedValueAdd(
+    {
+      vacancyScore: vacancy,
+      locationScore: location,
+      densityScore: density,
+      aduScore: adu,
+      motivationScore: motivation,
+    },
+    ctx.weights,
+  );
 
   return {
     densityScore: density,
     vacancyScore: vacancy,
     motivationScore: motivation,
+    locationScore: location,
+    aduScore: adu,
     valueAddWeightedAvg,
     breakdown: {
       weights: VALUE_ADD_WEIGHTS,
@@ -91,17 +96,24 @@ export function computeHeuristicScore(
         landValue: ctx.assessorLandValue,
         buildingValue: ctx.assessorBuildingValue,
         aduPotential: ctx.aduPotential ?? null,
+        locationScore: location,
       },
       components: {
         density,
         vacancy,
         motivation,
+        location,
+        adu,
+        // legacy components — still surfaced for transparency, no longer
+        // weighted into the value-add average.
         renovation,
         sizeDiscrepancy: sizeDiff,
         landRatio,
-        adu,
       },
-      version: 3,
+      version: 4,
     },
   };
 }
+
+// re-export for convenience (used by callers that build a custom score view).
+export { locationScore };

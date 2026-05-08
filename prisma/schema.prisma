@@ -246,6 +246,12 @@ model Score {
   densityScore        Float
   vacancyScore        Float
   motivationScore     Float
+  // Added 2026-05-08: stored as nullable so we can backfill incrementally.
+  // `locationScore` mirrors Listing.locationScore at score-time; `aduScore`
+  // is the numeric mapping of Listing.aduPotential. Both feed into
+  // valueAddWeightedAvg under the new 5-component scheme.
+  locationScore       Float?
+  aduScore            Float?
   valueAddWeightedAvg Float
   breakdown           Json
   computedBy          ScoreSource
@@ -255,6 +261,8 @@ model Score {
   @@index([densityScore(sort: Desc)])
   @@index([vacancyScore(sort: Desc)])
   @@index([motivationScore(sort: Desc)])
+  @@index([locationScore(sort: Desc)])
+  @@index([aduScore(sort: Desc)])
 }
 
 model AIEnrichment {
