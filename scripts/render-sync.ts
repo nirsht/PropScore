@@ -144,6 +144,7 @@ async function main() {
   const BRIDGE_SERVER_TOKEN = envOrDie("BRIDGE_SERVER_TOKEN");
   const OPENAI_API_KEY = envOrDie("OPENAI_API_KEY");
   const NEXT_PUBLIC_MAP_STYLE_URL = envOptional("NEXT_PUBLIC_MAP_STYLE_URL");
+  const WALKSCORE_API_KEY = envOptional("WALKSCORE_API_KEY");
 
   // 1. Locate services.
   console.log("Looking up services on Render…");
@@ -163,6 +164,7 @@ async function main() {
       BRIDGE_SERVER_TOKEN,
       OPENAI_API_KEY,
       ...(NEXT_PUBLIC_MAP_STYLE_URL ? { NEXT_PUBLIC_MAP_STYLE_URL } : {}),
+      ...(WALKSCORE_API_KEY ? { WALKSCORE_API_KEY } : {}),
     },
     WEB_SERVICE_NAME,
   );
@@ -172,6 +174,7 @@ async function main() {
       DATABASE_URL,
       BRIDGE_SERVER_TOKEN,
       OPENAI_API_KEY,
+      ...(WALKSCORE_API_KEY ? { WALKSCORE_API_KEY } : {}),
     },
     CRON_SERVICE_NAME,
   );
