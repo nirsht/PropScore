@@ -85,6 +85,7 @@ export async function runListingExtract(mlsId: string, userId: string | null): P
     const adu = deriveAduFromHeuristic(input);
     const empty: Output = {
       unitMix: null,
+      unitMixEvidence: null,
       rentRoll: null,
       aiRentEstimate: null,
       postRenovationRentEstimate: null,
