@@ -29,7 +29,8 @@ export function GlobalChatDrawer({ open, onClose }: Props) {
       slotProps={{
         paper: {
           sx: {
-            width: { xs: "100%", md: 720 },
+            width: { xs: "100%", md: 880, lg: 960 },
+            maxWidth: "100vw",
             display: "flex",
             flexDirection: "column",
             bgcolor: "background.default",
@@ -40,14 +41,37 @@ export function GlobalChatDrawer({ open, onClose }: Props) {
       <Stack
         direction="row"
         alignItems="center"
-        spacing={1}
-        sx={{ p: 1.5, borderBottom: 1, borderColor: "divider" }}
+        spacing={1.5}
+        sx={{
+          px: 2,
+          py: 1.25,
+          borderBottom: 1,
+          borderColor: "divider",
+          bgcolor: "background.paper",
+        }}
       >
-        <ChatBubbleOutlineRoundedIcon fontSize="small" />
-        <Typography variant="subtitle1" fontWeight={600} sx={{ flex: 1 }}>
-          Ask across all listings
-        </Typography>
-        <IconButton size="small" onClick={onClose}>
+        <Box
+          sx={{
+            width: 28,
+            height: 28,
+            borderRadius: "50%",
+            bgcolor: "primary.main",
+            color: "common.white",
+            display: "grid",
+            placeItems: "center",
+          }}
+        >
+          <ChatBubbleOutlineRoundedIcon sx={{ fontSize: 16 }} />
+        </Box>
+        <Stack sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="subtitle1" fontWeight={600} lineHeight={1.2}>
+            PropScore Assistant
+          </Typography>
+          <Typography variant="caption" color="text.secondary" lineHeight={1.2}>
+            Ask across all listings
+          </Typography>
+        </Stack>
+        <IconButton size="small" onClick={onClose} aria-label="Close chat">
           <CloseRoundedIcon fontSize="small" />
         </IconButton>
       </Stack>
