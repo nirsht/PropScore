@@ -58,14 +58,8 @@ export type BridgeProperty = Record<string, unknown> & {
   PrivateRemarks?: string;
   ListAgentFullName?: string;
   ListAgentMlsId?: string;
-  ListAgentDirectPhone?: string;
-  ListAgentOfficePhone?: string;
-  ListAgentEmail?: string;
   ListOfficeName?: string;
-  ListOfficePhone?: string;
   CoListAgentFullName?: string;
-  CoListAgentDirectPhone?: string;
-  CoListAgentEmail?: string;
 };
 
 export type SearchOptions = {
@@ -124,17 +118,12 @@ const DEFAULT_SELECT = [
   "StateOrProvince",
   "PostalCode",
   "PublicRemarks",
-  // Listing agent + brokerage contact info — surfaces as click-to-call/email in the drawer.
+  // Listing agent + brokerage names. Bridge's sfar dataset doesn't permit
+  // selecting agent phone/email under IDX policy, so we only pull the names.
   "ListAgentFullName",
   "ListAgentMlsId",
-  "ListAgentDirectPhone",
-  "ListAgentOfficePhone",
-  "ListAgentEmail",
   "ListOfficeName",
-  "ListOfficePhone",
   "CoListAgentFullName",
-  "CoListAgentDirectPhone",
-  "CoListAgentEmail",
 ];
 
 let lastRequestAt = 0;
