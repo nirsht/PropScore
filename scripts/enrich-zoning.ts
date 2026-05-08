@@ -55,7 +55,12 @@ async function refreshPolygons() {
   // Wholesale replace — districts change rarely and the table is small.
   await db.$executeRawUnsafe(`TRUNCATE TABLE "zoning_polygon"`);
 
-  let inserted = 0;
+  // Build batched multi-VALUES inserts. One row per round-trip to a remote
+  // Render PG would be ~10 minutes for ~10K rows; batching to 100 brings
+  // it under a minute. PostGIS parses each geometry inside the query.
+  const BATCH = 100;
+  type Row = { district: string; geomJson: string };
+  const rows: Row[] = [];
   let skipped = 0;
   for (const f of fc.features) {
     const district = readDistrict(f);
@@ -63,18 +68,34 @@ async function refreshPolygons() {
       skipped += 1;
       continue;
     }
-    // Coerce to MultiPolygon so the PostGIS column type is consistent.
     const geomJson = JSON.stringify(
       f.geometry.type === "MultiPolygon"
         ? f.geometry
         : { type: "MultiPolygon", coordinates: [f.geometry.coordinates] },
     );
-    await db.$executeRaw`
-      INSERT INTO "zoning_polygon" ("district", "geom")
-      VALUES (${district}, ST_GeomFromGeoJSON(${geomJson})::geography)
-    `;
-    inserted += 1;
+    rows.push({ district, geomJson });
   }
+
+  let inserted = 0;
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const chunk = rows.slice(i, i + BATCH);
+    const placeholders = chunk
+      .map((_, j) => `($${j * 2 + 1}, ST_GeomFromGeoJSON($${j * 2 + 2})::geography)`)
+      .join(", ");
+    const params: string[] = [];
+    for (const r of chunk) {
+      params.push(r.district, r.geomJson);
+    }
+    await db.$executeRawUnsafe(
+      `INSERT INTO "zoning_polygon" ("district", "geom") VALUES ${placeholders}`,
+      ...params,
+    );
+    inserted += chunk.length;
+    if ((i / BATCH) % 10 === 0) {
+      console.log(`[enrich-zoning] polygons inserted ${inserted}/${rows.length}…`);
+    }
+  }
+
   console.log(`[enrich-zoning] polygons refreshed — inserted=${inserted}, skipped=${skipped}`);
 }
 
