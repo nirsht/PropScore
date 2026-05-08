@@ -126,6 +126,29 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
     .filter(Boolean)
     .join(", ");
 
+  const redfinUrl = (() => {
+    const state = listing?.state?.trim();
+    const city = listing?.city?.trim();
+    const street = listing?.address?.trim();
+    const zip = listing?.postalCode?.trim();
+    if (!state || !city || !street || !zip) return "https://www.redfin.com";
+    const suffixMap: Record<string, string> = {
+      street: "St", avenue: "Ave", boulevard: "Blvd", drive: "Dr",
+      road: "Rd", lane: "Ln", court: "Ct", place: "Pl", terrace: "Ter",
+      circle: "Cir", highway: "Hwy", parkway: "Pkwy", square: "Sq",
+    };
+    const streetSlug = street
+      .split(/\s+/)
+      .map((part, i, arr) => {
+        if (i !== arr.length - 1) return part;
+        const abbrev = suffixMap[part.toLowerCase()];
+        return abbrev ?? part;
+      })
+      .join("-");
+    const citySlug = city.replace(/\s+/g, "-");
+    return `https://www.redfin.com/${state}/${citySlug}/${streetSlug}-${zip}`;
+  })();
+
   const agentName = strField(raw.ListAgentFullName);
   const agentPhone =
     strField(raw.ListAgentDirectPhone) ?? strField(raw.ListAgentOfficePhone);
@@ -358,7 +381,7 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
                 label="Zillow"
               />
               <CopyAndOpenLink
-                href="https://www.redfin.com"
+                href={redfinUrl}
                 icon={<HomeWorkRoundedIcon fontSize="small" />}
                 label="Redfin"
                 copyText={fullAddress}
