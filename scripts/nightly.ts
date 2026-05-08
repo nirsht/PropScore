@@ -22,15 +22,24 @@ import { spawn } from "node:child_process";
 
 type Stage = { name: string; cmd: string; args: string[] };
 
-function stage(name: string, script: string): Stage {
-  return { name, cmd: "pnpm", args: [script] };
+function stage(name: string, script: string, scriptArgs: string[] = []): Stage {
+  // pnpm forwards args after `--` to the underlying script.
+  const args = scriptArgs.length > 0 ? [script, "--", ...scriptArgs] : [script];
+  return { name, cmd: "pnpm", args };
 }
 
+// Per-lane concurrency caps tuned for shared-DB load when all lanes run in
+// parallel. Each agent fires several Prisma queries per listing, so the
+// effective in-flight query count is ~3-5x these numbers. Standalone
+// `pnpm enrich:*` runs keep their higher script defaults.
 const PRE: Stage = stage("etl-sync", "etl:sync");
 const PARALLEL_LANES: Stage[][] = [
-  [stage("sfpim", "enrich:sfpim"), stage("vision", "enrich:vision")],
-  [stage("extract", "enrich:listings")],
-  [stage("rent-comps", "enrich:rent-comps")],
+  [
+    stage("sfpim", "enrich:sfpim", ["--concurrency=5"]),
+    stage("vision", "enrich:vision", ["--concurrency=5"]),
+  ],
+  [stage("extract", "enrich:listings", ["--concurrency=8"])],
+  [stage("rent-comps", "enrich:rent-comps", ["--concurrency=3"])],
   [stage("walkscore", "refresh:walkscore")],
   [stage("crime", "refresh:crime")],
 ];
