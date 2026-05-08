@@ -129,8 +129,19 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
   const redfinUrl = (() => {
     const state = listing?.state?.trim();
     const city = listing?.city?.trim();
-    const street = listing?.address?.trim();
     const zip = listing?.postalCode?.trim();
+    const sn = raw.StreetNumber;
+    const streetNumber =
+      typeof sn === "number" ? String(sn) : strField(sn);
+    const streetName = strField(raw.StreetName);
+    let street: string | undefined;
+    if (streetNumber && streetName) {
+      street = `${streetNumber} ${streetName}`.trim();
+    } else if (listing?.address) {
+      // Fallback: UnparsedAddress is "123 Foo St, City, ST 12345" — take
+      // everything before the first comma as the street.
+      street = listing.address.split(",")[0]?.trim();
+    }
     if (!state || !city || !street || !zip) return "https://www.redfin.com";
     const suffixMap: Record<string, string> = {
       street: "St", avenue: "Ave", boulevard: "Blvd", drive: "Dr",
