@@ -210,37 +210,6 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
               <Typography variant="body2" color="text.secondary">
                 {[listing.city, listing.state, listing.postalCode].filter(Boolean).join(", ")}
               </Typography>
-              {(agentName || agentPhone || agentEmail || coAgentName ||
-                coAgentPhone || coAgentEmail || officeName || officePhone) && (
-                <Stack spacing={1} sx={{ mt: 1.5 }}>
-                  {(agentName || agentPhone || agentEmail) && (
-                    <ContactCard
-                      role="Listed by"
-                      name={agentName}
-                      phone={agentPhone}
-                      email={agentEmail}
-                      accent="primary"
-                    />
-                  )}
-                  {(coAgentName || coAgentPhone || coAgentEmail) && (
-                    <ContactCard
-                      role="Co-listed by"
-                      name={coAgentName}
-                      phone={coAgentPhone}
-                      email={coAgentEmail}
-                      accent="secondary"
-                    />
-                  )}
-                  {(officeName || officePhone) && (
-                    <ContactCard
-                      role="Brokerage"
-                      name={officeName}
-                      phone={officePhone}
-                      accent="default"
-                    />
-                  )}
-                </Stack>
-              )}
             </Box>
             <IconButton onClick={onClose} size="small">
               <CloseRoundedIcon />
@@ -249,21 +218,54 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
 
           {/* Raw IDs & timestamps — moved up so the source of truth is at the top */}
           <Paper variant="outlined" sx={{ p: 1.5 }}>
-            <Stack
-              direction="row"
-              spacing={2.5}
-              flexWrap="wrap"
-              useFlexGap
-              alignItems="center"
-            >
-              <Metric label="MLS ID" value={listing.mlsId} small />
-              <Metric label="Posted" value={fmtDate(listing.postDate)} small />
-              <Metric label="Updated" value={fmtDate(listing.listingUpdatedAt)} small />
-              <Metric
-                label="Bridge mod"
-                value={fmtDate(listing.bridgeModificationTimestamp)}
-                small
-              />
+            <Stack spacing={1.25}>
+              {(agentName || agentPhone || agentEmail || coAgentName ||
+                coAgentPhone || coAgentEmail || officeName || officePhone) && (
+                <>
+                  <Stack spacing={0.25}>
+                    {(agentName || agentPhone || agentEmail) && (
+                      <ContactCard
+                        role="Listed by"
+                        name={agentName}
+                        phone={agentPhone}
+                        email={agentEmail}
+                      />
+                    )}
+                    {(coAgentName || coAgentPhone || coAgentEmail) && (
+                      <ContactCard
+                        role="Co-listed by"
+                        name={coAgentName}
+                        phone={coAgentPhone}
+                        email={coAgentEmail}
+                      />
+                    )}
+                    {(officeName || officePhone) && (
+                      <ContactCard
+                        role="Brokerage"
+                        name={officeName}
+                        phone={officePhone}
+                      />
+                    )}
+                  </Stack>
+                  <Divider />
+                </>
+              )}
+              <Stack
+                direction="row"
+                spacing={2.5}
+                flexWrap="wrap"
+                useFlexGap
+                alignItems="center"
+              >
+                <Metric label="MLS ID" value={listing.mlsId} small />
+                <Metric label="Posted" value={fmtDate(listing.postDate)} small />
+                <Metric label="Updated" value={fmtDate(listing.listingUpdatedAt)} small />
+                <Metric
+                  label="Bridge mod"
+                  value={fmtDate(listing.bridgeModificationTimestamp)}
+                  small
+                />
+              </Stack>
             </Stack>
           </Paper>
 
