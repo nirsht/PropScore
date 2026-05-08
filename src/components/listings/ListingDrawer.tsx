@@ -492,14 +492,16 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
               />
               <ToolLink
                 href={(() => {
-                  const query =
-                    lat != null && lng != null
+                  const addressParts = [listing?.address, listing?.city, listing?.state].filter(
+                    (p): p is string => Boolean(p)
+                  );
+                  // Address-based search makes Google Earth resolve to a Place and drop a labeled pin.
+                  // Raw lat/lng just centers the camera with no marker, so address is preferred.
+                  const query = addressParts.length
+                    ? addressParts.map((p) => encodeURIComponent(p)).join(',+').replace(/%20/g, '+')
+                    : lat != null && lng != null
                       ? `${lat},${lng}`
-                      : [listing?.address, listing?.city, listing?.state]
-                          .filter((p): p is string => Boolean(p))
-                          .map((p) => encodeURIComponent(p))
-                          .join(',+')
-                          .replace(/%20/g, '+');
+                      : '';
                   const coords = lat != null && lng != null ? `/@${lat},${lng},150a,500d,35y,0h,0t,0r` : '';
                   return `https://earth.google.com/web/search/${query}${coords}`;
                 })()}
