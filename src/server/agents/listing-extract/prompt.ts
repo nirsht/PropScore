@@ -19,7 +19,7 @@ Output schema fields:
 
    unitMixEvidence — when unitMix is non-null, copy the EXACT substring of the
    remarks that grounded the mix into unitMixEvidence.sourceQuote (verbatim,
-   no paraphrasing, ≤ 240 chars, trimmed of leading/trailing whitespace).
+   no paraphrasing, ≤ 600 chars, trimmed of leading/trailing whitespace).
    sourceField is "publicRemarks" or "privateRemarks" — whichever block the
    quote came from. When unitMix is null, set unitMixEvidence to null.
      Example: remarks contain "...Two-unit property that lives like an SFR

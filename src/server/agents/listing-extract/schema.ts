@@ -47,7 +47,7 @@ export const AduPotentialEnum = z.enum(["LOW", "MEDIUM", "HIGH"]);
 // Surfaced in the Building details "Trail of evidence" panel so a reader can
 // audit the AI's Units cell against the source.
 export const UnitMixEvidence = z.object({
-  sourceQuote: z.string().min(1).max(240),
+  sourceQuote: z.string().min(1).max(600),
   sourceField: z.enum(["publicRemarks", "privateRemarks"]),
 });
 
