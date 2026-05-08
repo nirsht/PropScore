@@ -165,6 +165,13 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
     strField(raw.ListAgentDirectPhone) ?? strField(raw.ListAgentOfficePhone);
   const agentEmail = strField(raw.ListAgentEmail);
 
+  const coAgentName = strField(raw.CoListAgentFullName);
+  const coAgentPhone = strField(raw.CoListAgentDirectPhone);
+  const coAgentEmail = strField(raw.CoListAgentEmail);
+
+  const officeName = strField(raw.ListOfficeName);
+  const officePhone = strField(raw.ListOfficePhone);
+
   return (
     <Drawer
       anchor="right"
@@ -247,6 +254,80 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
                       sx={{ py: 0.25 }}
                     >
                       Email
+                    </Button>
+                  )}
+                </Stack>
+              )}
+              {(coAgentName || coAgentPhone || coAgentEmail) && (
+                <Stack
+                  direction="row"
+                  spacing={1.5}
+                  alignItems="center"
+                  flexWrap="wrap"
+                  useFlexGap
+                  sx={{ mt: 0.5 }}
+                >
+                  <Typography variant="caption" color="text.secondary">
+                    Co-listed by
+                  </Typography>
+                  {coAgentName && (
+                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                      {coAgentName}
+                    </Typography>
+                  )}
+                  {coAgentPhone && (
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<PhoneRoundedIcon fontSize="small" />}
+                      component={MuiLink}
+                      href={`tel:${coAgentPhone.replace(/[^\d+]/g, "")}`}
+                      sx={{ py: 0.25 }}
+                    >
+                      {coAgentPhone}
+                    </Button>
+                  )}
+                  {coAgentEmail && (
+                    <Button
+                      size="small"
+                      variant="text"
+                      startIcon={<EmailRoundedIcon fontSize="small" />}
+                      component={MuiLink}
+                      href={`mailto:${coAgentEmail}`}
+                      sx={{ py: 0.25 }}
+                    >
+                      Email
+                    </Button>
+                  )}
+                </Stack>
+              )}
+              {(officeName || officePhone) && (
+                <Stack
+                  direction="row"
+                  spacing={1.5}
+                  alignItems="center"
+                  flexWrap="wrap"
+                  useFlexGap
+                  sx={{ mt: 0.5 }}
+                >
+                  <Typography variant="caption" color="text.secondary">
+                    Brokerage
+                  </Typography>
+                  {officeName && (
+                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                      {officeName}
+                    </Typography>
+                  )}
+                  {officePhone && (
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<PhoneRoundedIcon fontSize="small" />}
+                      component={MuiLink}
+                      href={`tel:${officePhone.replace(/[^\d+]/g, "")}`}
+                      sx={{ py: 0.25 }}
+                    >
+                      {officePhone}
                     </Button>
                   )}
                 </Stack>
