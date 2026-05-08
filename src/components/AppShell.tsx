@@ -19,6 +19,8 @@ import LogoutOutlinedIcon from "@mui/icons-material/LogoutOutlined";
 import TableRowsRoundedIcon from "@mui/icons-material/TableRowsRounded";
 import MapOutlinedIcon from "@mui/icons-material/MapOutlined";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
+import ChatBubbleOutlineRoundedIcon from "@mui/icons-material/ChatBubbleOutlineRounded";
+import { GlobalChatDrawer } from "./chat/GlobalChatDrawer";
 import { Logo } from "./Logo";
 
 const NAV = [
@@ -34,6 +36,7 @@ type Props = {
 
 export function AppShell({ children, userEmail }: Props) {
   const pathname = usePathname();
+  const [chatOpen, setChatOpen] = React.useState(false);
 
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
@@ -79,6 +82,15 @@ export function AppShell({ children, userEmail }: Props) {
           <Box sx={{ flex: 1 }} />
 
           <Stack direction="row" spacing={1} alignItems="center">
+            <Tooltip title="Ask AI across all listings">
+              <IconButton
+                size="small"
+                onClick={() => setChatOpen(true)}
+                color={chatOpen ? "primary" : "default"}
+              >
+                <ChatBubbleOutlineRoundedIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
             <Typography variant="body2" color="text.secondary">
               {userEmail}
             </Typography>
@@ -94,6 +106,8 @@ export function AppShell({ children, userEmail }: Props) {
       <Container maxWidth={false} sx={{ py: 3, px: { xs: 2, md: 3 } }}>
         {children}
       </Container>
+
+      <GlobalChatDrawer open={chatOpen} onClose={() => setChatOpen(false)} />
     </Box>
   );
 }

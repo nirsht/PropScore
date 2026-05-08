@@ -28,6 +28,7 @@ model User {
   sessions       Session[]
   savedFilters   SavedFilter[]
   agentTraces    AgentTrace[]
+  conversations  ChatConversation[]
 }
 
 model Account {
@@ -162,6 +163,7 @@ model Listing {
 
   score          Score?
   enrichments    AIEnrichment[]
+  conversations  ChatConversation[]
   createdAt      DateTime      @default(now())
 
   @@index([price])
@@ -270,4 +272,67 @@ model SavedFilter {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt(sort: Desc)])
+}
+
+// -------------------- CHAT --------------------
+
+enum ChatScope {
+  ASSET
+  GLOBAL
+}
+
+enum ChatRole {
+  USER
+  ASSISTANT
+  TOOL
+  SYSTEM
+}
+
+model ChatConversation {
+  id             String    @id @default(cuid())
+  userId         String
+  scope          ChatScope
+  // Set when scope=ASSET: the listing this thread is about.
+  listingMlsId   String?
+  // Set when scope=GLOBAL: the FilterInput snapshot at thread creation
+  // time. Frozen for the life of the conversation; UI offers a fresh
+  // thread to pick up the latest filter rather than mutating mid-thread.
+  filterSnapshot Json?
+  // Auto-generated from the first user message; user can rename.
+  title          String
+  pinned         Boolean   @default(false)
+  archived       Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing  Listing?      @relation(fields: [listingMlsId], references: [mlsId], onDelete: SetNull)
+  messages ChatMessage[]
+
+  @@index([userId, updatedAt(sort: Desc)])
+  @@index([userId, scope, listingMlsId])
+}
+
+model ChatMessage {
+  id             String   @id @default(cuid())
+  conversationId String
+  role           ChatRole
+  content        String   @db.Text
+  // OpenAI tool_calls payload from the assistant turn (if any).
+  toolCalls      Json?
+  // For role=TOOL only — which tool produced this message.
+  toolName       String?
+  // For role=TOOL only — links back to the tool_call id from the assistant
+  // message so we can rebuild the OpenAI messages array on resume.
+  toolCallId     String?
+  // MLS IDs the assistant cited in this message; used for citation chips.
+  citedMlsIds    String[]
+  tokensIn       Int?
+  tokensOut      Int?
+  errored        Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
 }

@@ -145,6 +145,9 @@ async function main() {
   const OPENAI_API_KEY = envOrDie("OPENAI_API_KEY");
   const NEXT_PUBLIC_MAP_STYLE_URL = envOptional("NEXT_PUBLIC_MAP_STYLE_URL");
   const WALKSCORE_API_KEY = envOptional("WALKSCORE_API_KEY");
+  // Chat — optional. The web_search tool errors explicitly when invoked
+  // without a key; the rest of chat works regardless.
+  const TAVILY_API_KEY = envOptional("TAVILY_API_KEY");
 
   // 1. Locate services.
   console.log("Looking up services on Render…");
@@ -165,6 +168,7 @@ async function main() {
       OPENAI_API_KEY,
       ...(NEXT_PUBLIC_MAP_STYLE_URL ? { NEXT_PUBLIC_MAP_STYLE_URL } : {}),
       ...(WALKSCORE_API_KEY ? { WALKSCORE_API_KEY } : {}),
+      ...(TAVILY_API_KEY ? { TAVILY_API_KEY } : {}),
     },
     WEB_SERVICE_NAME,
   );

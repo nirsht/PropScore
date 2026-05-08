@@ -3,7 +3,7 @@
 import { Stack, Typography } from "@mui/material";
 import { FilterProvider } from "./filterStore";
 import { FilterBar } from "./FilterBar";
-import { NLQueryBox } from "./NLQueryBox";
+import { ListingsAIBar } from "./ListingsAIBar";
 import { ListingsGrid } from "./ListingsGrid";
 import { ListingDrawer } from "./ListingDrawer";
 import { useSelectedListing } from "./useSelectedListing";
@@ -20,7 +20,7 @@ export function ListingsView() {
             Sorted by Value-Add Weighted Avg — click any row for details
           </Typography>
         </Stack>
-        <NLQueryBox />
+        <ListingsAIBar />
         <FilterBar />
         <ListingsGrid onSelectListing={setSelectedMlsId} />
       </Stack>

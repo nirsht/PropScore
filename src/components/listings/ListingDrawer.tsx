@@ -18,6 +18,8 @@ import {
   Skeleton,
   Snackbar,
   Stack,
+  Tab,
+  Tabs,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -36,6 +38,8 @@ import PhoneRoundedIcon from "@mui/icons-material/PhoneRounded";
 import EmailRoundedIcon from "@mui/icons-material/EmailRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import AutoFixHighOutlinedIcon from "@mui/icons-material/AutoFixHighOutlined";
+import ChatBubbleOutlineRoundedIcon from "@mui/icons-material/ChatBubbleOutlineRounded";
+import HomeWorkOutlinedIcon from "@mui/icons-material/HomeWorkOutlined";
 import {
   Bar,
   BarChart,
@@ -45,6 +49,7 @@ import {
   XAxis,
 } from "recharts";
 import { trpc } from "@/lib/trpc/client";
+import { ChatPanel } from "@/components/chat/ChatPanel";
 import { EnrichWithAIButton } from "./EnrichWithAIButton";
 import { PhotoLightbox } from "./PhotoLightbox";
 import { MeasureLotModal } from "./MeasureLotModal";
@@ -109,6 +114,11 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
   const closeLightbox = React.useCallback(() => setLightboxIndex(null), []);
 
   const [measureOpen, setMeasureOpen] = React.useState(false);
+  const [tab, setTab] = React.useState<"details" | "chat">("details");
+  // Reset to Details when the user switches listings.
+  React.useEffect(() => {
+    setTab("details");
+  }, [mlsId]);
 
   const listing = listingQuery.data;
   const score = listing?.score;
@@ -152,7 +162,14 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
       open={open}
       onClose={onClose}
       slotProps={{
-        paper: { sx: { width: { xs: "100%", md: 720 }, bgcolor: "background.default" } },
+        paper: {
+          sx: {
+            width: { xs: "100%", md: 720 },
+            bgcolor: "background.default",
+            display: "flex",
+            flexDirection: "column",
+          },
+        },
       }}
     >
       {!listing && listingQuery.isLoading && (
@@ -171,6 +188,45 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
       )}
 
       {listing && (
+        <Tabs
+          value={tab}
+          onChange={(_, v) => setTab(v as "details" | "chat")}
+          sx={{
+            px: 2,
+            borderBottom: 1,
+            borderColor: "divider",
+            minHeight: 44,
+            "& .MuiTab-root": { minHeight: 44, textTransform: "none" },
+          }}
+        >
+          <Tab
+            value="details"
+            icon={<HomeWorkOutlinedIcon fontSize="small" />}
+            iconPosition="start"
+            label="Details"
+          />
+          <Tab
+            value="chat"
+            icon={<ChatBubbleOutlineRoundedIcon fontSize="small" />}
+            iconPosition="start"
+            label="Chat"
+          />
+        </Tabs>
+      )}
+
+      {listing && tab === "chat" && (
+        <Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+          <ChatPanel
+            scope="ASSET"
+            listingMlsId={listing.mlsId}
+            mode="panel"
+            emptyHint="Ask anything about this listing — rent comps, parcel info, value-add ideas, ADU potential, photos."
+          />
+        </Box>
+      )}
+
+      {listing && tab === "details" && (
+        <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
         <Stack spacing={2.5} sx={{ p: 3 }}>
           {/* Header */}
           <Stack direction="row" alignItems="flex-start" spacing={1}>
@@ -609,6 +665,7 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
 
           <Divider sx={{ my: 1 }} />
         </Stack>
+        </Box>
       )}
 
       <PhotoLightbox

@@ -17,17 +17,33 @@ import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import PsychologyOutlinedIcon from "@mui/icons-material/PsychologyOutlined";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import { trpc } from "@/lib/trpc/client";
+import { ChatPanel } from "@/components/chat/ChatPanel";
 import { useFilter } from "./filterStore";
+import { useSelectedListing } from "./useSelectedListing";
 
-export function NLQueryBox() {
+/**
+ * Top-of-page AI bar on the listings view. Replaces the old single-shot
+ * NLQueryBox. Two paths:
+ *  - "Apply as filter" — translates the prompt to a FilterInput and applies
+ *    it (existing behavior).
+ *  - "Ask" — opens an inline multi-turn chat grounded in the current filter
+ *    snapshot. The chat lives in a collapsible thread below the bar.
+ */
+export function ListingsAIBar() {
   const { state, replace } = useFilter();
+  const [, setSelected] = useSelectedListing();
   const [q, setQ] = React.useState("");
-  const [reasoning, setReasoning] = React.useState<string | null>(null);
+  const [chatOpen, setChatOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   const facets = trpc.listings.facets.useQuery(undefined, { staleTime: 5 * 60_000 });
   const nlFilter = trpc.agents.nlFilter.useMutation();
-  const setReasoningMutation = trpc.agents.setReasoning.useMutation();
+
+  // Snapshot the filter at the moment the chat is first opened so the
+  // conversation has a stable grounding even if the user changes filters.
+  // We refresh it whenever the user opens a fresh thread (toggling the
+  // panel off and back on).
+  const [chatSnapshot, setChatSnapshot] = React.useState<typeof state | null>(null);
 
   async function applyAsFilter() {
     if (!q.trim()) return;
@@ -43,32 +59,20 @@ export function NLQueryBox() {
     }
   }
 
-  async function explainSet() {
-    if (!q.trim()) return;
+  function openChat() {
     setError(null);
-    setReasoning(null);
-    try {
-      const result = await setReasoningMutation.mutateAsync({
-        question: q,
-        filter: { ...state, limit: 50 },
-      });
-      setReasoning(result.answer);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Agent failed.");
-    }
+    setChatSnapshot(state);
+    setChatOpen(true);
   }
 
-  const loading = nlFilter.isPending || setReasoningMutation.isPending;
+  function closeChat() {
+    setChatOpen(false);
+  }
 
   return (
     <Paper
       variant="outlined"
-      sx={{
-        p: 2,
-        mb: 2,
-        borderColor: "divider",
-        bgcolor: "background.paper",
-      }}
+      sx={{ p: 2, mb: 2, borderColor: "divider", bgcolor: "background.paper" }}
     >
       <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ md: "center" }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, color: "primary.main" }}>
@@ -94,48 +98,47 @@ export function NLQueryBox() {
         <Stack direction="row" spacing={1}>
           <Button
             variant="contained"
-            disabled={loading || !q.trim()}
+            disabled={nlFilter.isPending || !q.trim()}
             onClick={applyAsFilter}
           >
             {nlFilter.isPending ? "Translating…" : "Apply as filter"}
           </Button>
-          <Tooltip title="Reason over the current result set">
-            <span>
-              <Button
-                variant="outlined"
-                disabled={loading || !q.trim()}
-                startIcon={<PsychologyOutlinedIcon />}
-                onClick={explainSet}
-              >
-                Explain
-              </Button>
-            </span>
+          <Tooltip title="Open a chat about the current result set">
+            <Button
+              variant="outlined"
+              startIcon={<PsychologyOutlinedIcon />}
+              onClick={openChat}
+            >
+              Ask
+            </Button>
           </Tooltip>
         </Stack>
       </Stack>
 
       {error && (
-        <Alert severity="error" sx={{ mt: 2 }}>
+        <Alert severity="error" sx={{ mt: 2 }} onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
 
-      <Collapse in={!!reasoning}>
-        <Paper
-          variant="outlined"
-          sx={{ mt: 2, p: 2, position: "relative", bgcolor: "background.default" }}
-        >
+      <Collapse in={chatOpen} unmountOnExit>
+        <Box sx={{ mt: 2, position: "relative" }}>
           <IconButton
             size="small"
-            onClick={() => setReasoning(null)}
-            sx={{ position: "absolute", top: 4, right: 4 }}
+            onClick={closeChat}
+            sx={{ position: "absolute", top: 4, right: 4, zIndex: 1 }}
           >
             <CloseRoundedIcon fontSize="small" />
           </IconButton>
-          <Typography component="pre" variant="body2" sx={{ whiteSpace: "pre-wrap", m: 0 }}>
-            {reasoning}
-          </Typography>
-        </Paper>
+          <ChatPanel
+            scope="GLOBAL"
+            filterSnapshot={chatSnapshot ?? undefined}
+            mode="inline"
+            showThreadSwitcher={false}
+            onCitationClick={(mlsId) => setSelected(mlsId)}
+            emptyHint="Ask anything about the listings on screen — comparisons, outliers, rent strategies, value-add picks."
+          />
+        </Box>
       </Collapse>
     </Paper>
   );

@@ -29,6 +29,10 @@ const schema = z.object({
   RENDER_EXTERNAL_URL: z.string().url().optional(),
 
   NEXT_PUBLIC_MAP_STYLE_URL: z.string().optional().or(z.literal("")),
+
+  // Chat — Tavily web search. Optional in dev: web_search tool errors
+  // explicitly when called without a key.
+  TAVILY_API_KEY: z.string().optional().or(z.literal("")),
 });
 
 const parsed = schema.safeParse(process.env);
