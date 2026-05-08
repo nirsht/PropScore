@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   RENOVATION_UPSIDE,
-  aduPotentialScore,
+  aduCombinedScore,
   landRatioScore,
   renovationUpsideScore,
   sizeDiscrepancyScore,
@@ -77,11 +77,18 @@ describe("landRatioScore", () => {
   });
 });
 
-describe("aduPotentialScore", () => {
-  it("ranks HIGH > MEDIUM > LOW", () => {
-    expect(aduPotentialScore("HIGH")!).toBeGreaterThan(aduPotentialScore("MEDIUM")!);
-    expect(aduPotentialScore("MEDIUM")!).toBeGreaterThan(aduPotentialScore("LOW")!);
-    expect(aduPotentialScore(null)).toBeNull();
+describe("aduCombinedScore", () => {
+  it("returns null when both reads are missing", () => {
+    expect(aduCombinedScore(null, null)).toBeNull();
+    expect(aduCombinedScore(undefined, undefined)).toBeNull();
+  });
+  it("returns the available read when only one is present", () => {
+    expect(aduCombinedScore(60, null)).toBe(60);
+    expect(aduCombinedScore(null, 80)).toBe(80);
+  });
+  it("returns the max of the two reads — one new unit, whichever path is cheapest", () => {
+    expect(aduCombinedScore(40, 80)).toBe(80);
+    expect(aduCombinedScore(95, 50)).toBe(95);
   });
 });
 
@@ -135,7 +142,7 @@ describe("weightedValueAdd", () => {
       densityScore: 50,
       vacancyScore: 50,
       motivationScore: 50,
-      aduScore: aduPotentialScore("HIGH"),
+      aduScore: aduCombinedScore(95, 30),
     });
     expect(highAdu).toBeGreaterThan(noAdu);
   });
@@ -180,9 +187,18 @@ describe("computeHeuristicScore — new context fields", () => {
     expect(lifted.valueAddWeightedAvg).toBeGreaterThan(baseline.valueAddWeightedAvg);
   });
 
-  it("HIGH ADU potential lifts value-add", () => {
+  it("strong detached-ADU read lifts value-add", () => {
     const baseline = computeHeuristicScore(baseListing());
-    const lifted = computeHeuristicScore(baseListing(), { aduPotential: "HIGH" });
+    const lifted = computeHeuristicScore(baseListing(), { detachedAduScore: 95 });
+    expect(lifted.valueAddWeightedAvg).toBeGreaterThan(baseline.valueAddWeightedAvg);
+  });
+
+  it("strong converted-ADU read lifts value-add even without detached", () => {
+    const baseline = computeHeuristicScore(baseListing());
+    const lifted = computeHeuristicScore(baseListing(), {
+      detachedAduScore: 0,
+      convertedAduScore: 80,
+    });
     expect(lifted.valueAddWeightedAvg).toBeGreaterThan(baseline.valueAddWeightedAvg);
   });
 

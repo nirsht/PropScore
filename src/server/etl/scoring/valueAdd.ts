@@ -73,12 +73,23 @@ export function landRatioScore(
 }
 
 /**
- * ADU potential as a value-add component. HIGH = backyard fits a permitted
- * detached ADU under SF setback rules, adding a 5th-class unit.
+ * ADU potential as a value-add component. We carry two parallel 0–100 reads:
+ * - detached: vacant-yard ADU (lot-minus-footprint heuristic).
+ * - converted: repurposing existing space (basement / garage).
+ *
+ * The contribution to value-add is the MAX of the two — either path adds a
+ * unit of cash flow, so we don't double-count and we don't average them
+ * down. Returns null only when neither read is available.
  */
-export function aduPotentialScore(level: "LOW" | "MEDIUM" | "HIGH" | null | undefined): number | null {
-  if (level == null) return null;
-  return level === "HIGH" ? 100 : level === "MEDIUM" ? 55 : 15;
+export function aduCombinedScore(
+  detached: number | null | undefined,
+  converted: number | null | undefined,
+): number | null {
+  const candidates = [detached, converted].filter(
+    (v): v is number => v != null,
+  );
+  if (candidates.length === 0) return null;
+  return Math.max(...candidates);
 }
 
 export function weightedValueAdd(scores: {

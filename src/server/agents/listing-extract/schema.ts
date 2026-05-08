@@ -41,7 +41,13 @@ export const RentEstimateEntry = z.object({
   source: z.enum(["gpt", "comps"]).optional(),
 });
 
-export const AduPotentialEnum = z.enum(["LOW", "MEDIUM", "HIGH"]);
+// Source category for the converted-ADU read — drives the UI hint about
+// which existing space to repurpose.
+export const ConvertedAduSourceEnum = z.enum([
+  "basement",
+  "garage",
+  "unfinished-space",
+]);
 
 export const ListingExtractOutput = z.object({
   unitMix: z.array(UnitMixEntry).nullable(),
@@ -57,9 +63,16 @@ export const ListingExtractOutput = z.object({
   parkingNotes: z.string().nullable(),
   basementNotes: z.string().nullable(),
   viewNotes: z.string().nullable(),
-  aduPotential: AduPotentialEnum.nullable(),
-  aduConfidence: z.number().min(0).max(1),
-  aduRationale: z.string(),
+  // Detached ADU — building a new unit on the vacant yard. 0–100 score with
+  // a one-sentence rationale. Null score = no signal (e.g. lot size unknown).
+  detachedAduScore: z.number().int().min(0).max(100).nullable(),
+  detachedAduRationale: z.string(),
+  // Converted ADU — repurposing existing space (basement / garage /
+  // unfinished space) into a unit. 0–100 score; `convertedAduSource` names
+  // the dominant signal; null source when no signal at all.
+  convertedAduScore: z.number().int().min(0).max(100).nullable(),
+  convertedAduRationale: z.string(),
+  convertedAduSource: ConvertedAduSourceEnum.nullable(),
   rationale: z.string(),
 });
 
@@ -68,4 +81,4 @@ export type ListingExtractOutput = z.infer<typeof ListingExtractOutput>;
 export type UnitMixEntry = z.infer<typeof UnitMixEntry>;
 export type RentRollEntry = z.infer<typeof RentRollEntry>;
 export type RentEstimateEntry = z.infer<typeof RentEstimateEntry>;
-export type AduPotential = z.infer<typeof AduPotentialEnum>;
+export type ConvertedAduSource = z.infer<typeof ConvertedAduSourceEnum>;

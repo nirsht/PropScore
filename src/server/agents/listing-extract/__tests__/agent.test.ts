@@ -1,54 +1,90 @@
 import { describe, expect, it } from "vitest";
-import { deriveAduFromHeuristic } from "../agent";
+import {
+  deriveDetachedAduFromHeuristic,
+  deriveConvertedAduFromHeuristic,
+} from "../agent";
 import { ListingExtractOutput } from "../schema";
 
-describe("deriveAduFromHeuristic", () => {
-  it("returns null when lot is unknown", () => {
+describe("deriveDetachedAduFromHeuristic", () => {
+  it("returns null score when lot is unknown", () => {
     expect(
-      deriveAduFromHeuristic({
-        propertyType: "Single Family",
+      deriveDetachedAduFromHeuristic({
         units: 1,
         buildingSqft: 1500,
         lotSqft: null,
         stories: 2,
-      }).potential,
+      }).score,
     ).toBeNull();
   });
 
-  it("scores HIGH on a generous lot", () => {
-    expect(
-      deriveAduFromHeuristic({
-        propertyType: "Single Family",
-        units: 1,
-        buildingSqft: 1500,
-        lotSqft: 4000,
-        stories: 2,
-      }).potential,
-    ).toBe("HIGH");
+  it("scores high on a generous lot", () => {
+    const out = deriveDetachedAduFromHeuristic({
+      units: 1,
+      buildingSqft: 1500,
+      lotSqft: 4000,
+      stories: 2,
+    });
+    expect(out.score).toBeGreaterThanOrEqual(80);
   });
 
-  it("scores LOW for dense large multifamily", () => {
+  it("floors to 0 for dense large multifamily", () => {
     expect(
-      deriveAduFromHeuristic({
-        propertyType: "Multi Family",
+      deriveDetachedAduFromHeuristic({
         units: 12,
         buildingSqft: 12000,
         lotSqft: 5000,
         stories: 3,
-      }).potential,
-    ).toBe("LOW");
+      }).score,
+    ).toBe(0);
   });
 
-  it("scores MEDIUM for tight-but-plausible yards", () => {
+  it("scores in the medium band for tight-but-plausible yards", () => {
+    const out = deriveDetachedAduFromHeuristic({
+      units: 4,
+      buildingSqft: 3600,
+      lotSqft: 2400,
+      stories: 2,
+    });
+    expect(out.score).toBeGreaterThan(20);
+    expect(out.score).toBeLessThan(80);
+  });
+});
+
+describe("deriveConvertedAduFromHeuristic", () => {
+  it("returns null when no signals", () => {
     expect(
-      deriveAduFromHeuristic({
-        propertyType: "Multi Family",
-        units: 4,
-        buildingSqft: 3600,
-        lotSqft: 2400,
-        stories: 2,
-      }).potential,
-    ).toBe("MEDIUM");
+      deriveConvertedAduFromHeuristic({
+        basementSqft: null,
+        aiHasBasement: null,
+      }).score,
+    ).toBeNull();
+  });
+
+  it("scores 80 for a 500+ sqft assessor basement", () => {
+    expect(
+      deriveConvertedAduFromHeuristic({
+        basementSqft: 700,
+        aiHasBasement: null,
+      }),
+    ).toMatchObject({ score: 80, source: "basement" });
+  });
+
+  it("scores 55 for a 300–499 sqft basement", () => {
+    expect(
+      deriveConvertedAduFromHeuristic({
+        basementSqft: 350,
+        aiHasBasement: null,
+      }).score,
+    ).toBe(55);
+  });
+
+  it("scores 50 with vision-only basement signal", () => {
+    expect(
+      deriveConvertedAduFromHeuristic({
+        basementSqft: null,
+        aiHasBasement: true,
+      }).score,
+    ).toBe(50);
   });
 });
 
@@ -70,9 +106,11 @@ describe("ListingExtractOutput schema", () => {
       parkingNotes: null,
       basementNotes: null,
       viewNotes: null,
-      aduPotential: "MEDIUM" as const,
-      aduConfidence: 0.6,
-      aduRationale: "ok",
+      detachedAduScore: 55,
+      detachedAduRationale: "ok",
+      convertedAduScore: 70,
+      convertedAduRationale: "huge basement",
+      convertedAduSource: "basement" as const,
       rationale: "parsed",
     };
     expect(() => ListingExtractOutput.parse(sample)).not.toThrow();
@@ -95,9 +133,11 @@ describe("ListingExtractOutput schema", () => {
       parkingNotes: null,
       basementNotes: null,
       viewNotes: null,
-      aduPotential: null,
-      aduConfidence: 0.0,
-      aduRationale: "",
+      detachedAduScore: null,
+      detachedAduRationale: "",
+      convertedAduScore: null,
+      convertedAduRationale: "",
+      convertedAduSource: null,
       rationale: "parsed",
     };
     expect(() => ListingExtractOutput.parse(sample)).not.toThrow();
@@ -119,9 +159,11 @@ describe("ListingExtractOutput schema", () => {
       parkingNotes: null,
       basementNotes: null,
       viewNotes: null,
-      aduPotential: null,
-      aduConfidence: 0.0,
-      aduRationale: "",
+      detachedAduScore: null,
+      detachedAduRationale: "",
+      convertedAduScore: null,
+      convertedAduRationale: "",
+      convertedAduSource: null,
       rationale: "parsed",
     };
     expect(() => ListingExtractOutput.parse(sample)).not.toThrow();

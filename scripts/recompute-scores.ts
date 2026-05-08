@@ -113,7 +113,8 @@ async function main() {
         assessorLandValue: l.assessorLandValue,
         extractedOccupancy: l.extractedOccupancy,
         extractedUnitsTotal,
-        aduPotential: l.aduPotential as "LOW" | "MEDIUM" | "HIGH" | null,
+        detachedAduScore: l.detachedAduScore,
+        convertedAduScore: l.convertedAduScore,
       });
       await db.score.upsert({
         where: { listingMlsId: l.mlsId },

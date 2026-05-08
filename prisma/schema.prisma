@@ -112,6 +112,9 @@ model Listing {
   assessorUseType          String?
   assessorConstructionType String?
   assessorBasement         String?
+  // Numeric basement area parsed from `basement_area` (Socrata wv5m-vpq2).
+  // Drives the converted-ADU feasibility score.
+  assessorBasementSqft     Int?
   assessorBuildingValue    Int?
   assessorLandValue        Int?
   assessorFetchedAt        DateTime?
@@ -143,9 +146,18 @@ model Listing {
   // higher than aiRentEstimate for the same unit type.
   postRenovationRentEstimate Json?
   recentCapex               Json?
-  aduPotential              String?
-  aduConfidence             Float?
-  aduRationale              String?
+  // ADU feasibility split into two parallel signals (2026-05-08).
+  // detached = vacant-yard play (lot-minus-footprint heuristic).
+  // converted = repurpose-existing-space play (basement / garage).
+  // Each is a 0–100 score with its own rationale; the value-add scorer
+  // takes max(detached, converted) as the ADU contribution.
+  detachedAduScore          Int?
+  detachedAduRationale      String?
+  convertedAduScore         Int?
+  convertedAduRationale     String?
+  // Which signal drove the converted score: 'basement' | 'garage' |
+  // 'unfinished-space'. Null when no converted ADU read was possible.
+  convertedAduSource        String?
   extractFetchedAt          DateTime?
 
   // generated columns added in raw SQL migration. Resolution order is now

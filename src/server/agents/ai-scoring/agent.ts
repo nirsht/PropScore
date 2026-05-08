@@ -86,8 +86,9 @@ export async function runAIScoring(mlsId: string, userId: string | null) {
     extractedTotalMonthlyRent: listing.extractedTotalMonthlyRent,
     extractedOccupancy: listing.extractedOccupancy,
     recentCapex: listing.recentCapex,
-    aduPotential: listing.aduPotential,
-    aduConfidence: listing.aduConfidence,
+    detachedAduScore: listing.detachedAduScore,
+    convertedAduScore: listing.convertedAduScore,
+    convertedAduSource: listing.convertedAduSource,
 
     // AI vision
     renovationLevel: listing.renovationLevel,

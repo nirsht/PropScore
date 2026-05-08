@@ -6,7 +6,7 @@ import { vacancyScore } from "./vacancy";
 import {
   RENOVATION_UPSIDE,
   VALUE_ADD_WEIGHTS,
-  aduPotentialScore,
+  aduCombinedScore,
   landRatioScore,
   renovationUpsideScore,
   sizeDiscrepancyScore,
@@ -43,8 +43,10 @@ export type HeuristicContext = {
   extractedOccupancy?: number | null;
   /** AI-extracted unit-mix sum (used when MLS units missing). */
   extractedUnitsTotal?: number | null;
-  /** AI-extracted ADU potential. */
-  aduPotential?: "LOW" | "MEDIUM" | "HIGH" | null;
+  /** AI-extracted detached-ADU score (vacant-yard play, 0–100). */
+  detachedAduScore?: number | null;
+  /** AI-extracted converted-ADU score (basement/garage play, 0–100). */
+  convertedAduScore?: number | null;
 };
 
 export function computeHeuristicScore(
@@ -57,7 +59,7 @@ export function computeHeuristicScore(
   const renovation = renovationUpsideScore(ctx.renovationLevel ?? null);
   const sizeDiff = sizeDiscrepancyScore(ctx.mlsSqft ?? l.sqft, ctx.assessorSqft);
   const landRatio = landRatioScore(ctx.assessorLandValue, ctx.assessorBuildingValue);
-  const adu = aduPotentialScore(ctx.aduPotential);
+  const adu = aduCombinedScore(ctx.detachedAduScore, ctx.convertedAduScore);
 
   const valueAddWeightedAvg = weightedValueAdd({
     densityScore: density,
@@ -90,7 +92,8 @@ export function computeHeuristicScore(
         renovationLevel: ctx.renovationLevel ?? null,
         landValue: ctx.assessorLandValue,
         buildingValue: ctx.assessorBuildingValue,
-        aduPotential: ctx.aduPotential ?? null,
+        detachedAduScore: ctx.detachedAduScore ?? null,
+        convertedAduScore: ctx.convertedAduScore ?? null,
       },
       components: {
         density,

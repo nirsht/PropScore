@@ -72,6 +72,7 @@ export type AssessorRecord = {
   useType: string | null;
   constructionType: string | null;
   basement: string | null;
+  basementSqft: number | null;
   buildingValue: number | null;
   landValue: number | null;
   raw: SfpimRow;
@@ -122,6 +123,7 @@ export function mapSfpimRow(row: SfpimRow): AssessorRecord {
     useType: str(row.use_definition) ?? str(row.use_code),
     constructionType: str(row.construction_type),
     basement: basementSqft != null ? `${basementSqft} sqft` : null,
+    basementSqft,
     buildingValue: positiveInt(row.closed_roll_assessed_improvement_value),
     landValue: positiveInt(row.closed_roll_assessed_land_value),
     raw: row,

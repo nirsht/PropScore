@@ -62,11 +62,8 @@ export const listingsRouter = router({
             assessorLandValue: listing.assessorLandValue,
             extractedOccupancy: listing.extractedOccupancy,
             extractedUnitsTotal,
-            aduPotential: listing.aduPotential as
-              | "LOW"
-              | "MEDIUM"
-              | "HIGH"
-              | null,
+            detachedAduScore: listing.detachedAduScore,
+            convertedAduScore: listing.convertedAduScore,
           })
         : null;
       const heuristicSnapshot = h

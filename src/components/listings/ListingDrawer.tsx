@@ -1505,10 +1505,18 @@ const RENO_LABEL: Record<RenovationLevel, string> = {
   RENOVATED: "Renovated",
 };
 
-const ADU_COLOR: Record<"LOW" | "MEDIUM" | "HIGH", "default" | "warning" | "success"> = {
-  LOW: "default",
-  MEDIUM: "warning",
-  HIGH: "success",
+// 0–100 ADU score → chip colour. Buckets match the old LOW/MEDIUM/HIGH
+// thresholds so the visual feel of the chip is unchanged.
+function aduChipColor(score: number): "default" | "warning" | "success" {
+  if (score >= 70) return "success";
+  if (score >= 35) return "warning";
+  return "default";
+}
+
+const CONVERTED_ADU_SOURCE_LABEL: Record<string, string> = {
+  basement: "basement",
+  garage: "garage",
+  "unfinished-space": "unfinished space",
 };
 
 // ============================================================================
@@ -1534,9 +1542,11 @@ type ListingForAI = {
   extractedTotalMonthlyRent: number | null;
   extractedOccupancy: number | null;
   recentCapex: unknown;
-  aduPotential: string | null;
-  aduConfidence: number | null;
-  aduRationale: string | null;
+  detachedAduScore: number | null;
+  detachedAduRationale: string | null;
+  convertedAduScore: number | null;
+  convertedAduRationale: string | null;
+  convertedAduSource: string | null;
   extractFetchedAt: Date | string | null;
   publicRemarks: string | null;
   privateRemarks: string | null;
@@ -2195,7 +2205,9 @@ function AIInsightsCard({ listing }: { listing: ListingForAI }) {
     | null
     | undefined;
   const capex = listing.recentCapex as string[] | null | undefined;
-  const adu = listing.aduPotential as "LOW" | "MEDIUM" | "HIGH" | null;
+  const detachedAdu = listing.detachedAduScore;
+  const convertedAdu = listing.convertedAduScore;
+  const hasAdu = detachedAdu != null || convertedAdu != null;
 
   const hasAnyExtract =
     !!unitMix?.length ||
@@ -2203,7 +2215,7 @@ function AIInsightsCard({ listing }: { listing: ListingForAI }) {
     listing.extractedTotalMonthlyRent != null ||
     listing.extractedOccupancy != null ||
     !!capex?.length ||
-    !!adu;
+    hasAdu;
   const hasVision = !!listing.visionFetchedAt;
 
   return (
@@ -2217,19 +2229,33 @@ function AIInsightsCard({ listing }: { listing: ListingForAI }) {
             label={RENO_LABEL[listing.renovationLevel]}
           />
         )}
-        {adu && (
+        {detachedAdu != null && (
           <Tooltip
-            title={listing.aduRationale ?? ""}
+            title={listing.detachedAduRationale ?? ""}
             arrow
             placement="top"
-            disableHoverListener={!listing.aduRationale}
+            disableHoverListener={!listing.detachedAduRationale}
           >
             <Chip
               size="small"
-              color={ADU_COLOR[adu]}
-              label={`ADU ${adu.toLowerCase()}${
-                listing.aduConfidence != null
-                  ? ` · ${Math.round(listing.aduConfidence * 100)}%`
+              color={aduChipColor(detachedAdu)}
+              label={`Detached ADU ${detachedAdu}%`}
+            />
+          </Tooltip>
+        )}
+        {convertedAdu != null && (
+          <Tooltip
+            title={listing.convertedAduRationale ?? ""}
+            arrow
+            placement="top"
+            disableHoverListener={!listing.convertedAduRationale}
+          >
+            <Chip
+              size="small"
+              color={aduChipColor(convertedAdu)}
+              label={`Converted ADU ${convertedAdu}%${
+                listing.convertedAduSource
+                  ? ` · ${CONVERTED_ADU_SOURCE_LABEL[listing.convertedAduSource] ?? listing.convertedAduSource}`
                   : ""
               }`}
             />
@@ -2311,14 +2337,29 @@ function AIInsightsCard({ listing }: { listing: ListingForAI }) {
         </Box>
       )}
 
-      {adu && (
+      {hasAdu && (
         <Box>
           <Typography variant="caption" color="text.secondary">
             ADU feasibility
           </Typography>
-          <Typography variant="body2" sx={{ mt: 0.25 }}>
-            {listing.aduRationale ?? "—"}
-          </Typography>
+          {detachedAdu != null && (
+            <Typography variant="body2" sx={{ mt: 0.25 }}>
+              <strong>Detached ({detachedAdu}%):</strong>{" "}
+              {listing.detachedAduRationale ?? "—"}
+            </Typography>
+          )}
+          {convertedAdu != null && (
+            <Typography variant="body2" sx={{ mt: 0.25 }}>
+              <strong>
+                Converted ({convertedAdu}%
+                {listing.convertedAduSource
+                  ? ` · ${CONVERTED_ADU_SOURCE_LABEL[listing.convertedAduSource] ?? listing.convertedAduSource}`
+                  : ""}
+                ):
+              </strong>{" "}
+              {listing.convertedAduRationale ?? "—"}
+            </Typography>
+          )}
         </Box>
       )}
     </Paper>
