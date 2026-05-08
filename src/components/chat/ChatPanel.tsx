@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { Alert, Box, Button, Stack, Typography } from "@mui/material";
+import { Alert, Box, Button, Chip, Stack, Typography } from "@mui/material";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
+import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 import { trpc } from "@/lib/trpc/client";
 import type { FilterInput } from "@/server/api/schemas/filter";
 import { MessageBubble } from "./MessageBubble";
@@ -52,12 +53,17 @@ export function ChatPanel({
     { enabled: scope === "ASSET" || mode === "panel" },
   );
 
-  // Auto-pick the most recent conversation for this scope/listing on mount.
+  // Auto-pick the most recent conversation only on initial mount. After the
+  // user explicitly creates a new chat (clears activeId), don't snap back to
+  // the most recent thread — let them start fresh.
+  const didInitialPick = React.useRef(false);
   React.useEffect(() => {
-    if (activeId) return;
-    const first = list.data?.[0];
+    if (didInitialPick.current) return;
+    if (!list.data) return;
+    didInitialPick.current = true;
+    const first = list.data[0];
     if (first) setActiveId(first.id);
-  }, [activeId, list.data]);
+  }, [list.data]);
 
   async function ensureConversationId(): Promise<string | null> {
     if (activeId) return activeId;
@@ -204,7 +210,15 @@ export function ChatPanel({
       }}
     >
       {showSwitcher && mode === "panel" && (
-        <Box sx={{ width: 220, borderRight: 1, borderColor: "divider", flexShrink: 0 }}>
+        <Box
+          sx={{
+            width: 260,
+            borderRight: 1,
+            borderColor: "divider",
+            flexShrink: 0,
+            display: { xs: "none", sm: "block" },
+          }}
+        >
           <ConversationList
             scope={scope}
             listingMlsId={listingMlsId}
@@ -236,38 +250,123 @@ export function ChatPanel({
           </Stack>
         )}
 
-        <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", p: 1.5 }}>
-          {messages.length === 0 && (
-            <Box sx={{ textAlign: "center", color: "text.secondary", mt: 4 }}>
-              <Typography variant="body2">
-                {emptyHint ??
-                  (scope === "ASSET"
-                    ? "Ask anything about this listing."
-                    : "Ask anything about the listings on screen.")}
-              </Typography>
-            </Box>
-          )}
-          <Stack spacing={1.25}>
-            {messages.map((m) => (
-              <MessageBubble
-                key={m.id}
-                message={m}
-                onCitationClick={onCitationClick}
+        <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+          <Box sx={{ maxWidth: 760, mx: "auto", px: { xs: 2, md: 3 }, py: 2 }}>
+            {messages.length === 0 ? (
+              <EmptyState
+                scope={scope}
+                emptyHint={emptyHint}
+                onPick={(prompt) => void handleSend(prompt)}
               />
-            ))}
-            <ScrollAnchor key={messages.length} />
-          </Stack>
+            ) : (
+              <Stack spacing={0.5}>
+                {messages.map((m) => (
+                  <MessageBubble
+                    key={m.id}
+                    message={m}
+                    onCitationClick={onCitationClick}
+                  />
+                ))}
+                <ScrollAnchor key={messages.length} />
+              </Stack>
+            )}
+          </Box>
         </Box>
 
-        <ChatComposer
-          conversationId={activeId}
-          streaming={stream.streaming}
-          onSend={handleSend}
-          onCancel={stream.cancel}
-          placeholder={
-            scope === "ASSET" ? "Ask about this listing…" : "Ask about these listings…"
-          }
-        />
+        <Box sx={{ maxWidth: 760, mx: "auto", width: "100%" }}>
+          <ChatComposer
+            conversationId={activeId}
+            streaming={stream.streaming}
+            onSend={handleSend}
+            onCancel={stream.cancel}
+            placeholder={
+              scope === "ASSET"
+                ? "Ask about this listing…"
+                : "Message PropScore…"
+            }
+          />
+        </Box>
+      </Stack>
+    </Stack>
+  );
+}
+
+const ASSET_PROMPTS = [
+  "Summarize the key risks for this listing",
+  "How does the rent estimate compare to comps?",
+  "What does the SF Assessor parcel show?",
+  "Re-run AI scoring with the latest data",
+];
+const GLOBAL_PROMPTS = [
+  "Top 3 highest-scoring opportunities right now",
+  "Compare the two cheapest listings on screen",
+  "Current SF mortgage rates from the web",
+  "Which listings have the best cap-rate potential?",
+];
+
+function EmptyState({
+  scope,
+  emptyHint,
+  onPick,
+}: {
+  scope: ChatScope;
+  emptyHint?: React.ReactNode;
+  onPick: (prompt: string) => void;
+}) {
+  const prompts = scope === "ASSET" ? ASSET_PROMPTS : GLOBAL_PROMPTS;
+  return (
+    <Stack alignItems="center" spacing={2.5} sx={{ pt: { xs: 4, md: 8 }, pb: 4 }}>
+      <Box
+        sx={{
+          width: 48,
+          height: 48,
+          borderRadius: "50%",
+          display: "grid",
+          placeItems: "center",
+          bgcolor: "primary.main",
+          color: "common.white",
+        }}
+      >
+        <AutoAwesomeRoundedIcon />
+      </Box>
+      <Stack alignItems="center" spacing={0.5}>
+        <Typography variant="h6" fontWeight={600}>
+          {scope === "ASSET" ? "Ask about this listing" : "How can I help today?"}
+        </Typography>
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ maxWidth: 460, textAlign: "center" }}
+        >
+          {emptyHint ??
+            (scope === "ASSET"
+              ? "I have access to this listing's details, AI score, comps, and parcel data."
+              : "I can compare listings, pull rent comps, and look up market context from the web.")}
+        </Typography>
+      </Stack>
+      <Stack
+        direction="row"
+        spacing={1}
+        flexWrap="wrap"
+        useFlexGap
+        justifyContent="center"
+        sx={{ maxWidth: 560 }}
+      >
+        {prompts.map((p) => (
+          <Chip
+            key={p}
+            label={p}
+            onClick={() => onPick(p)}
+            variant="outlined"
+            sx={{
+              borderRadius: 2,
+              fontSize: 13,
+              height: 32,
+              borderColor: "divider",
+              "&:hover": { bgcolor: "action.hover", borderColor: "text.secondary" },
+            }}
+          />
+        ))}
       </Stack>
     </Stack>
   );
