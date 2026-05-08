@@ -6,6 +6,7 @@ import {
   AccordionDetails,
   AccordionSummary,
   Alert,
+  Avatar,
   Box,
   Button,
   Chip,
@@ -22,6 +23,7 @@ import {
   Tabs,
   Tooltip,
   Typography,
+  alpha,
 } from "@mui/material";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
@@ -246,120 +248,34 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
               <Typography variant="body2" color="text.secondary">
                 {[listing.city, listing.state, listing.postalCode].filter(Boolean).join(", ")}
               </Typography>
-              {(agentName || agentPhone || agentEmail) && (
-                <Stack
-                  direction="row"
-                  spacing={1.5}
-                  alignItems="center"
-                  flexWrap="wrap"
-                  useFlexGap
-                  sx={{ mt: 1 }}
-                >
-                  <Typography variant="caption" color="text.secondary">
-                    Listed by
-                  </Typography>
-                  {agentName && (
-                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                      {agentName}
-                    </Typography>
+              {(agentName || agentPhone || agentEmail || coAgentName ||
+                coAgentPhone || coAgentEmail || officeName || officePhone) && (
+                <Stack spacing={1} sx={{ mt: 1.5 }}>
+                  {(agentName || agentPhone || agentEmail) && (
+                    <ContactCard
+                      role="Listed by"
+                      name={agentName}
+                      phone={agentPhone}
+                      email={agentEmail}
+                      accent="primary"
+                    />
                   )}
-                  {agentPhone && (
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<PhoneRoundedIcon fontSize="small" />}
-                      component={MuiLink}
-                      href={`tel:${agentPhone.replace(/[^\d+]/g, "")}`}
-                      sx={{ py: 0.25 }}
-                    >
-                      {agentPhone}
-                    </Button>
+                  {(coAgentName || coAgentPhone || coAgentEmail) && (
+                    <ContactCard
+                      role="Co-listed by"
+                      name={coAgentName}
+                      phone={coAgentPhone}
+                      email={coAgentEmail}
+                      accent="secondary"
+                    />
                   )}
-                  {agentEmail && (
-                    <Button
-                      size="small"
-                      variant="text"
-                      startIcon={<EmailRoundedIcon fontSize="small" />}
-                      component={MuiLink}
-                      href={`mailto:${agentEmail}`}
-                      sx={{ py: 0.25 }}
-                    >
-                      Email
-                    </Button>
-                  )}
-                </Stack>
-              )}
-              {(coAgentName || coAgentPhone || coAgentEmail) && (
-                <Stack
-                  direction="row"
-                  spacing={1.5}
-                  alignItems="center"
-                  flexWrap="wrap"
-                  useFlexGap
-                  sx={{ mt: 0.5 }}
-                >
-                  <Typography variant="caption" color="text.secondary">
-                    Co-listed by
-                  </Typography>
-                  {coAgentName && (
-                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                      {coAgentName}
-                    </Typography>
-                  )}
-                  {coAgentPhone && (
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<PhoneRoundedIcon fontSize="small" />}
-                      component={MuiLink}
-                      href={`tel:${coAgentPhone.replace(/[^\d+]/g, "")}`}
-                      sx={{ py: 0.25 }}
-                    >
-                      {coAgentPhone}
-                    </Button>
-                  )}
-                  {coAgentEmail && (
-                    <Button
-                      size="small"
-                      variant="text"
-                      startIcon={<EmailRoundedIcon fontSize="small" />}
-                      component={MuiLink}
-                      href={`mailto:${coAgentEmail}`}
-                      sx={{ py: 0.25 }}
-                    >
-                      Email
-                    </Button>
-                  )}
-                </Stack>
-              )}
-              {(officeName || officePhone) && (
-                <Stack
-                  direction="row"
-                  spacing={1.5}
-                  alignItems="center"
-                  flexWrap="wrap"
-                  useFlexGap
-                  sx={{ mt: 0.5 }}
-                >
-                  <Typography variant="caption" color="text.secondary">
-                    Brokerage
-                  </Typography>
-                  {officeName && (
-                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                      {officeName}
-                    </Typography>
-                  )}
-                  {officePhone && (
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<PhoneRoundedIcon fontSize="small" />}
-                      component={MuiLink}
-                      href={`tel:${officePhone.replace(/[^\d+]/g, "")}`}
-                      sx={{ py: 0.25 }}
-                    >
-                      {officePhone}
-                    </Button>
+                  {(officeName || officePhone) && (
+                    <ContactCard
+                      role="Brokerage"
+                      name={officeName}
+                      phone={officePhone}
+                      accent="default"
+                    />
                   )}
                 </Stack>
               )}
@@ -722,6 +638,148 @@ function Metric({
         {value}
       </Typography>
     </Box>
+  );
+}
+
+function ContactCard({
+  role,
+  name,
+  phone,
+  email,
+  accent = "primary",
+}: {
+  role: string;
+  name: string | null;
+  phone?: string | null;
+  email?: string | null;
+  accent?: "primary" | "secondary" | "default";
+}) {
+  const initials = (name ?? "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0]?.toUpperCase() ?? "")
+    .join("");
+  const telHref = phone ? `tel:${phone.replace(/[^\d+]/g, "")}` : null;
+  const mailHref = email ? `mailto:${email}` : null;
+  const accentColor =
+    accent === "primary"
+      ? "primary.main"
+      : accent === "secondary"
+        ? "secondary.main"
+        : "text.secondary";
+
+  return (
+    <Paper
+      variant="outlined"
+      sx={(theme) => ({
+        p: 1.25,
+        borderRadius: 2,
+        bgcolor: alpha(
+          theme.palette[accent === "default" ? "primary" : accent].main,
+          0.04,
+        ),
+        borderColor: alpha(
+          theme.palette[accent === "default" ? "primary" : accent].main,
+          0.18,
+        ),
+      })}
+    >
+      <Stack direction="row" spacing={1.25} alignItems="center">
+        <Avatar
+          sx={(theme) => ({
+            width: 36,
+            height: 36,
+            fontSize: 14,
+            fontWeight: 600,
+            bgcolor: alpha(
+              theme.palette[accent === "default" ? "primary" : accent].main,
+              0.15,
+            ),
+            color: accentColor,
+          })}
+        >
+          {initials || "?"}
+        </Avatar>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: accentColor,
+              fontWeight: 600,
+              letterSpacing: 0.4,
+              textTransform: "uppercase",
+              lineHeight: 1,
+            }}
+          >
+            {role}
+          </Typography>
+          <Typography
+            variant="body2"
+            sx={{ fontWeight: 600, lineHeight: 1.3, mt: 0.25 }}
+            noWrap
+          >
+            {name ?? "—"}
+          </Typography>
+          {(phone || email) && (
+            <Stack
+              direction="row"
+              spacing={1.5}
+              sx={{ mt: 0.25, color: "text.secondary" }}
+            >
+              {phone && (
+                <Typography variant="caption" noWrap>
+                  {phone}
+                </Typography>
+              )}
+              {email && (
+                <Typography variant="caption" noWrap sx={{ minWidth: 0 }}>
+                  {email}
+                </Typography>
+              )}
+            </Stack>
+          )}
+        </Box>
+        <Stack direction="row" spacing={0.5}>
+          {telHref && (
+            <Tooltip title={`Call ${phone}`}>
+              <IconButton
+                size="small"
+                component={MuiLink}
+                href={telHref}
+                sx={(theme) => ({
+                  bgcolor: alpha(theme.palette.success.main, 0.1),
+                  color: "success.main",
+                  "&:hover": {
+                    bgcolor: alpha(theme.palette.success.main, 0.2),
+                  },
+                })}
+              >
+                <PhoneRoundedIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+          {mailHref && (
+            <Tooltip title={`Email ${email}`}>
+              <IconButton
+                size="small"
+                component={MuiLink}
+                href={mailHref}
+                sx={(theme) => ({
+                  bgcolor: alpha(theme.palette.info.main, 0.1),
+                  color: "info.main",
+                  "&:hover": {
+                    bgcolor: alpha(theme.palette.info.main, 0.2),
+                  },
+                })}
+              >
+                <EmailRoundedIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+        </Stack>
+      </Stack>
+    </Paper>
   );
 }
 
