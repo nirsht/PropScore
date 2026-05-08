@@ -492,14 +492,14 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
               />
               <ToolLink
                 href={(() => {
-                  const parts = [listing?.address, listing?.city, listing?.state].filter(
-                    (p): p is string => Boolean(p)
-                  );
-                  const query = parts.length
-                    ? parts.map((p) => encodeURIComponent(p)).join(',+').replace(/%20/g, '+')
-                    : lat != null && lng != null
+                  const query =
+                    lat != null && lng != null
                       ? `${lat},${lng}`
-                      : '';
+                      : [listing?.address, listing?.city, listing?.state]
+                          .filter((p): p is string => Boolean(p))
+                          .map((p) => encodeURIComponent(p))
+                          .join(',+')
+                          .replace(/%20/g, '+');
                   const coords = lat != null && lng != null ? `/@${lat},${lng},150a,500d,35y,0h,0t,0r` : '';
                   return `https://earth.google.com/web/search/${query}${coords}`;
                 })()}
