@@ -12,6 +12,7 @@ import {
   renovationUpsideScore,
   sizeDiscrepancyScore,
   weightedValueAdd,
+  type AduFeasibilityCtx,
   type WeightOverrides,
 } from "./valueAdd";
 
@@ -39,6 +40,12 @@ export type HeuristicContext = {
   aduPotential?: "LOW" | "MEDIUM" | "HIGH" | null;
   /** 0–100 location rating (walk + safety). Null when unavailable. */
   locationScore?: number | null;
+  /** SF Open Data feasibility signals — feed `aduPotentialScore`. */
+  assessorConstructionType?: string | null;
+  landUseCategory?: string | null;
+  permitsOwnParcelAduCount?: number | null;
+  permitsBlockAduRecentCount?: number | null;
+  permitsRadiusAduRecentCount?: number | null;
   /**
    * Optional per-call weight overrides. When omitted, the canonical
    * `VALUE_ADD_WEIGHTS` are used. Used by the listings pipeline to persist
@@ -58,7 +65,15 @@ export function computeHeuristicScore(
   const renovation = renovationUpsideScore(ctx.renovationLevel ?? null);
   const sizeDiff = sizeDiscrepancyScore(ctx.mlsSqft ?? l.sqft, ctx.assessorSqft);
   const landRatio = landRatioScore(ctx.assessorLandValue, ctx.assessorBuildingValue);
-  const adu = aduPotentialScore(ctx.aduPotential);
+  const aduFeasibilityCtx: AduFeasibilityCtx = {
+    assessorConstructionType: ctx.assessorConstructionType,
+    landUseCategory: ctx.landUseCategory,
+    permitsOwnParcelAduCount: ctx.permitsOwnParcelAduCount,
+    permitsBlockAduRecentCount: ctx.permitsBlockAduRecentCount,
+    permitsRadiusAduRecentCount: ctx.permitsRadiusAduRecentCount,
+  };
+  const aduResult = aduPotentialScore(ctx.aduPotential, aduFeasibilityCtx);
+  const adu = aduResult.score;
   const location = ctx.locationScore ?? null;
 
   const valueAddWeightedAvg = weightedValueAdd(
@@ -104,13 +119,14 @@ export function computeHeuristicScore(
         motivation,
         location,
         adu,
+        aduFeasibility: aduResult.breakdown,
         // legacy components — still surfaced for transparency, no longer
         // weighted into the value-add average.
         renovation,
         sizeDiscrepancy: sizeDiff,
         landRatio,
       },
-      version: 4,
+      version: 5,
     },
   };
 }

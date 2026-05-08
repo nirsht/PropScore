@@ -82,6 +82,11 @@ export const listingsRouter = router({
               | "HIGH"
               | null,
             locationScore: listing.locationScore,
+            assessorConstructionType: listing.assessorConstructionType,
+            landUseCategory: listing.landUseCategory,
+            permitsOwnParcelAduCount: listing.permitsOwnParcelAduCount,
+            permitsBlockAduRecentCount: listing.permitsBlockAduRecentCount,
+            permitsRadiusAduRecentCount: listing.permitsRadiusAduRecentCount,
           })
         : null;
       const heuristicSnapshot = h

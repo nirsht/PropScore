@@ -29,6 +29,8 @@
     "enrich:listings": "tsx --env-file=.env scripts/enrich-listings-extract.ts",
     "enrich:rent-comps": "tsx --env-file=.env scripts/enrich-rent-comps.ts",
     "enrich:contacts": "tsx --env-file=.env scripts/enrich-contacts.ts",
+    "enrich:landuse": "tsx --env-file=.env scripts/enrich-landuse.ts",
+    "enrich:permits": "tsx --env-file=.env scripts/enrich-permits.ts",
     "backfill:rent-estimates": "tsx --env-file=.env scripts/backfill-rent-estimates.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",

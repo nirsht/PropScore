@@ -115,6 +115,11 @@ async function main() {
         extractedUnitsTotal,
         aduPotential: l.aduPotential as "LOW" | "MEDIUM" | "HIGH" | null,
         locationScore: newLocation,
+        assessorConstructionType: l.assessorConstructionType,
+        landUseCategory: l.landUseCategory,
+        permitsOwnParcelAduCount: l.permitsOwnParcelAduCount,
+        permitsBlockAduRecentCount: l.permitsBlockAduRecentCount,
+        permitsRadiusAduRecentCount: l.permitsRadiusAduRecentCount,
       });
       await db.score.upsert({
         where: { listingMlsId: l.mlsId },

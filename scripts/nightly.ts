@@ -33,10 +33,15 @@ function stage(name: string, script: string, scriptArgs: string[] = []): Stage {
 // effective in-flight query count is ~3-5x these numbers. Standalone
 // `pnpm enrich:*` runs keep their higher script defaults.
 const PRE: Stage = stage("etl-sync", "etl:sync");
+// `landuse` and `permits` join on `Listing.blockLot`, which is populated by
+// `enrich:sfpim`. They run after sfpim in the same lane, parallel with the
+// other lanes that don't depend on parcel IDs.
 const PARALLEL_LANES: Stage[][] = [
   [
     stage("sfpim", "enrich:sfpim", ["--concurrency=5"]),
     stage("vision", "enrich:vision", ["--concurrency=5"]),
+    stage("landuse", "enrich:landuse", ["--concurrency=3"]),
+    stage("permits", "enrich:permits", ["--concurrency=3"]),
   ],
   [stage("extract", "enrich:listings", ["--concurrency=8"])],
   [stage("rent-comps", "enrich:rent-comps", ["--concurrency=3"])],

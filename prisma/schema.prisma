@@ -172,6 +172,28 @@ model Listing {
   locationScore             Float?
   locationScoreUpdatedAt    DateTime?
 
+  // Feasibility inputs (added 2026-05-08): SF Open Data signals for ADU /
+  // floor-plan reconfiguration potential. See ADU-FEASIBILITY plan.
+  //   landUse*       — Socrata fdfd-xptc, joined on `mapblklot == blockLot`.
+  //   permits*       — denormalized summary of BuildingPermit (Socrata
+  //                    i98e-djp9). Heavy raw rows live in BuildingPermit;
+  //                    these counts are recomputed by `enrich:permits`.
+  landUseCategory           String?       // RESIDENT | MIXRES | MIXED | RETAIL/ENT | PDR | …
+  landUseResUnits           Int?          // resunits
+  landUseResSqft            Int?          // res
+  landUseCommSqft           Int?          // totalcomm
+  landUseFetchedAt          DateTime?
+
+  permitsOwnParcelCount       Int?
+  permitsOwnParcelAduCount    Int?
+  permitsBlockAduRecentCount  Int?
+  permitsRadiusAduRecentCount Int?
+  /// `{ permitNumber, filedDate, description, address }` for the most recent
+  /// ADU/legalization permit on the same `block` (excluding own parcel) —
+  /// surfaces in the FeasibilityCard as a precedent breadcrumb.
+  latestAduPermitOnBlock      Json?
+  permitsFetchedAt            DateTime?
+
   raw                         Json
   bridgeModificationTimestamp DateTime
 
@@ -191,6 +213,47 @@ model Listing {
   @@index([renovationLevel])
   @@index([neighborhood])
   @@index([locationScore(sort: Desc)])
+  @@index([landUseCategory])
+}
+
+// -------------------- BUILDING PERMITS --------------------
+
+/// SF DBI Building Permits (Socrata i98e-djp9) — one row per permit, hydrated
+/// from the same parcels we have listings on, plus the rest of the block for
+/// "neighbor precedent" lookups. Idempotent: keyed on `permitNumber`. The
+/// `geom` column is a PostGIS geography(Point,4326) added by raw SQL
+/// migration (Prisma can't model PostGIS types directly).
+model BuildingPermit {
+  permitNumber              String    @id
+  blockLot                  String                 // canonical 7-char block||lot
+  block                     String
+  lot                       String
+  filedDate                 DateTime?
+  issuedDate                DateTime?
+  status                    String?
+  description               String?
+  /// `permit.adu == "Y"` (the dataset's own ADU flag).
+  aduFlag                   Boolean   @default(false)
+  /// Description matches /\b(ADU|accessory dwelling|unit add|unit legaliz|legaliz.*unit)/i.
+  /// Catches the many ADU/legalization permits filed before SF added the
+  /// explicit `adu` column.
+  aduKeyword                Boolean   @default(false)
+  existingUnits             Int?
+  proposedUnits             Int?
+  existingConstructionType  String?
+  proposedConstructionType  String?
+  existingUse               String?
+  proposedUse               String?
+  lat                       Float?
+  lng                       Float?
+  raw                       Json
+  fetchedAt                 DateTime  @default(now())
+
+  @@index([blockLot])
+  @@index([block])
+  @@index([filedDate])
+  @@index([aduFlag])
+  @@index([aduKeyword])
 }
 
 // Agent + brokerage contact details for a listing. Bridge `sfar` (IDX) strips

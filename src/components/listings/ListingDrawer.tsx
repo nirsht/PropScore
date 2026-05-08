@@ -43,6 +43,7 @@ import { MeasureLotModal } from "./MeasureLotModal";
 import { AIInsightsCard } from "./ListingDrawer/AIInsightsCard";
 import { BuildingDetailsCard } from "./ListingDrawer/BuildingDetailsCard";
 import { ContactCard } from "./ListingDrawer/ContactCard";
+import { FeasibilityCard } from "./ListingDrawer/FeasibilityCard";
 import { strField } from "./ListingDrawer/fieldGuards";
 import { deriveRatio, fmtDate, fmtMoney } from "./ListingDrawer/formatters";
 import { LotAndExtrasCard } from "./ListingDrawer/LotAndExtrasCard";
@@ -329,6 +330,12 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
               privateRemarks: (raw.PrivateRemarks as string | undefined) ?? null,
             }}
           />
+
+          {/* ADU & reconfiguration feasibility — SF Open Data signals
+              (land use, construction, permit precedent). Sits below the AI
+              extracts so the data confirms or weakens the AI ADU read, and
+              the boosts feed the ADU bar in the score chart below. */}
+          <FeasibilityCard listing={listing} />
 
           {/* Opportunity scores — bar chart at top, AI rationale collapsed below */}
           <Paper variant="outlined" sx={{ p: 2 }}>
