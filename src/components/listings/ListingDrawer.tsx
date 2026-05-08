@@ -46,6 +46,7 @@ import {
 } from "recharts";
 import { trpc } from "@/lib/trpc/client";
 import { EnrichWithAIButton } from "./EnrichWithAIButton";
+import { LocationRatingCard } from "./LocationRatingCard";
 import { PhotoLightbox } from "./PhotoLightbox";
 import { MeasureLotModal } from "./MeasureLotModal";
 import { isDiverging, rowDiverges } from "@/lib/diff";
@@ -411,6 +412,16 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
               </Accordion>
             )}
           </Paper>
+
+          {/* Location rating — Walk Score (30%) + neighborhood safety from
+              DataSF crime incidents (70%). Independent of the value-add
+              opportunity scoring above. */}
+          <LocationRatingCard
+            walkScore={listing.walkScore ?? null}
+            neighborhood={listing.neighborhood ?? null}
+            neighborhoodScore={listing.neighborhoodRel?.crimeScore ?? null}
+            total={listing.locationScore ?? null}
+          />
 
           {/* GIS tools row */}
           <Paper variant="outlined" sx={{ p: 2 }}>

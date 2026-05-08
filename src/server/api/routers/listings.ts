@@ -22,7 +22,13 @@ export const listingsRouter = router({
     .query(async ({ ctx, input }) => {
       const listing = await ctx.db.listing.findUnique({
         where: { mlsId: input.mlsId },
-        include: { score: true, enrichments: { orderBy: { createdAt: "desc" }, take: 5 } },
+        include: {
+          score: true,
+          enrichments: { orderBy: { createdAt: "desc" }, take: 5 },
+          neighborhoodRel: {
+            select: { name: true, crimeScore: true, crimeUpdatedAt: true },
+          },
+        },
       });
       if (!listing) throw new TRPCError({ code: "NOT_FOUND" });
 

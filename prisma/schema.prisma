@@ -157,6 +157,20 @@ model Listing {
   //   sqftPerUnit           numeric  GENERATED ALWAYS AS (effectiveSqft / NULLIF(COALESCE(assessor_units, units), 0)) STORED
   //   hasSizeDiscrepancy    bool     GENERATED ALWAYS AS (any pair of MLS↔Assessor sqft/lot/units/stories differs >5%) STORED
 
+  // Location Rating inputs (added 2026-05-08).
+  //   neighborhood            FK by name to Neighborhood. Backfilled by a
+  //                           PostGIS ST_Intersects query during the pipeline
+  //                           pass, nullable for listings outside SF polygons.
+  //   walkScore               0–100 from Walk Score API, refreshed every 90d.
+  //   locationScore           0.3*walkScore + 0.7*Neighborhood.crimeScore
+  //                           (nulls are reweighted; see scoring/location.ts).
+  neighborhood              String?
+  neighborhoodRel           Neighborhood? @relation(fields: [neighborhood], references: [name], onDelete: SetNull)
+  walkScore                 Int?
+  walkScoreFetchedAt        DateTime?
+  locationScore             Float?
+  locationScoreUpdatedAt    DateTime?
+
   raw                         Json
   bridgeModificationTimestamp DateTime
 
@@ -172,6 +186,43 @@ model Listing {
   @@index([bridgeModificationTimestamp])
   @@index([blockLot])
   @@index([renovationLevel])
+  @@index([neighborhood])
+  @@index([locationScore(sort: Desc)])
+}
+
+// -------------------- LOCATION --------------------
+
+// Seeded once from DataSF "Analysis Neighborhoods" GeoJSON (resource
+// p5b7-5n3h). The polygon `boundary` column is a PostGIS geography(Polygon,
+// 4326), added by raw SQL since Prisma can't model PostGIS types directly.
+// Crime stats are recomputed every nightly refresh from a single SoQL
+// `$group` query against DataSF's wg3w-h783 incidents dataset.
+model Neighborhood {
+  name              String   @id
+  // boundary geography(Polygon,4326) — added in raw SQL migration; queried
+  // via $queryRaw with ST_Intersects for listing→neighborhood join.
+  crimeScore        Float?   // 0–100, higher = safer (percentile-ranked across SF)
+  weightedIncidents Float?   // raw weighted incident count (debugging)
+  crimeUpdatedAt    DateTime?
+
+  listings    Listing[]
+  crimeStats  NeighborhoodCrimeStat[]
+}
+
+// Per-neighborhood/category aggregate for the rolling 12-month window.
+// Replaced wholesale on each `pnpm refresh:crime` run — rows from prior
+// windows are deleted, so this table is small (~120 rows: 41 × 3 categories).
+model NeighborhoodCrimeStat {
+  neighborhood String
+  category     String   // "violent" | "property" | "qol"
+  count        Int
+  windowStart  DateTime
+  windowEnd    DateTime
+
+  neighborhoodRel Neighborhood @relation(fields: [neighborhood], references: [name], onDelete: Cascade)
+
+  @@id([neighborhood, category, windowStart])
+  @@index([neighborhood])
 }
 
 enum RenovationLevel {
