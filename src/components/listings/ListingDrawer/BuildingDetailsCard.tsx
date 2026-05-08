@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Alert, Box, Paper, Stack, Typography } from "@mui/material";
 import { isDiverging, rowDiverges } from "@/lib/diff";
+import { AIEvidenceTrail } from "./AIEvidenceTrail";
 import { deriveRatio, fmtMoney, fmtNum } from "./formatters";
 import type { ListingForDetails } from "./types";
 
@@ -181,6 +182,7 @@ export function BuildingDetailsCard({ listing }: { listing: ListingForDetails })
           );
         })}
       </Box>
+      <AIEvidenceTrail enrichments={listing.enrichments} />
     </Paper>
   );
 }

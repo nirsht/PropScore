@@ -33,6 +33,12 @@ export type ListingForDetails = {
   // AI-side
   aiStories: number | null;
   extractedUnitMix: unknown;
+  enrichments?: Array<{
+    id: string;
+    agentName: string;
+    output: unknown;
+    createdAt: Date | string;
+  }>;
 };
 
 export type ListingForAI = {
