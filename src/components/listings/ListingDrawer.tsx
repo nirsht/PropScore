@@ -109,6 +109,16 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
     ? `https://duckduckgo.com/?q=${encodeURIComponent(`!ducky site:redfin.com ${fullAddress}`)}`
     : "https://www.redfin.com";
 
+  // Zillow's `_rb` redirect expects dash-separated tokens, not URL-encoded
+  // spaces/commas — encodeURIComponent produces 404s.
+  const zillowSlug = fullAddress
+    .replace(/,/g, "")
+    .trim()
+    .replace(/\s+/g, "-");
+  const zillowUrl = zillowSlug
+    ? `https://www.zillow.com/homes/${zillowSlug}_rb/`
+    : "https://www.zillow.com";
+
   // Bridge `sfar` (IDX) strips agent phone/email, so on its own these reads
   // would all be null. The RentCast enrichment layer
   // (`scripts/enrich-contacts.ts` → `ListingContact`) fills them in by
@@ -414,7 +424,7 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
                 label="Street View"
               />
               <ToolLink
-                href={`https://www.zillow.com/homes/${encodeURIComponent(fullAddress)}_rb/`}
+                href={zillowUrl}
                 icon={<HomeWorkRoundedIcon fontSize="small" />}
                 label="Zillow"
               />

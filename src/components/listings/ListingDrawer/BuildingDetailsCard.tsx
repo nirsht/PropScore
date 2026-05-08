@@ -182,7 +182,11 @@ export function BuildingDetailsCard({ listing }: { listing: ListingForDetails })
           );
         })}
       </Box>
-      <AIEvidenceTrail enrichments={listing.enrichments} />
+      <AIEvidenceTrail
+        aiUnits={aiUnits}
+        aiStories={listing.aiStories}
+        enrichments={listing.enrichments}
+      />
     </Paper>
   );
 }
