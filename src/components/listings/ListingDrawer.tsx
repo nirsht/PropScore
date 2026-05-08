@@ -105,6 +105,10 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
     { mlsId: mlsId ?? "" },
     { enabled: open, staleTime: 5 * 60_000 },
   );
+  const contactsQuery = trpc.listings.getContacts.useQuery(
+    { mlsId: mlsId ?? "" },
+    { enabled: open, staleTime: 30 * 60_000 },
+  );
   const utils = trpc.useUtils();
   const refreshPhotos = React.useCallback(() => {
     if (!mlsId) return;
@@ -147,17 +151,21 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
     ? `https://duckduckgo.com/?q=${encodeURIComponent(`!ducky site:redfin.com ${fullAddress}`)}`
     : "https://www.redfin.com";
 
-  const agentName = strField(raw.ListAgentFullName);
-  const agentPhone =
-    strField(raw.ListAgentDirectPhone) ?? strField(raw.ListAgentOfficePhone);
-  const agentEmail = strField(raw.ListAgentEmail);
+  // Names come from the listing payload (cheap, already on `raw`); phones and
+  // emails are loaded asynchronously from the /Member and /Office resources
+  // via getContacts because sfar's Property schema doesn't expose them.
+  const contacts = contactsQuery.data;
+  const agentName = contacts?.agent?.name ?? strField(raw.ListAgentFullName);
+  const agentPhone = contacts?.agent?.phone ?? null;
+  const agentEmail = contacts?.agent?.email ?? null;
 
-  const coAgentName = strField(raw.CoListAgentFullName);
-  const coAgentPhone = strField(raw.CoListAgentDirectPhone);
-  const coAgentEmail = strField(raw.CoListAgentEmail);
+  const coAgentName = contacts?.coAgent?.name ?? strField(raw.CoListAgentFullName);
+  const coAgentPhone = contacts?.coAgent?.phone ?? null;
+  const coAgentEmail = contacts?.coAgent?.email ?? null;
 
-  const officeName = strField(raw.ListOfficeName);
-  const officePhone = strField(raw.ListOfficePhone);
+  const officeName = contacts?.office?.name ?? strField(raw.ListOfficeName);
+  const officePhone = contacts?.office?.phone ?? null;
+  const officeEmail = contacts?.office?.email ?? null;
 
   return (
     <Drawer
@@ -269,11 +277,12 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
                       accent="secondary"
                     />
                   )}
-                  {(officeName || officePhone) && (
+                  {(officeName || officePhone || officeEmail) && (
                     <ContactCard
                       role="Brokerage"
                       name={officeName}
                       phone={officePhone}
+                      email={officeEmail}
                       accent="default"
                     />
                   )}

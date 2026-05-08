@@ -59,7 +59,9 @@ export type BridgeProperty = Record<string, unknown> & {
   ListAgentFullName?: string;
   ListAgentMlsId?: string;
   ListOfficeName?: string;
+  ListOfficeMlsId?: string;
   CoListAgentFullName?: string;
+  CoListAgentMlsId?: string;
 };
 
 export type SearchOptions = {
@@ -118,12 +120,16 @@ const DEFAULT_SELECT = [
   "StateOrProvince",
   "PostalCode",
   "PublicRemarks",
-  // Listing agent + brokerage names. Bridge's sfar dataset doesn't permit
-  // selecting agent phone/email under IDX policy, so we only pull the names.
+  // Listing agent + brokerage IDs. sfar's `Property` schema doesn't expose
+  // phone/email at all — those live on the separate `/Member` and `/Office`
+  // resources, fetched on demand via fetchMember()/fetchOffice() keyed by
+  // ListAgentMlsId / ListOfficeMlsId / CoListAgentMlsId.
   "ListAgentFullName",
   "ListAgentMlsId",
   "ListOfficeName",
+  "ListOfficeMlsId",
   "CoListAgentFullName",
+  "CoListAgentMlsId",
 ];
 
 let lastRequestAt = 0;
@@ -327,4 +333,101 @@ export async function fetchMetadata(): Promise<string> {
  */
 export function odataDateTime(d: Date): string {
   return d.toISOString();
+}
+
+export type BridgeMember = {
+  MemberMlsId?: string;
+  MemberFullName?: string;
+  MemberFirstName?: string;
+  MemberLastName?: string;
+  MemberDirectPhone?: string | null;
+  MemberMobilePhone?: string | null;
+  MemberOfficePhone?: string | null;
+  MemberPreferredPhone?: string | null;
+  MemberTollFreePhone?: string | null;
+  MemberEmail?: string | null;
+  SocialMediaWebsiteUrlOrId?: string | null;
+};
+
+export type BridgeOffice = {
+  OfficeMlsId?: string;
+  OfficeName?: string;
+  OfficePhone?: string | null;
+  OfficePhoneExt?: string | null;
+  OfficeEmail?: string | null;
+  SocialMediaWebsiteUrlOrId?: string | null;
+};
+
+// Members and offices change rarely; cache lookups for an hour to stay well
+// under Bridge's 5000 req/hr quota when many drawers open against the same
+// roster. Negative results (404 / not found) cached for 5 minutes so a typo'd
+// ID doesn't hammer the upstream.
+const MEMBER_TTL_MS = 60 * 60 * 1000;
+const NEGATIVE_TTL_MS = 5 * 60 * 1000;
+const memberCache = new Map<string, { at: number; value: BridgeMember | null }>();
+const officeCache = new Map<string, { at: number; value: BridgeOffice | null }>();
+
+function cacheGet<T>(
+  cache: Map<string, { at: number; value: T | null }>,
+  key: string,
+): T | null | undefined {
+  const hit = cache.get(key);
+  if (!hit) return undefined;
+  const ttl = hit.value ? MEMBER_TTL_MS : NEGATIVE_TTL_MS;
+  if (Date.now() - hit.at > ttl) {
+    cache.delete(key);
+    return undefined;
+  }
+  return hit.value;
+}
+
+/**
+ * Fetch one Member (agent) record by MemberMlsId. Returns null if not found.
+ * Filtering by MemberKey returns no rows in sfar — only MemberMlsId works.
+ */
+export async function fetchMember(memberMlsId: string): Promise<BridgeMember | null> {
+  const cached = cacheGet(memberCache, memberMlsId);
+  if (cached !== undefined) return cached;
+
+  const escaped = memberMlsId.replace(/'/g, "''");
+  const url =
+    `${env.BRIDGE_BASE_URL}/${env.BRIDGE_DATASET}/Member` +
+    `?$filter=${encodeURIComponent(`MemberMlsId eq '${escaped}'`)}` +
+    `&$top=1&access_token=${env.BRIDGE_SERVER_TOKEN}`;
+  try {
+    const page = await request<{ value?: BridgeMember[] }>(url);
+    const value = page.value?.[0] ?? null;
+    memberCache.set(memberMlsId, { at: Date.now(), value });
+    return value;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(`[bridge:member] mlsId=${memberMlsId} fetch failed:`, err);
+    memberCache.set(memberMlsId, { at: Date.now(), value: null });
+    return null;
+  }
+}
+
+/**
+ * Fetch one Office (brokerage) record by OfficeMlsId. Returns null if not found.
+ */
+export async function fetchOffice(officeMlsId: string): Promise<BridgeOffice | null> {
+  const cached = cacheGet(officeCache, officeMlsId);
+  if (cached !== undefined) return cached;
+
+  const escaped = officeMlsId.replace(/'/g, "''");
+  const url =
+    `${env.BRIDGE_BASE_URL}/${env.BRIDGE_DATASET}/Office` +
+    `?$filter=${encodeURIComponent(`OfficeMlsId eq '${escaped}'`)}` +
+    `&$top=1&access_token=${env.BRIDGE_SERVER_TOKEN}`;
+  try {
+    const page = await request<{ value?: BridgeOffice[] }>(url);
+    const value = page.value?.[0] ?? null;
+    officeCache.set(officeMlsId, { at: Date.now(), value });
+    return value;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(`[bridge:office] mlsId=${officeMlsId} fetch failed:`, err);
+    officeCache.set(officeMlsId, { at: Date.now(), value: null });
+    return null;
+  }
 }

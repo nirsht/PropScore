@@ -4,7 +4,12 @@ import type { Prisma } from "@prisma/client";
 import { protectedProcedure, router } from "../trpc";
 import { FilterInput } from "../schemas/filter";
 import { countListings, searchListings } from "../listings-search";
-import { fetchListingMedia, type BridgeMediaItem } from "@/server/etl/bridge-client";
+import {
+  fetchListingMedia,
+  fetchMember,
+  fetchOffice,
+  type BridgeMediaItem,
+} from "@/server/etl/bridge-client";
 import { normalizeListing } from "@/server/etl/normalize";
 import { computeHeuristicScore } from "@/server/etl/scoring";
 
@@ -122,6 +127,81 @@ export const listingsRouter = router({
         cached: false,
         via: result.via,
         attempts: result.attempts,
+      };
+    }),
+
+  /**
+   * Look up phone/email for the listing agent, co-agent, and brokerage.
+   *
+   * sfar's `Property` resource doesn't expose contact fields; they live on
+   * the separate `/Member` and `/Office` resources (see bridge-client). We
+   * fan out to those on demand using the IDs already stored on the
+   * listing's `raw`. Results are cached in-process by bridge-client.
+   */
+  getContacts: protectedProcedure
+    .input(z.object({ mlsId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const listing = await ctx.db.listing.findUnique({
+        where: { mlsId: input.mlsId },
+        select: { mlsId: true, raw: true },
+      });
+      if (!listing) throw new TRPCError({ code: "NOT_FOUND" });
+      const raw = (listing.raw ?? {}) as Record<string, unknown>;
+
+      const str = (v: unknown) =>
+        typeof v === "string" && v.trim() ? v.trim() : null;
+
+      const agentMlsId = str(raw.ListAgentMlsId);
+      const coAgentMlsId = str(raw.CoListAgentMlsId);
+      const officeMlsId = str(raw.ListOfficeMlsId);
+
+      const [agent, coAgent, office] = await Promise.all([
+        agentMlsId ? fetchMember(agentMlsId) : Promise.resolve(null),
+        coAgentMlsId ? fetchMember(coAgentMlsId) : Promise.resolve(null),
+        officeMlsId ? fetchOffice(officeMlsId) : Promise.resolve(null),
+      ]);
+
+      // Pick the most-callable phone the MLS exposes per agent. SFAR's data
+      // is sparse — `MemberDirectPhone` is often null, so we fall back through
+      // the same hierarchy a human would dial.
+      const pickAgentPhone = (m: typeof agent) =>
+        str(m?.MemberDirectPhone) ??
+        str(m?.MemberMobilePhone) ??
+        str(m?.MemberPreferredPhone) ??
+        str(m?.MemberOfficePhone) ??
+        str(m?.MemberTollFreePhone) ??
+        null;
+
+      const shape = (m: typeof agent, fallbackName: string | null) =>
+        m == null
+          ? fallbackName
+            ? { name: fallbackName, phone: null, email: null, website: null }
+            : null
+          : {
+              name: str(m.MemberFullName) ?? fallbackName,
+              phone: pickAgentPhone(m),
+              email: str(m.MemberEmail),
+              website: str(m.SocialMediaWebsiteUrlOrId),
+            };
+
+      return {
+        agent: shape(agent, str(raw.ListAgentFullName)),
+        coAgent: shape(coAgent, str(raw.CoListAgentFullName)),
+        office: office
+          ? {
+              name: str(office.OfficeName) ?? str(raw.ListOfficeName),
+              phone: str(office.OfficePhone),
+              email: str(office.OfficeEmail),
+              website: str(office.SocialMediaWebsiteUrlOrId),
+            }
+          : str(raw.ListOfficeName)
+            ? {
+                name: str(raw.ListOfficeName),
+                phone: null,
+                email: null,
+                website: null,
+              }
+            : null,
       };
     }),
 
