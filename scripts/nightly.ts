@@ -34,18 +34,28 @@ function stage(name: string, script: string, scriptArgs: string[] = []): Stage {
 // effective in-flight query count is ~3-5x these numbers. Standalone
 // `pnpm enrich:*` runs keep their higher script defaults.
 const PRE: Stage = stage("etl-sync", "etl:sync");
+// `landuse` and `permits` join on `Listing.blockLot`, which is populated by
+// `enrich:sfpim`. They run after sfpim in the same lane, parallel with the
+// other lanes that don't depend on parcel IDs.
 const PARALLEL_LANES: Stage[][] = [
   [
     stage("sfpim", "enrich:sfpim", ["--concurrency=5"]),
     stage("vision", "enrich:vision", ["--concurrency=5"]),
-    // Zoning depends on assessor lot size for RM-* density-by-area rules,
-    // so it has to follow sfpim in the same lane.
+    // landuse + permits join on Listing.blockLot (populated by sfpim);
+    // zoning needs assessor lot size for RM-* density-by-area rules, so
+    // they all chain after sfpim in the same lane.
+    stage("landuse", "enrich:landuse", ["--concurrency=3"]),
+    stage("permits", "enrich:permits", ["--concurrency=3"]),
     stage("zoning", "enrich:zoning", ["--concurrency=5"]),
   ],
   [stage("extract", "enrich:listings", ["--concurrency=8"])],
   [stage("rent-comps", "enrich:rent-comps", ["--concurrency=3"])],
   [stage("walkscore", "refresh:walkscore")],
   [stage("crime", "refresh:crime")],
+  // Contacts only write to ListingContact (disjoint from every other lane)
+  // and the upstream RentCast API caps us per-second, so they're cheap to
+  // run in parallel.
+  [stage("contacts", "enrich:contacts", ["--concurrency=3"])],
 ];
 // Neighborhood comp medians depend on assessor data being populated, so
 // run after the parallel phase finishes but before recompute:scores reads

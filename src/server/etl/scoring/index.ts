@@ -13,6 +13,7 @@ import {
   renovationUpsideScore,
   sizeDiscrepancyScore,
   weightedValueAdd,
+  type AduFeasibilityCtx,
   type WeightOverrides,
 } from "./valueAdd";
 import { zoningUpsideScore } from "./zoningUpside";
@@ -47,6 +48,12 @@ export type HeuristicContext = {
   aduPotential?: "LOW" | "MEDIUM" | "HIGH" | null;
   /** 0–100 location rating (walk + safety). Null when unavailable. */
   locationScore?: number | null;
+  /** SF Open Data feasibility signals — feed `aduPotentialScore`. */
+  assessorConstructionType?: string | null;
+  landUseCategory?: string | null;
+  permitsOwnParcelAduCount?: number | null;
+  permitsBlockAduRecentCount?: number | null;
+  permitsRadiusAduRecentCount?: number | null;
   /** Per-neighborhood comp medians for assessment-delta scoring. */
   neighborhoodMedianAssessedPerSqft?: number | null;
   neighborhoodMedianAssessedPerUnit?: number | null;
@@ -72,7 +79,15 @@ export function computeHeuristicScore(
   const renovation = renovationUpsideScore(ctx.renovationLevel ?? null);
   const sizeDiff = sizeDiscrepancyScore(ctx.mlsSqft ?? l.sqft, ctx.assessorSqft);
   const landRatio = landRatioScore(ctx.assessorLandValue, ctx.assessorBuildingValue);
-  const adu = aduPotentialScore(ctx.aduPotential);
+  const aduFeasibilityCtx: AduFeasibilityCtx = {
+    assessorConstructionType: ctx.assessorConstructionType,
+    landUseCategory: ctx.landUseCategory,
+    permitsOwnParcelAduCount: ctx.permitsOwnParcelAduCount,
+    permitsBlockAduRecentCount: ctx.permitsBlockAduRecentCount,
+    permitsRadiusAduRecentCount: ctx.permitsRadiusAduRecentCount,
+  };
+  const aduResult = aduPotentialScore(ctx.aduPotential, aduFeasibilityCtx);
+  const adu = aduResult.score;
   const location = ctx.locationScore ?? null;
   const assessmentDelta = assessmentDeltaScore(l, ctx);
   const zoningUpside = zoningUpsideScore(l, ctx);
@@ -140,6 +155,7 @@ export function computeHeuristicScore(
         motivation,
         location,
         adu,
+        aduFeasibility: aduResult.breakdown,
         assessmentDelta,
         zoningUpside,
         marketUpside,

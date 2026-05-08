@@ -19,6 +19,11 @@ export const scoringRouter = router({
         const score = computeHeuristicScore(normalized, {
           locationScore: l.locationScore,
           aduPotential: l.aduPotential as "LOW" | "MEDIUM" | "HIGH" | null,
+          assessorConstructionType: l.assessorConstructionType,
+          landUseCategory: l.landUseCategory,
+          permitsOwnParcelAduCount: l.permitsOwnParcelAduCount,
+          permitsBlockAduRecentCount: l.permitsBlockAduRecentCount,
+          permitsRadiusAduRecentCount: l.permitsRadiusAduRecentCount,
         });
         await ctx.db.score.upsert({
           where: { listingMlsId: l.mlsId },

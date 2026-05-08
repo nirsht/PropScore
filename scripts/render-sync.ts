@@ -148,6 +148,10 @@ async function main() {
   // Chat — optional. The web_search tool errors explicitly when invoked
   // without a key; the rest of chat works regardless.
   const TAVILY_API_KEY = envOptional("TAVILY_API_KEY");
+  // Listing-agent contact enrichment. Optional: when missing,
+  // contact-enrichment.ts no-ops and the drawer's "Listed by" / Brokerage
+  // rows render empty (Bridge `sfar` IDX feed strips contact fields).
+  const RENTCAST_API_KEY = envOptional("RENTCAST_API_KEY");
 
   // 1. Locate services.
   console.log("Looking up services on Render…");
@@ -169,6 +173,7 @@ async function main() {
       ...(NEXT_PUBLIC_MAP_STYLE_URL ? { NEXT_PUBLIC_MAP_STYLE_URL } : {}),
       ...(WALKSCORE_API_KEY ? { WALKSCORE_API_KEY } : {}),
       ...(TAVILY_API_KEY ? { TAVILY_API_KEY } : {}),
+      ...(RENTCAST_API_KEY ? { RENTCAST_API_KEY } : {}),
     },
     WEB_SERVICE_NAME,
   );
@@ -179,6 +184,7 @@ async function main() {
       BRIDGE_SERVER_TOKEN,
       OPENAI_API_KEY,
       ...(WALKSCORE_API_KEY ? { WALKSCORE_API_KEY } : {}),
+      ...(RENTCAST_API_KEY ? { RENTCAST_API_KEY } : {}),
     },
     CRON_SERVICE_NAME,
   );

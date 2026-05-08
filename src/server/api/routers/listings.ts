@@ -38,6 +38,20 @@ export const listingsRouter = router({
               compsUpdatedAt: true,
             },
           },
+          contact: {
+            select: {
+              source: true,
+              agentName: true,
+              agentPhone: true,
+              agentEmail: true,
+              agentWebsite: true,
+              officeName: true,
+              officePhone: true,
+              officeEmail: true,
+              officeWebsite: true,
+              fetchedAt: true,
+            },
+          },
         },
       });
       if (!listing) throw new TRPCError({ code: "NOT_FOUND" });
@@ -83,6 +97,11 @@ export const listingsRouter = router({
               | "HIGH"
               | null,
             locationScore: listing.locationScore,
+            assessorConstructionType: listing.assessorConstructionType,
+            landUseCategory: listing.landUseCategory,
+            permitsOwnParcelAduCount: listing.permitsOwnParcelAduCount,
+            permitsBlockAduRecentCount: listing.permitsBlockAduRecentCount,
+            permitsRadiusAduRecentCount: listing.permitsRadiusAduRecentCount,
             neighborhoodMedianAssessedPerSqft:
               listing.neighborhoodRel?.medianAssessedPerSqft ?? null,
             neighborhoodMedianAssessedPerUnit:
