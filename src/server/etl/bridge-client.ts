@@ -61,6 +61,8 @@ export type BridgeProperty = Record<string, unknown> & {
   ListAgentDirectPhone?: string;
   ListAgentOfficePhone?: string;
   ListAgentEmail?: string;
+  ListOfficeName?: string;
+  ListOfficePhone?: string;
   CoListAgentFullName?: string;
   CoListAgentDirectPhone?: string;
   CoListAgentEmail?: string;
@@ -122,12 +124,14 @@ const DEFAULT_SELECT = [
   "StateOrProvince",
   "PostalCode",
   "PublicRemarks",
-  // Listing agent contact info — surfaces as click-to-call/email in the drawer.
+  // Listing agent + brokerage contact info — surfaces as click-to-call/email in the drawer.
   "ListAgentFullName",
   "ListAgentMlsId",
   "ListAgentDirectPhone",
   "ListAgentOfficePhone",
   "ListAgentEmail",
+  "ListOfficeName",
+  "ListOfficePhone",
   "CoListAgentFullName",
   "CoListAgentDirectPhone",
   "CoListAgentEmail",
