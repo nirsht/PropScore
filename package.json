@@ -16,7 +16,7 @@
     "test:watch": "vitest",
     "etl:sync": "tsx --env-file=.env scripts/etl-sync.ts",
     "etl:full": "tsx --env-file=.env scripts/etl-sync.ts --full",
-    "nightly": "pnpm etl:sync && pnpm enrich:sfpim && pnpm enrich:vision && pnpm enrich:listings && pnpm enrich:rent-comps && pnpm refresh:crime && pnpm refresh:walkscore && pnpm recompute:scores",
+    "nightly": "tsx --env-file=.env scripts/nightly.ts",
     "seed:neighborhoods": "tsx --env-file=.env scripts/seed-neighborhoods.ts",
     "refresh:crime": "tsx --env-file=.env scripts/refresh-crime.ts",
     "refresh:walkscore": "tsx --env-file=.env scripts/refresh-walkscore.ts",

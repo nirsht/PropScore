@@ -11,9 +11,11 @@ import { db } from "@/lib/db";
 import { normalizeListing } from "@/server/etl/normalize";
 import { computeHeuristicScore } from "@/server/etl/scoring";
 import { locationScore } from "@/server/etl/scoring/location";
+import { mapWithConcurrency } from "@/lib/concurrency";
 import type { Prisma } from "@prisma/client";
 
 const BATCH = 500;
+const CONCURRENCY = 10;
 
 async function main() {
   const total = await db.listing.count();
@@ -35,11 +37,18 @@ async function main() {
     });
     if (batch.length === 0) break;
 
-    for (const l of batch) {
-      processed += 1;
+    type RowDelta = {
+      updatedListing: boolean;
+      locationUpdated: boolean;
+      scored: boolean;
+      skippedAI: boolean;
+    };
+
+    const results = await mapWithConcurrency(batch, CONCURRENCY, async (l): Promise<RowDelta> => {
+      const delta: RowDelta = { updatedListing: false, locationUpdated: false, scored: false, skippedAI: false };
       const raw = l.raw as Record<string, unknown>;
       const norm = normalizeListing(raw);
-      if (!norm) continue;
+      if (!norm) return delta;
 
       // Re-persist normalized fields if they changed (specifically to flip 0 → null)
       const fieldsChanged =
@@ -62,7 +71,7 @@ async function main() {
             stories: norm.stories,
           },
         });
-        updatedListing += 1;
+        delta.updatedListing = true;
       }
 
       // Location score is independent of AI value-add scoring — always
@@ -80,12 +89,12 @@ async function main() {
             locationScoreUpdatedAt: new Date(),
           },
         });
-        locationUpdated += 1;
+        delta.locationUpdated = true;
       }
 
       if (l.score?.computedBy === "AI") {
-        skippedAI += 1;
-        continue;
+        delta.skippedAI = true;
+        return delta;
       }
 
       const um = l.extractedUnitMix as Array<{ count?: number }> | null;
@@ -127,7 +136,21 @@ async function main() {
           computedAt: new Date(),
         },
       });
-      scored += 1;
+      delta.scored = true;
+      return delta;
+    });
+
+    for (let i = 0; i < results.length; i++) {
+      processed += 1;
+      const r = results[i]!;
+      if (r.status === "fulfilled") {
+        if (r.value.updatedListing) updatedListing += 1;
+        if (r.value.locationUpdated) locationUpdated += 1;
+        if (r.value.scored) scored += 1;
+        if (r.value.skippedAI) skippedAI += 1;
+      } else {
+        console.error(`[recompute] mlsId=${batch[i]!.mlsId}:`, r.reason);
+      }
     }
 
     cursor = batch[batch.length - 1]?.mlsId;

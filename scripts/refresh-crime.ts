@@ -53,19 +53,17 @@ async function main() {
   ]);
 
   // Recompute percentile-rank crime scores across all neighborhoods.
+  // Parallel — distinct rows, ~41 of them, fully independent.
   const ranks = percentileRankCrimeScores(filtered);
-  let updated = 0;
-  for (const [name, { crimeScore, weightedIncidents }] of ranks) {
-    await db.neighborhood.update({
-      where: { name },
-      data: {
-        crimeScore,
-        weightedIncidents,
-        crimeUpdatedAt: now,
-      },
-    });
-    updated += 1;
-  }
+  await Promise.all(
+    [...ranks].map(([name, { crimeScore, weightedIncidents }]) =>
+      db.neighborhood.update({
+        where: { name },
+        data: { crimeScore, weightedIncidents, crimeUpdatedAt: now },
+      }),
+    ),
+  );
+  const updated = ranks.size;
 
   // Neighborhoods with zero matching incidents in the window — they don't
   // appear in `ranks` at all. Mark them as "safest" (score 100) and zero
