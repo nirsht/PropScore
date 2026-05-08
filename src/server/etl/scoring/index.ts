@@ -1,5 +1,6 @@
 import type { RenovationLevel } from "@prisma/client";
 import type { NormalizedListing } from "../normalize";
+import { assessmentDeltaScore } from "./assessmentDelta";
 import { densityScore } from "./density";
 import { locationScore } from "./location";
 import { motivationScore } from "./motivation";
@@ -14,6 +15,7 @@ import {
   weightedValueAdd,
   type WeightOverrides,
 } from "./valueAdd";
+import { zoningUpsideScore } from "./zoningUpside";
 
 export type ComputedScore = {
   densityScore: number;
@@ -21,6 +23,9 @@ export type ComputedScore = {
   motivationScore: number;
   locationScore: number | null;
   aduScore: number | null;
+  assessmentDeltaScore: number | null;
+  zoningUpsideScore: number | null;
+  marketUpsideScore: number | null;
   valueAddWeightedAvg: number;
   breakdown: Record<string, unknown>;
 };
@@ -34,11 +39,20 @@ export type HeuristicContext = {
   assessorSqft?: number | null;
   assessorBuildingValue?: number | null;
   assessorLandValue?: number | null;
+  /** Pre-computed assessor improvement + land total. Mirrors the
+   *  `assessedValueTotal` generated column on Listing. */
+  assessedValueTotal?: number | null;
   extractedOccupancy?: number | null;
   extractedUnitsTotal?: number | null;
   aduPotential?: "LOW" | "MEDIUM" | "HIGH" | null;
   /** 0–100 location rating (walk + safety). Null when unavailable. */
   locationScore?: number | null;
+  /** Per-neighborhood comp medians for assessment-delta scoring. */
+  neighborhoodMedianAssessedPerSqft?: number | null;
+  neighborhoodMedianAssessedPerUnit?: number | null;
+  neighborhoodCompSampleSize?: number | null;
+  /** Max units allowed under base zoning (no state-law overlays). */
+  zoningMaxUnits?: number | null;
   /**
    * Optional per-call weight overrides. When omitted, the canonical
    * `VALUE_ADD_WEIGHTS` are used. Used by the listings pipeline to persist
@@ -60,6 +74,18 @@ export function computeHeuristicScore(
   const landRatio = landRatioScore(ctx.assessorLandValue, ctx.assessorBuildingValue);
   const adu = aduPotentialScore(ctx.aduPotential);
   const location = ctx.locationScore ?? null;
+  const assessmentDelta = assessmentDeltaScore(l, ctx);
+  const zoningUpside = zoningUpsideScore(l, ctx);
+
+  // Combined Market Upside: simple average of non-null sub-scores. Null
+  // when both sub-scores are null. NOT folded into VALUE_ADD_WEIGHTS in v1.
+  const upsideParts = [assessmentDelta, zoningUpside].filter(
+    (x): x is number => x != null,
+  );
+  const marketUpside =
+    upsideParts.length === 0
+      ? null
+      : upsideParts.reduce((s, v) => s + v, 0) / upsideParts.length;
 
   const valueAddWeightedAvg = weightedValueAdd(
     {
@@ -78,6 +104,9 @@ export function computeHeuristicScore(
     motivationScore: motivation,
     locationScore: location,
     aduScore: adu,
+    assessmentDeltaScore: assessmentDelta,
+    zoningUpsideScore: zoningUpside,
+    marketUpsideScore: marketUpside,
     valueAddWeightedAvg,
     breakdown: {
       weights: VALUE_ADD_WEIGHTS,
@@ -95,8 +124,15 @@ export function computeHeuristicScore(
         renovationLevel: ctx.renovationLevel ?? null,
         landValue: ctx.assessorLandValue,
         buildingValue: ctx.assessorBuildingValue,
+        assessedValueTotal: ctx.assessedValueTotal ?? null,
         aduPotential: ctx.aduPotential ?? null,
         locationScore: location,
+        zoningMaxUnits: ctx.zoningMaxUnits ?? null,
+        neighborhoodMedianAssessedPerSqft:
+          ctx.neighborhoodMedianAssessedPerSqft ?? null,
+        neighborhoodMedianAssessedPerUnit:
+          ctx.neighborhoodMedianAssessedPerUnit ?? null,
+        neighborhoodCompSampleSize: ctx.neighborhoodCompSampleSize ?? null,
       },
       components: {
         density,
@@ -104,13 +140,16 @@ export function computeHeuristicScore(
         motivation,
         location,
         adu,
+        assessmentDelta,
+        zoningUpside,
+        marketUpside,
         // legacy components — still surfaced for transparency, no longer
         // weighted into the value-add average.
         renovation,
         sizeDiscrepancy: sizeDiff,
         landRatio,
       },
-      version: 4,
+      version: 5,
     },
   };
 }

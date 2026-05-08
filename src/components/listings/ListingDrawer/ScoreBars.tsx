@@ -13,6 +13,7 @@ const METRIC_COLORS: Record<string, string> = {
   Density: "#7c5cff",
   Vacancy: "#23d29a",
   Motivation: "#ffb86b",
+  Upside: "#5cd0ff",
   "Value-Add": "#ff6b8a",
 };
 
@@ -48,6 +49,11 @@ export function ScoreBars({
       name: "Motivation",
       current: score.motivationScore,
       heuristic: heuristic?.motivationScore ?? null,
+    },
+    {
+      name: "Upside",
+      current: score.marketUpsideScore ?? null,
+      heuristic: heuristic?.marketUpsideScore ?? null,
     },
     {
       name: "Value-Add",

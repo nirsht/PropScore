@@ -102,6 +102,9 @@ async function main() {
         ? um.reduce((sum, e) => sum + (e.count ?? 0), 0) || null
         : null;
 
+      const assessedValueTotal =
+        (l.assessorBuildingValue ?? 0) + (l.assessorLandValue ?? 0) || null;
+
       const s = computeHeuristicScore(norm, {
         effectiveSqft: l.assessorBuildingSqft ?? l.sqft,
         effectiveUnits: l.assessorUnits ?? l.units ?? extractedUnitsTotal,
@@ -111,10 +114,17 @@ async function main() {
         assessorSqft: l.assessorBuildingSqft,
         assessorBuildingValue: l.assessorBuildingValue,
         assessorLandValue: l.assessorLandValue,
+        assessedValueTotal,
         extractedOccupancy: l.extractedOccupancy,
         extractedUnitsTotal,
         aduPotential: l.aduPotential as "LOW" | "MEDIUM" | "HIGH" | null,
         locationScore: newLocation,
+        neighborhoodMedianAssessedPerSqft:
+          l.neighborhoodRel?.medianAssessedPerSqft ?? null,
+        neighborhoodMedianAssessedPerUnit:
+          l.neighborhoodRel?.medianAssessedPerUnit ?? null,
+        neighborhoodCompSampleSize: l.neighborhoodRel?.compSampleSize ?? null,
+        zoningMaxUnits: l.zoningMaxUnits,
       });
       await db.score.upsert({
         where: { listingMlsId: l.mlsId },
@@ -125,6 +135,9 @@ async function main() {
           motivationScore: s.motivationScore,
           locationScore: s.locationScore,
           aduScore: s.aduScore,
+          assessmentDeltaScore: s.assessmentDeltaScore,
+          zoningUpsideScore: s.zoningUpsideScore,
+          marketUpsideScore: s.marketUpsideScore,
           valueAddWeightedAvg: s.valueAddWeightedAvg,
           breakdown: s.breakdown as Prisma.InputJsonValue,
           computedBy: "HEURISTIC",
@@ -135,6 +148,9 @@ async function main() {
           motivationScore: s.motivationScore,
           locationScore: s.locationScore,
           aduScore: s.aduScore,
+          assessmentDeltaScore: s.assessmentDeltaScore,
+          zoningUpsideScore: s.zoningUpsideScore,
+          marketUpsideScore: s.marketUpsideScore,
           valueAddWeightedAvg: s.valueAddWeightedAvg,
           breakdown: s.breakdown as Prisma.InputJsonValue,
           computedBy: "HEURISTIC",
