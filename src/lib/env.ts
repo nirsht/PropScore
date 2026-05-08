@@ -14,6 +14,11 @@ const schema = z.object({
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_MODEL: z.string().min(1).default("gpt-4o-2024-11-20"),
 
+  // Optional. Populates Listing.walkScore via the Walk Score API. When
+  // missing, walkscore-client.ts short-circuits with null and the Location
+  // Rating card falls back to the neighborhood-safety component only.
+  WALKSCORE_API_KEY: z.string().optional().or(z.literal("")),
+
   NEXTAUTH_SECRET: z.string().min(16),
   // Render auto-injects RENDER_EXTERNAL_URL. Locally we fall back to
   // localhost:3020. Setting NEXTAUTH_URL explicitly is rarely needed.
