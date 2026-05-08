@@ -129,6 +129,17 @@ export async function runSync(opts: SyncOptions = {}): Promise<SyncSummary> {
       scored += flushed.scored;
     }
 
+    // Backfill Listing.neighborhood for any rows still NULL (new this run,
+    // or never had a polygon match). Single set-based PostGIS query against
+    // the Neighborhood.boundary GIST index — fast even at scale.
+    await log.info(`Resolving neighborhood polygons…`);
+    const nbhdResult = await resolveNeighborhoods();
+    if (nbhdResult.matched > 0 || nbhdResult.unmatched > 0) {
+      await log.info(
+        `Neighborhood join: matched=${nbhdResult.matched}, unmatched=${nbhdResult.unmatched}`,
+      );
+    }
+
     await log.info(`Refreshing materialized view…`);
     await refreshMaterializedView();
     await log.info(`Sync complete: upserted=${upserted}, scored=${scored}.`);
@@ -289,4 +300,33 @@ async function flush(rows: NormalizedListing[]): Promise<{ upserted: number; sco
 async function refreshMaterializedView(): Promise<void> {
   // CONCURRENTLY needs a unique index (we created one) and won't lock readers.
   await db.$executeRawUnsafe(`REFRESH MATERIALIZED VIEW CONCURRENTLY "mv_listing_search"`);
+}
+
+/**
+ * Backfill Listing.neighborhood by point-in-polygon against Neighborhood
+ * boundaries. Idempotent: only touches rows where neighborhood is still
+ * NULL or where the listing's geom changed since the last assignment.
+ *
+ * Returns counts for telemetry. The "unmatched" count excludes listings
+ * with no geom (those can't be located regardless of polygon coverage).
+ */
+async function resolveNeighborhoods(): Promise<{ matched: number; unmatched: number }> {
+  const matched = await db.$executeRaw`
+    UPDATE "Listing" l
+       SET "neighborhood" = n."name"
+      FROM "Neighborhood" n
+     WHERE l."geom" IS NOT NULL
+       AND l."neighborhood" IS NULL
+       AND ST_Intersects(n."boundary", l."geom")
+  `;
+
+  const unmatchedRows = await db.$queryRaw<Array<{ count: bigint }>>`
+    SELECT COUNT(*)::bigint AS count
+      FROM "Listing"
+     WHERE "geom" IS NOT NULL
+       AND "neighborhood" IS NULL
+  `;
+  const unmatched = Number(unmatchedRows[0]?.count ?? 0n);
+
+  return { matched: Number(matched), unmatched };
 }

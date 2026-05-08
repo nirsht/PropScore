@@ -10,6 +10,7 @@
 import { db } from "@/lib/db";
 import { normalizeListing } from "@/server/etl/normalize";
 import { computeHeuristicScore } from "@/server/etl/scoring";
+import { locationScore } from "@/server/etl/scoring/location";
 import type { Prisma } from "@prisma/client";
 
 const BATCH = 500;
@@ -23,13 +24,14 @@ async function main() {
   let scored = 0;
   let skippedAI = 0;
   let updatedListing = 0;
+  let locationUpdated = 0;
 
   while (true) {
     const batch = await db.listing.findMany({
       take: BATCH,
       ...(cursor ? { skip: 1, cursor: { mlsId: cursor } } : {}),
       orderBy: { mlsId: "asc" },
-      include: { score: true },
+      include: { score: true, neighborhoodRel: true },
     });
     if (batch.length === 0) break;
 
@@ -61,6 +63,24 @@ async function main() {
           },
         });
         updatedListing += 1;
+      }
+
+      // Location score is independent of AI value-add scoring — always
+      // recompute when either of its inputs is present, even when we skip
+      // the heuristic Score row below.
+      const newLocation = locationScore({
+        walkScore: l.walkScore,
+        neighborhoodScore: l.neighborhoodRel?.crimeScore ?? null,
+      });
+      if (newLocation !== l.locationScore) {
+        await db.listing.update({
+          where: { mlsId: l.mlsId },
+          data: {
+            locationScore: newLocation,
+            locationScoreUpdatedAt: new Date(),
+          },
+        });
+        locationUpdated += 1;
       }
 
       if (l.score?.computedBy === "AI") {
@@ -112,7 +132,7 @@ async function main() {
 
     cursor = batch[batch.length - 1]?.mlsId;
     console.log(
-      `[recompute] processed=${processed}/${total}, scored=${scored}, normalizedFieldUpdates=${updatedListing}, skippedAI=${skippedAI}`,
+      `[recompute] processed=${processed}/${total}, scored=${scored}, normalizedFieldUpdates=${updatedListing}, locationUpdated=${locationUpdated}, skippedAI=${skippedAI}`,
     );
   }
 
@@ -120,7 +140,7 @@ async function main() {
   await db.$executeRawUnsafe(`REFRESH MATERIALIZED VIEW CONCURRENTLY "mv_listing_search"`);
 
   console.log(
-    `[recompute] done — processed=${processed}, scored=${scored}, normalizedFieldUpdates=${updatedListing}, skippedAI=${skippedAI}`,
+    `[recompute] done — processed=${processed}, scored=${scored}, normalizedFieldUpdates=${updatedListing}, locationUpdated=${locationUpdated}, skippedAI=${skippedAI}`,
   );
 }
 
