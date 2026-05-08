@@ -33,6 +33,17 @@ const schema = z.object({
   // Chat — Tavily web search. Optional in dev: web_search tool errors
   // explicitly when called without a key.
   TAVILY_API_KEY: z.string().optional().or(z.literal("")),
+
+  // RentCast — fills agent + brokerage phone/email by address. Bridge `sfar`
+  // (IDX) strips contact fields, so this is the enrichment source until/
+  // unless we get a Bridge VOW feed approved. Free tier 50 req/mo at
+  // https://www.rentcast.io/api. When the key is missing, contact-enrichment
+  // no-ops and the drawer's "Listed by" / Brokerage rows stay blank.
+  RENTCAST_API_KEY: z.string().optional().or(z.literal("")),
+  RENTCAST_BASE_URL: z
+    .string()
+    .url()
+    .default("https://api.rentcast.io/v1"),
 });
 
 const parsed = schema.safeParse(process.env);

@@ -42,6 +42,10 @@ const PARALLEL_LANES: Stage[][] = [
   [stage("rent-comps", "enrich:rent-comps", ["--concurrency=3"])],
   [stage("walkscore", "refresh:walkscore")],
   [stage("crime", "refresh:crime")],
+  // Contacts only write to ListingContact (disjoint from every other lane)
+  // and the upstream RentCast API caps us per-second, so they're cheap to
+  // run in parallel.
+  [stage("contacts", "enrich:contacts", ["--concurrency=3"])],
 ];
 const POST: Stage = stage("recompute", "recompute:scores");
 

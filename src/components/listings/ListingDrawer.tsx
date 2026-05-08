@@ -109,17 +109,28 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
     ? `https://duckduckgo.com/?q=${encodeURIComponent(`!ducky site:redfin.com ${fullAddress}`)}`
     : "https://www.redfin.com";
 
-  const agentName = strField(raw.ListAgentFullName);
+  // Bridge `sfar` (IDX) strips agent phone/email, so on its own these reads
+  // would all be null. The RentCast enrichment layer
+  // (`scripts/enrich-contacts.ts` → `ListingContact`) fills them in by
+  // address; we still fall back to `raw.*` so a future Bridge VOW feed
+  // upgrade lights up the same UI without any drawer changes.
+  const contact = listing?.contact ?? null;
+  const agentName = contact?.agentName ?? strField(raw.ListAgentFullName);
   const agentPhone =
-    strField(raw.ListAgentDirectPhone) ?? strField(raw.ListAgentOfficePhone);
-  const agentEmail = strField(raw.ListAgentEmail);
+    contact?.agentPhone ??
+    strField(raw.ListAgentDirectPhone) ??
+    strField(raw.ListAgentOfficePhone);
+  const agentEmail = contact?.agentEmail ?? strField(raw.ListAgentEmail);
 
+  // RentCast doesn't expose a co-listing-agent field. Co-agent contact
+  // stays Bridge-only until/unless we upgrade to a VOW feed.
   const coAgentName = strField(raw.CoListAgentFullName);
   const coAgentPhone = strField(raw.CoListAgentDirectPhone);
   const coAgentEmail = strField(raw.CoListAgentEmail);
 
-  const officeName = strField(raw.ListOfficeName);
-  const officePhone = strField(raw.ListOfficePhone);
+  const officeName = contact?.officeName ?? strField(raw.ListOfficeName);
+  const officePhone = contact?.officePhone ?? strField(raw.ListOfficePhone);
+  const officeEmail = contact?.officeEmail ?? null;
 
   return (
     <Drawer
@@ -220,7 +231,8 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
           <Paper variant="outlined" sx={{ p: 1.5 }}>
             <Stack spacing={1.25}>
               {(agentName || agentPhone || agentEmail || coAgentName ||
-                coAgentPhone || coAgentEmail || officeName || officePhone) && (
+                coAgentPhone || coAgentEmail || officeName || officePhone ||
+                officeEmail) && (
                 <>
                   <Stack spacing={0.25}>
                     {(agentName || agentPhone || agentEmail) && (
@@ -239,11 +251,12 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
                         email={coAgentEmail}
                       />
                     )}
-                    {(officeName || officePhone) && (
+                    {(officeName || officePhone || officeEmail) && (
                       <ContactCard
                         role="Brokerage"
                         name={officeName}
                         phone={officePhone}
+                        email={officeEmail}
                       />
                     )}
                   </Stack>
