@@ -19,7 +19,7 @@ import LogoutOutlinedIcon from "@mui/icons-material/LogoutOutlined";
 import TableRowsRoundedIcon from "@mui/icons-material/TableRowsRounded";
 import MapOutlinedIcon from "@mui/icons-material/MapOutlined";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
-import ChatBubbleOutlineRoundedIcon from "@mui/icons-material/ChatBubbleOutlineRounded";
+import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 import { GlobalChatDrawer } from "./chat/GlobalChatDrawer";
 import { Logo } from "./Logo";
 
@@ -88,7 +88,7 @@ export function AppShell({ children, userEmail }: Props) {
                 onClick={() => setChatOpen(true)}
                 color={chatOpen ? "primary" : "default"}
               >
-                <ChatBubbleOutlineRoundedIcon fontSize="small" />
+                <AutoAwesomeRoundedIcon fontSize="small" />
               </IconButton>
             </Tooltip>
             <Typography variant="body2" color="text.secondary">
