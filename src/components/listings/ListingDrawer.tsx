@@ -335,11 +335,11 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
                 label="Google Maps"
               />
               <ToolLink
-                href={
-                  lat != null && lng != null
-                    ? `https://earth.google.com/web/@${lat},${lng},150a,500d,35y,0h,75t,0r`
-                    : `https://earth.google.com/web/search/${encodeURIComponent(fullAddress)}`
-                }
+                href={(() => {
+                  const query = encodeURIComponent(fullAddress || `${lat},${lng}`).replace(/%20/g, '+');
+                  const coords = lat != null && lng != null ? `/@${lat},${lng},150a,500d,35y,0h,0t,0r` : '';
+                  return `https://earth.google.com/web/search/${query}${coords}`;
+                })()}
                 icon={<PublicRoundedIcon fontSize="small" />}
                 label="Google Earth (3D)"
               />
