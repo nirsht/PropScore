@@ -1,10 +1,12 @@
 import type { Prisma, SyncStatus } from "@prisma/client";
 import { db } from "@/lib/db";
+import { mapWithConcurrency } from "@/lib/concurrency";
 import { searchProperties } from "./bridge-client";
 import { normalizeListing, type NormalizedListing } from "./normalize";
 import { computeHeuristicScore } from "./scoring";
 
 const BATCH_SIZE = 200;
+const FLUSH_CONCURRENCY = 10;
 const MAX_LOG_ENTRIES = 500;
 
 type LogEntry = { ts: string; level: "info" | "warn" | "error"; message: string };
@@ -201,13 +203,9 @@ function buildFilter(since: Date | null): string {
 }
 
 async function flush(rows: NormalizedListing[]): Promise<{ upserted: number; scored: number }> {
-  let upserted = 0;
-  let scored = 0;
-
-  // Sequential per-row upsert keeps things simple and lets generated columns
-  // re-derive on each write. With BATCH_SIZE=200 this is still fast enough; if
-  // it ever isn't, swap in a $executeRaw bulk INSERT ... ON CONFLICT.
-  for (const r of rows) {
+  // Bounded parallelism — distinct mlsIds, no row contention. Concurrency
+  // is capped low to stay friendly to the shared Render Postgres pool.
+  const results = await mapWithConcurrency(rows, FLUSH_CONCURRENCY, async (r) => {
     await db.listing.upsert({
       where: { mlsId: r.mlsId },
       create: {
@@ -260,16 +258,15 @@ async function flush(rows: NormalizedListing[]): Promise<{ upserted: number; sco
         raw: r.raw as Prisma.InputJsonValue,
       },
     });
-    upserted += 1;
 
-    const score = computeHeuristicScore(r);
     // Never overwrite an AI-enriched score during routine ETL.
     const existing = await db.score.findUnique({
       where: { listingMlsId: r.mlsId },
       select: { computedBy: true },
     });
-    if (existing?.computedBy === "AI") continue;
+    if (existing?.computedBy === "AI") return { upserted: 1, scored: 0 };
 
+    const score = computeHeuristicScore(r);
     await db.score.upsert({
       where: { listingMlsId: r.mlsId },
       create: {
@@ -291,9 +288,20 @@ async function flush(rows: NormalizedListing[]): Promise<{ upserted: number; sco
         computedAt: new Date(),
       },
     });
-    scored += 1;
-  }
+    return { upserted: 1, scored: 1 };
+  });
 
+  let upserted = 0;
+  let scored = 0;
+  for (const r of results) {
+    if (r.status === "fulfilled") {
+      upserted += r.value.upserted;
+      scored += r.value.scored;
+    } else {
+      // eslint-disable-next-line no-console
+      console.error("[etl] flush row failed:", r.reason);
+    }
+  }
   return { upserted, scored };
 }
 
