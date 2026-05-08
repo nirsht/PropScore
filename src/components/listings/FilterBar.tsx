@@ -19,6 +19,7 @@ import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import type { RenovationLevel } from "@prisma/client";
 import { trpc } from "@/lib/trpc/client";
 import { useFilter } from "./filterStore";
+import { ScoringWeightsButton } from "./ScoringWeightsPopover";
 
 type Range = { min?: number; max?: number };
 
@@ -238,6 +239,7 @@ export function FilterBar() {
 
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
           <QuickChips />
+          <ScoringWeightsButton />
           <Tooltip title="Reset all filters">
             <span>
               <Button

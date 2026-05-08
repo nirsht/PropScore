@@ -92,6 +92,23 @@ export const FilterInput = z.object({
     })
     .optional(),
 
+  // Per-request scoring weights. When provided AND sortBy === "valueAdd",
+  // the server re-ranks listings by a weighted blend of the 5 component
+  // scores (instead of using the precomputed `valueAddWeightedAvg`). The
+  // 5 keys must each be a non-negative number; the server normalizes to
+  // sum-to-1 (mirroring how null components drop out of the divisor in
+  // weightedValueAdd). When omitted, the persisted value-add average and
+  // its dedicated index are used (faster path).
+  scoringWeights: z
+    .object({
+      vacancy: z.number().min(0).max(1).optional(),
+      location: z.number().min(0).max(1).optional(),
+      density: z.number().min(0).max(1).optional(),
+      adu: z.number().min(0).max(1).optional(),
+      motivation: z.number().min(0).max(1).optional(),
+    })
+    .optional(),
+
   // Sort + paging — optional in the schema (defaults applied at the SQL
   // boundary). Using `.default()` here corrupts z.infer in tRPC v11 and forces
   // every consumer to spread/cast around `T | undefined`.
