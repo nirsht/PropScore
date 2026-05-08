@@ -545,10 +545,7 @@ export function RentRollSection({ listing }: { listing: ListingForAI }) {
         </Tooltip>
       </Stack>
 
-      <MlsRemarksFooter
-        publicRemarks={listing.publicRemarks}
-        privateRemarks={listing.privateRemarks}
-      />
+      <MlsRemarksFooter privateRemarks={listing.privateRemarks} />
     </Box>
   );
 }

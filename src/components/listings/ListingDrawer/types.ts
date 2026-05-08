@@ -63,7 +63,6 @@ export type ListingForAI = {
   aduConfidence: number | null;
   aduRationale: string | null;
   extractFetchedAt: Date | string | null;
-  publicRemarks: string | null;
   privateRemarks: string | null;
 };
 

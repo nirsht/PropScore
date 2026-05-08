@@ -301,7 +301,6 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
           <AIInsightsCard
             listing={{
               ...listing,
-              publicRemarks: (raw.PublicRemarks as string | undefined) ?? null,
               privateRemarks: (raw.PrivateRemarks as string | undefined) ?? null,
             }}
           />
