@@ -1455,28 +1455,112 @@ function BuildingDetailsCard({ listing }: { listing: ListingForDetails }) {
           );
         })}
       </Box>
-      <AIEvidenceTrail enrichments={listing.enrichments} />
+      <AIEvidenceTrail
+        listing={listing}
+        aiUnits={aiUnits}
+      />
     </Paper>
   );
 }
 
-const AGENT_LABELS: Record<string, string> = {
-  "building-vision": "Photo vision",
-  "listing-extract": "Listing remarks",
-};
-
-// AI column in the grid above is fed by `building-vision` (stories) and
-// `listing-extract` (unit mix). Surface the rationales plus the structured
-// observations that drove those numbers, so a reader can audit the AI cell.
+// One row per AI-derived value visible in the grid above. Each row names the
+// field, the source the AI read from (photos vs. MLS remarks), and the
+// specific evidence for *that* value — so "Units: 2" links to the unit-mix
+// breakdown extracted from remarks, and "Stories: 3" links to the photo
+// reasoning. Without this split, a reader sees one blob of rationale and
+// can't tell which sentence justifies which cell.
 function AIEvidenceTrail({
-  enrichments,
+  listing,
+  aiUnits,
 }: {
-  enrichments: ListingForDetails["enrichments"];
+  listing: ListingForDetails;
+  aiUnits: number | null;
 }) {
-  const relevant = (enrichments ?? []).filter((e) =>
-    e.agentName === "building-vision" || e.agentName === "listing-extract",
-  );
-  if (relevant.length === 0) return null;
+  const enrichments = listing.enrichments ?? [];
+  const buildingVision = enrichments.find((e) => e.agentName === "building-vision");
+  const listingExtract = enrichments.find((e) => e.agentName === "listing-extract");
+
+  const bvOut = (buildingVision?.output ?? {}) as Record<string, unknown>;
+  const leOut = (listingExtract?.output ?? {}) as Record<string, unknown>;
+
+  type FieldEvidence = {
+    field: string;
+    aiValue: string;
+    sourceLabel: string;
+    sourceTone: "photos" | "text";
+    timestamp: Date | string;
+    rationale?: string | null;
+    detail?: React.ReactNode;
+  };
+
+  const items: FieldEvidence[] = [];
+
+  // Units — extracted from MLS remarks via listing-extract. The unitMix
+  // array IS the specific evidence (count + beds/baths breakdown).
+  if (aiUnits != null && listingExtract) {
+    const um = Array.isArray(leOut.unitMix)
+      ? (leOut.unitMix as Array<{
+          count?: number;
+          beds: number | null;
+          baths: number | null;
+        }>)
+      : [];
+    items.push({
+      field: "Units",
+      aiValue: String(aiUnits),
+      sourceLabel: "Read from MLS remarks",
+      sourceTone: "text",
+      timestamp: listingExtract.createdAt,
+      rationale: typeof leOut.rationale === "string" ? leOut.rationale : null,
+      detail:
+        um.length > 0 ? (
+          <Stack component="ul" sx={{ pl: 2.5, my: 0.25 }} spacing={0.25}>
+            {um.map((u, i) => (
+              <Typography key={i} component="li" variant="caption">
+                {unitTypeLabel(u.count ?? 0, u.beds, u.baths)}
+              </Typography>
+            ))}
+          </Stack>
+        ) : null,
+    });
+  }
+
+  // Stories — inferred from photos via building-vision.
+  if (listing.aiStories != null && buildingVision) {
+    const renovation =
+      typeof bvOut.renovationLevel === "string"
+        ? `${String(bvOut.renovationLevel).toLowerCase()}${
+            typeof bvOut.renovationConfidence === "number"
+              ? ` (${Math.round(bvOut.renovationConfidence * 100)}% confidence)`
+              : ""
+          }`
+        : null;
+    const corroborating: string[] = [];
+    if (typeof bvOut.hasBasement === "boolean") {
+      corroborating.push(`basement: ${bvOut.hasBasement ? "yes" : "no"}`);
+    }
+    if (typeof bvOut.hasPenthouse === "boolean") {
+      corroborating.push(`penthouse: ${bvOut.hasPenthouse ? "yes" : "no"}`);
+    }
+    if (renovation) corroborating.push(`renovation read: ${renovation}`);
+
+    items.push({
+      field: "Stories",
+      aiValue: String(listing.aiStories),
+      sourceLabel: "Inferred from listing photos",
+      sourceTone: "photos",
+      timestamp: buildingVision.createdAt,
+      rationale: typeof bvOut.rationale === "string" ? bvOut.rationale : null,
+      detail:
+        corroborating.length > 0 ? (
+          <Typography variant="caption" color="text.secondary">
+            Other photo observations: {corroborating.join(" · ")}
+          </Typography>
+        ) : null,
+    });
+  }
+
+  if (items.length === 0) return null;
 
   return (
     <Accordion
@@ -1493,110 +1577,48 @@ function AIEvidenceTrail({
         sx={{ px: 0, minHeight: 32, "& .MuiAccordionSummary-content": { my: 0.5 } }}
       >
         <Typography variant="caption" color="text.secondary">
-          Trail of evidence — how AI derived this column
+          Trail of evidence — why each AI value was chosen
         </Typography>
       </AccordionSummary>
       <AccordionDetails sx={{ px: 0, pt: 0 }}>
         <Stack spacing={1.5} divider={<Divider flexItem />}>
-          {relevant.map((e) => (
-            <EvidenceBlock key={e.id} enrichment={e} />
+          {items.map((item) => (
+            <Box key={item.field}>
+              <Stack
+                direction="row"
+                spacing={1}
+                alignItems="baseline"
+                flexWrap="wrap"
+                useFlexGap
+                sx={{ mb: 0.5 }}
+              >
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {item.field}: {item.aiValue}
+                </Typography>
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  color={item.sourceTone === "photos" ? "secondary" : "primary"}
+                  label={item.sourceLabel}
+                />
+                <Typography variant="caption" color="text.secondary">
+                  {fmtDate(item.timestamp)}
+                </Typography>
+              </Stack>
+              {item.rationale && (
+                <Typography
+                  variant="body2"
+                  sx={{ whiteSpace: "pre-wrap", mb: item.detail ? 0.75 : 0 }}
+                >
+                  {item.rationale}
+                </Typography>
+              )}
+              {item.detail}
+            </Box>
           ))}
         </Stack>
       </AccordionDetails>
     </Accordion>
-  );
-}
-
-function EvidenceBlock({
-  enrichment,
-}: {
-  enrichment: NonNullable<ListingForDetails["enrichments"]>[number];
-}) {
-  const label = AGENT_LABELS[enrichment.agentName] ?? enrichment.agentName;
-  const out = (enrichment.output ?? {}) as Record<string, unknown>;
-  const rationale = typeof out.rationale === "string" ? out.rationale : null;
-
-  const facts: Array<[string, string]> = [];
-  if (enrichment.agentName === "building-vision") {
-    if (out.stories != null) facts.push(["Stories", String(out.stories)]);
-    if (out.renovationLevel) {
-      const conf = typeof out.renovationConfidence === "number"
-        ? ` (${Math.round(out.renovationConfidence * 100)}% confidence)`
-        : "";
-      facts.push(["Renovation", `${String(out.renovationLevel).toLowerCase()}${conf}`]);
-    }
-    if (typeof out.hasBasement === "boolean") {
-      facts.push(["Basement", out.hasBasement ? "yes" : "no"]);
-    }
-    if (typeof out.hasPenthouse === "boolean") {
-      facts.push(["Penthouse", out.hasPenthouse ? "yes" : "no"]);
-    }
-    if (typeof out.bestPhotoReason === "string" && out.bestPhotoReason) {
-      facts.push(["Hero photo pick", out.bestPhotoReason]);
-    }
-  } else if (enrichment.agentName === "listing-extract") {
-    const um = Array.isArray(out.unitMix)
-      ? (out.unitMix as Array<{ count?: number; beds: number | null; baths: number | null }>)
-      : null;
-    if (um && um.length) {
-      const total = um.reduce((s, u) => s + (u.count ?? 0), 0);
-      const breakdown = um
-        .map((u) => unitTypeLabel(u.count ?? 0, u.beds, u.baths))
-        .join("; ");
-      facts.push(["Units", `${total} total — ${breakdown}`]);
-    }
-    if (typeof out.basementNotes === "string" && out.basementNotes) {
-      facts.push(["Basement notes", out.basementNotes]);
-    }
-    if (typeof out.parkingNotes === "string" && out.parkingNotes) {
-      facts.push(["Parking notes", out.parkingNotes]);
-    }
-    if (Array.isArray(out.recentCapex) && out.recentCapex.length) {
-      facts.push(["Recent capex", (out.recentCapex as string[]).join(" · ")]);
-    }
-    if (typeof out.totalMonthlyRent === "number") {
-      facts.push(["Total monthly rent", fmtMoney(out.totalMonthlyRent)]);
-    }
-  }
-
-  return (
-    <Box>
-      <Stack direction="row" spacing={1} alignItems="baseline" sx={{ mb: 0.5 }}>
-        <Chip size="small" variant="outlined" label={label} />
-        <Typography variant="caption" color="text.secondary">
-          {fmtDate(enrichment.createdAt)}
-        </Typography>
-      </Stack>
-      {rationale && (
-        <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", mb: facts.length ? 0.75 : 0 }}>
-          {rationale}
-        </Typography>
-      )}
-      {facts.length > 0 && (
-        <Box
-          sx={{
-            display: "grid",
-            gridTemplateColumns: "auto 1fr",
-            columnGap: 1.5,
-            rowGap: 0.25,
-          }}
-        >
-          {facts.map(([k, v]) => (
-            <React.Fragment key={k}>
-              <Typography variant="caption" color="text.secondary">
-                {k}
-              </Typography>
-              <Typography variant="caption">{v}</Typography>
-            </React.Fragment>
-          ))}
-        </Box>
-      )}
-      {!rationale && facts.length === 0 && (
-        <Typography variant="caption" color="text.secondary">
-          No structured evidence emitted by this run.
-        </Typography>
-      )}
-    </Box>
   );
 }
 
