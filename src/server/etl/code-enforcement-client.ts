@@ -1,9 +1,11 @@
 /**
  * SF DBI Notice of Violations — Socrata client.
  *
- * Dataset: nife-svxp (https://data.sfgov.org/Housing-and-Buildings/Building-Notices-of-Violations/nife-svxp)
- * One row per NOV. We summarize per-parcel: open count, 5y total count,
- * and the most recent NOV breadcrumb. Joined to `Listing.blockLot` via the
+ * Dataset: nbtm-fbw5 (https://data.sfgov.org/Housing-and-Buildings/Notices-of-Violation-issued-by-the-Department-of-B/nbtm-fbw5)
+ * One row per NOV *item* (complaint_number + item_sequence_number); we dedupe
+ * to one row per complaint before counting so summaries stay per-NOV, not
+ * per-violation-item. Summarized per-parcel: open count, 5y total count, and
+ * the most recent NOV breadcrumb. Joined to `Listing.blockLot` via the
  * dataset's `block` + `lot` columns (zero-padded, then concatenated to the
  * canonical 7-char form by `canonicalBlockLot`).
  *
@@ -12,20 +14,9 @@
 
 import { canonicalBlockLot } from "./permits-client";
 
-const BASE_URL = "https://data.sfgov.org/resource/nife-svxp.json";
+const BASE_URL = "https://data.sfgov.org/resource/nbtm-fbw5.json";
 const THROTTLE_MS = 1100;
 const RECENT_WINDOW_YEARS = 5;
-// Open NOVs are anything not yet abated/closed. The dataset uses a free-text
-// `status` column; these are the closed/abated terminal states observed in
-// production samples — anything else is treated as open.
-const CLOSED_STATUSES = new Set([
-  "abated",
-  "complied",
-  "closed",
-  "complaint closed",
-  "violation abated",
-  "withdrawn",
-]);
 
 let lastRequestAt = 0;
 
@@ -70,9 +61,11 @@ function str(v: unknown): string | null {
   return t.length > 0 ? t : null;
 }
 
+// nbtm-fbw5 uses a binary status vocabulary: "active" or "not active".
+// Treat missing/unknown statuses as open to stay conservative.
 function isOpen(status: string | null): boolean {
   if (!status) return true;
-  return !CLOSED_STATUSES.has(status.toLowerCase().trim());
+  return status.toLowerCase().trim() === "active";
 }
 
 function fmtAddress(row: NovRow): string | null {
@@ -111,7 +104,7 @@ export async function fetchByBlockLot(blockLot: string): Promise<NovSummary> {
   const params = new URLSearchParams({
     $where: `block='${block}' AND lot='${lot}'`,
     $select:
-      "complaint_number,date_filed,status,description,street_number,street_name,street_suffix,block,lot",
+      "complaint_number,date_filed,status,nov_item_description,street_number,street_name,street_suffix,block,lot",
     $order: "date_filed DESC",
     $limit: "1000",
   });
@@ -123,8 +116,18 @@ export async function fetchByBlockLot(blockLot: string): Promise<NovSummary> {
   let openCount = 0;
   let recentCount = 0;
   let latest: NovLatest | null = null;
+  // Dedupe to one row per complaint — the dataset has one row per NOV item,
+  // so a single NOV with multiple violations would otherwise inflate counts.
+  // Rows are ordered date_filed DESC, so the first occurrence is the freshest.
+  const seenComplaints = new Set<string>();
 
   for (const row of rows) {
+    const complaintNumber = str(row.complaint_number);
+    if (complaintNumber) {
+      if (seenComplaints.has(complaintNumber)) continue;
+      seenComplaints.add(complaintNumber);
+    }
+
     const status = str(row.status);
     const dateFiled = str(row.date_filed);
     const filedAt = dateFiled ? new Date(dateFiled) : null;
@@ -135,10 +138,10 @@ export async function fetchByBlockLot(blockLot: string): Promise<NovSummary> {
 
     if (!latest && dateFiled) {
       latest = {
-        complaintNumber: str(row.complaint_number),
+        complaintNumber,
         dateFiled,
         status,
-        description: str(row.description),
+        description: str(row.nov_item_description),
         address: fmtAddress(row),
       };
     }
