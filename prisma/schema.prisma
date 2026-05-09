@@ -210,6 +210,30 @@ model Listing {
   latestAduPermitOnBlock      Json?
   permitsFetchedAt            DateTime?
 
+  // Risk & Compliance signals (added 2026-05-08): regulatory-health overlays
+  // for the RiskComplianceCard + filters. Filter+display only — these do NOT
+  // enter the value-add weighted average.
+  //   codeViolations*   — DBI Notice of Violations (Socrata). Joined on the
+  //                       canonical block||lot. Open + 5y history per parcel.
+  //   housingNetUnit*   — SF Housing Inventory (Socrata 6v9b-p59r). Sum of
+  //                       net unit changes attributed to this parcel over the
+  //                       last 5 reporting years.
+  //   rentControl*      — Pure compute from yearBuilt + units + landUse;
+  //                       reflects SF rent ordinance coverage (multi-unit
+  //                       residential built before 1979-06-13).
+  codeViolationsOpenCount     Int?
+  codeViolationsRecentCount   Int?
+  /// `{ complaintNumber, dateFiled, status, description, address }` for the
+  /// most recent NOV on this parcel — surfaces in the RiskComplianceCard.
+  codeViolationsLatest        Json?
+  codeViolationsFetchedAt     DateTime?
+
+  housingNetUnitChange5y      Int?
+  housingInventoryFetchedAt   DateTime?
+
+  rentControlCovered          Boolean?
+  rentControlComputedAt       DateTime?
+
   raw                         Json
   bridgeModificationTimestamp DateTime
 
@@ -231,6 +255,9 @@ model Listing {
   @@index([locationScore(sort: Desc)])
   @@index([zoningDistrict])
   @@index([landUseCategory])
+  @@index([codeViolationsOpenCount])
+  @@index([housingNetUnitChange5y])
+  @@index([rentControlCovered])
 }
 
 // -------------------- BUILDING PERMITS --------------------

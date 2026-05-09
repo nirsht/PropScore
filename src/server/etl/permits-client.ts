@@ -106,7 +106,7 @@ function date(v: unknown): Date | null {
  * lot). The Assessor dataset stores parcel_number in this exact form, so
  * `Listing.blockLot` already follows it.
  */
-function canonicalBlockLot(block: string | null, lot: string | null): string {
+export function canonicalBlockLot(block: string | null, lot: string | null): string {
   const b = (block ?? "").padStart(4, "0");
   const l = (lot ?? "").padStart(3, "0");
   return `${b}${l}`;

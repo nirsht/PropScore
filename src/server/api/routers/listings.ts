@@ -102,6 +102,10 @@ export const listingsRouter = router({
             permitsOwnParcelAduCount: listing.permitsOwnParcelAduCount,
             permitsBlockAduRecentCount: listing.permitsBlockAduRecentCount,
             permitsRadiusAduRecentCount: listing.permitsRadiusAduRecentCount,
+            codeViolationsOpenCount: listing.codeViolationsOpenCount,
+            codeViolationsRecentCount: listing.codeViolationsRecentCount,
+            housingNetUnitChange5y: listing.housingNetUnitChange5y,
+            rentControlCovered: listing.rentControlCovered,
             neighborhoodMedianAssessedPerSqft:
               listing.neighborhoodRel?.medianAssessedPerSqft ?? null,
             neighborhoodMedianAssessedPerUnit:
