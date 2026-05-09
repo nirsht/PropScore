@@ -28,7 +28,8 @@ CREATE INDEX "Listing_rentControlCovered_idx"      ON "Listing" ("rentControlCov
 -- =========================================================================
 -- Recreate the materialized view so the new fields are filterable through
 -- the listings search SQL builder (`src/server/api/listings-search.ts`).
--- Mirrors the structure from 20260508010000_score_components_v4.
+-- Extends 20260508020000_market_upside's MV with the three risk/compliance
+-- columns; preserves every existing column + index from that migration.
 -- =========================================================================
 DROP MATERIALIZED VIEW IF EXISTS "mv_listing_search";
 
@@ -66,6 +67,7 @@ SELECT
   l."assessorStories",
   l."assessorBuildingValue",
   l."assessorLandValue",
+  l."assessedValueTotal",
   l."renovationLevel",
   l."renovationConfidence",
   l."aiStories",
@@ -80,6 +82,8 @@ SELECT
   l."sqftPerUnit",
   l."hasSizeDiscrepancy",
   l."locationScore"       AS "listingLocationScore",
+  l."zoningDistrict",
+  l."zoningMaxUnits",
   l."codeViolationsOpenCount",
   l."codeViolationsRecentCount",
   l."housingNetUnitChange5y",
@@ -97,6 +101,9 @@ SELECT
       ELSE NULL
     END
   ) AS "aduScore",
+  s."assessmentDeltaScore",
+  s."zoningUpsideScore",
+  s."marketUpsideScore",
   s."valueAddWeightedAvg",
   s."computedBy"   AS "scoreComputedBy",
   s."computedAt"   AS "scoreComputedAt"
@@ -117,6 +124,8 @@ CREATE INDEX "mv_listing_search_address_trgm"                    ON "mv_listing_
 CREATE INDEX "mv_listing_search_hasSizeDiscrepancy_idx"          ON "mv_listing_search" ("hasSizeDiscrepancy") WHERE "hasSizeDiscrepancy" = TRUE;
 CREATE INDEX "mv_listing_search_locationScore_idx"               ON "mv_listing_search" ("locationScore" DESC NULLS LAST);
 CREATE INDEX "mv_listing_search_aduScore_idx"                    ON "mv_listing_search" ("aduScore" DESC NULLS LAST);
+CREATE INDEX "mv_listing_search_marketUpsideScore_idx"           ON "mv_listing_search" ("marketUpsideScore" DESC NULLS LAST);
+CREATE INDEX "mv_listing_search_zoningDistrict_idx"              ON "mv_listing_search" ("zoningDistrict");
 CREATE INDEX "mv_listing_search_codeViolationsOpenCount_idx"     ON "mv_listing_search" ("codeViolationsOpenCount");
 CREATE INDEX "mv_listing_search_housingNetUnitChange5y_idx"      ON "mv_listing_search" ("housingNetUnitChange5y");
 CREATE INDEX "mv_listing_search_rentControlCovered_idx"          ON "mv_listing_search" ("rentControlCovered") WHERE "rentControlCovered" IS NOT NULL;

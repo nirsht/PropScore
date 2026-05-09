@@ -48,6 +48,7 @@ import { RiskComplianceCard } from "./ListingDrawer/RiskComplianceCard";
 import { strField } from "./ListingDrawer/fieldGuards";
 import { deriveRatio, fmtDate, fmtMoney } from "./ListingDrawer/formatters";
 import { LotAndExtrasCard } from "./ListingDrawer/LotAndExtrasCard";
+import { MarketUpsideCard } from "./ListingDrawer/MarketUpsideCard";
 import { Metric } from "./ListingDrawer/Metric";
 import { PhotoStrip } from "./ListingDrawer/PhotoStrip";
 import { Rationale } from "./ListingDrawer/Rationale";
@@ -398,6 +399,39 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
             neighborhood={listing.neighborhood ?? null}
             neighborhoodScore={listing.neighborhoodRel?.crimeScore ?? null}
             total={listing.locationScore ?? null}
+          />
+
+          {/* Market upside — assessment delta vs. neighborhood comps and
+              zoning under-utilization. Surfaced but not yet folded into the
+              value-add weighted average. */}
+          <MarketUpsideCard
+            marketUpsideScore={
+              listing.score?.marketUpsideScore ??
+              listing.heuristicSnapshot?.marketUpsideScore ??
+              null
+            }
+            assessorBuildingValue={listing.assessorBuildingValue ?? null}
+            assessorLandValue={listing.assessorLandValue ?? null}
+            assessorBuildingSqft={listing.assessorBuildingSqft ?? null}
+            sqft={listing.sqft ?? null}
+            assessorUnits={listing.assessorUnits ?? null}
+            units={listing.units ?? null}
+            neighborhood={listing.neighborhood ?? null}
+            comps={
+              listing.neighborhoodRel
+                ? {
+                    name: listing.neighborhoodRel.name,
+                    medianAssessedPerSqft:
+                      listing.neighborhoodRel.medianAssessedPerSqft ?? null,
+                    medianAssessedPerUnit:
+                      listing.neighborhoodRel.medianAssessedPerUnit ?? null,
+                    compSampleSize:
+                      listing.neighborhoodRel.compSampleSize ?? null,
+                  }
+                : null
+            }
+            zoningDistrict={listing.zoningDistrict ?? null}
+            zoningMaxUnits={listing.zoningMaxUnits ?? null}
           />
 
           {/* GIS tools row */}
