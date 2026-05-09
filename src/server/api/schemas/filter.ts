@@ -61,10 +61,19 @@ export const FilterInput = z.object({
   motivationScore: range(0, 100),
   valueAddWeightedAvg: range(0, 100),
 
+  // Risk & Compliance — filter+display only, not part of valueAdd ranking.
+  codeViolationsOpenCount: range(0, 100),
+  housingNetUnitChange5y: range(-50, 50),
+
   // Tri-state: undefined/null = all, true = only listings with MLS↔Assessor
   // size disagreement (>5% on any of sqft/lotSqft/units/stories),
   // false = only listings without disagreement.
   hasSizeDiscrepancy: z.boolean().nullable().optional(),
+
+  // Tri-state for rent-control coverage: undefined/null = all, true = only
+  // listings flagged as covered (multi-unit residential built before 1979),
+  // false = only listings flagged as exempt.
+  rentControlCovered: z.boolean().nullable().optional(),
 
   // Date ranges (ISO YYYY-MM-DD strings — coerced to Date in the SQL builder).
   // `min` and `max` are independent: either alone is a valid one-sided range.

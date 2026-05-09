@@ -120,6 +120,10 @@ async function main() {
         permitsOwnParcelAduCount: l.permitsOwnParcelAduCount,
         permitsBlockAduRecentCount: l.permitsBlockAduRecentCount,
         permitsRadiusAduRecentCount: l.permitsRadiusAduRecentCount,
+        codeViolationsOpenCount: l.codeViolationsOpenCount,
+        codeViolationsRecentCount: l.codeViolationsRecentCount,
+        housingNetUnitChange5y: l.housingNetUnitChange5y,
+        rentControlCovered: l.rentControlCovered,
       });
       await db.score.upsert({
         where: { listingMlsId: l.mlsId },

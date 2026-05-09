@@ -42,6 +42,14 @@ const PARALLEL_LANES: Stage[][] = [
     stage("vision", "enrich:vision", ["--concurrency=5"]),
     stage("landuse", "enrich:landuse", ["--concurrency=3"]),
     stage("permits", "enrich:permits", ["--concurrency=3"]),
+    // Risk & Compliance: code-enforcement + housing-inventory both join on
+    // blockLot (filled by sfpim); compute:rent-control depends on
+    // yearBuilt + units + landUseCategory (filled by sfpim + landuse). Run
+    // them serially in this lane after the upstream stages so we don't race
+    // on Listing rows.
+    stage("code-enforcement", "enrich:code-enforcement", ["--concurrency=3"]),
+    stage("housing-inventory", "enrich:housing-inventory", ["--concurrency=3"]),
+    stage("rent-control", "compute:rent-control"),
   ],
   [stage("extract", "enrich:listings", ["--concurrency=8"])],
   [stage("rent-comps", "enrich:rent-comps", ["--concurrency=3"])],

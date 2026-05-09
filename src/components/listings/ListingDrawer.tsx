@@ -44,6 +44,7 @@ import { AIInsightsCard } from "./ListingDrawer/AIInsightsCard";
 import { BuildingDetailsCard } from "./ListingDrawer/BuildingDetailsCard";
 import { ContactCard } from "./ListingDrawer/ContactCard";
 import { FeasibilityCard } from "./ListingDrawer/FeasibilityCard";
+import { RiskComplianceCard } from "./ListingDrawer/RiskComplianceCard";
 import { strField } from "./ListingDrawer/fieldGuards";
 import { deriveRatio, fmtDate, fmtMoney } from "./ListingDrawer/formatters";
 import { LotAndExtrasCard } from "./ListingDrawer/LotAndExtrasCard";
@@ -336,6 +337,11 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
               extracts so the data confirms or weakens the AI ADU read, and
               the boosts feed the ADU bar in the score chart below. */}
           <FeasibilityCard listing={listing} />
+
+          {/* Risk & compliance — code enforcement (NOVs), unit-change history,
+              rent-control exposure. Filter+display only — does NOT enter the
+              value-add weighted average. */}
+          <RiskComplianceCard listing={listing} />
 
           {/* Opportunity scores — bar chart at top, AI rationale collapsed below */}
           <Paper variant="outlined" sx={{ p: 2 }}>

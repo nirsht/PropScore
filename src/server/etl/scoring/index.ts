@@ -47,6 +47,15 @@ export type HeuristicContext = {
   permitsBlockAduRecentCount?: number | null;
   permitsRadiusAduRecentCount?: number | null;
   /**
+   * SF Open Data risk/compliance signals — surfaced in `breakdown.compliance`
+   * for transparency. They do NOT enter `valueAddWeightedAvg`; the
+   * RiskComplianceCard + filter sidebar consume them directly.
+   */
+  codeViolationsOpenCount?: number | null;
+  codeViolationsRecentCount?: number | null;
+  housingNetUnitChange5y?: number | null;
+  rentControlCovered?: boolean | null;
+  /**
    * Optional per-call weight overrides. When omitted, the canonical
    * `VALUE_ADD_WEIGHTS` are used. Used by the listings pipeline to persist
    * the canonical weighted avg; user-customized rankings happen at query
@@ -125,8 +134,16 @@ export function computeHeuristicScore(
         renovation,
         sizeDiscrepancy: sizeDiff,
         landRatio,
+        // Risk & Compliance — display-only block. Surfaced for transparency
+        // in the score JSON; does not affect `valueAddWeightedAvg`.
+        compliance: {
+          openViolations: ctx.codeViolationsOpenCount ?? null,
+          recentViolations: ctx.codeViolationsRecentCount ?? null,
+          netUnitChange5y: ctx.housingNetUnitChange5y ?? null,
+          rentControlCovered: ctx.rentControlCovered ?? null,
+        },
       },
-      version: 5,
+      version: 6,
     },
   };
 }
