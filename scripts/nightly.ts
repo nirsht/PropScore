@@ -63,8 +63,13 @@ const PARALLEL_LANES: Stage[][] = [
   [stage("crime", "refresh:crime")],
   // Contacts only write to ListingContact (disjoint from every other lane)
   // and the upstream RentCast API caps us per-second, so they're cheap to
-  // run in parallel.
-  [stage("contacts", "enrich:contacts", ["--concurrency=3"])],
+  // run in parallel. Auto-email-rent-roll chains after contacts in the same
+  // lane because it needs ListingContact.agentEmail to be populated, and it
+  // gates itself on env.EMAIL_AUTO_ENABLED.
+  [
+    stage("contacts", "enrich:contacts", ["--concurrency=3"]),
+    stage("emails-auto", "emails:auto"),
+  ],
 ];
 // Neighborhood comp medians depend on assessor data being populated, so
 // run after the parallel phase finishes but before recompute:scores reads
@@ -75,6 +80,10 @@ const POST: Stage = stage("recompute", "recompute:scores");
 // (used as `previousScore` in the prompt) and only re-scores listings
 // whose AI input payload hash changed since the last AI run.
 const AI_SCORE: Stage = stage("ai-score", "ai-score:changed");
+// Reply polling — independent of scoring, runs last. The parser writes back
+// into Listing.extractedRentRoll, but the next nightly will pick up the new
+// rent roll via the normal extract → scoring chain.
+const EMAILS_POLL: Stage = stage("emails-poll", "emails:poll");
 
 function runStage(s: Stage): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -131,6 +140,9 @@ async function main() {
 
   console.log(`[nightly] phase 5: ${AI_SCORE.name}`);
   await runStage(AI_SCORE);
+
+  console.log(`[nightly] phase 6: ${EMAILS_POLL.name}`);
+  await runStage(EMAILS_POLL);
 
   const total = ((Date.now() - overallStart) / 1000).toFixed(1);
   console.log(`[nightly] all stages succeeded in ${total}s`);

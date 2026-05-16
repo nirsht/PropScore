@@ -319,6 +319,25 @@ export function RentRollSection({ listing }: { listing: ListingForAI }) {
           Rent roll · {totalUnitCount}{" "}
           {totalUnitCount === 1 ? "unit" : "units"}
         </Typography>
+        {listing.extractedRentRollSource === "email_reply" && (
+          <Tooltip
+            arrow
+            placement="top"
+            title={
+              listing.extractFetchedAt
+                ? `Parsed from listing agent's email reply on ${new Date(listing.extractFetchedAt).toLocaleDateString()}`
+                : "Parsed from listing agent's email reply"
+            }
+          >
+            <Chip
+              size="small"
+              color="success"
+              variant="outlined"
+              label="From agent email"
+              sx={{ height: 20, cursor: "help" }}
+            />
+          </Tooltip>
+        )}
         {monthlyUpside != null && monthlyUpside > 0 && (
           <Tooltip
             arrow

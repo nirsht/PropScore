@@ -30,6 +30,7 @@ model User {
   agentTraces     AgentTrace[]
   conversations   ChatConversation[]
   starredListings StarredListing[]
+  emailThreads    EmailThread[]
 }
 
 model Account {
@@ -161,6 +162,11 @@ model Listing {
   // 'unfinished-space'. Null when no converted ADU read was possible.
   convertedAduSource        String?
   extractFetchedAt          DateTime?
+  // Provenance for extractedRentRoll: "ai_extraction" (parsed from MLS
+  // remarks by listing-extract agent) or "email_reply" (parsed from an
+  // agent's email reply by email-rent-roll agent). Null = no rent roll
+  // extracted yet. Surfaced as a badge in RentRollSection.
+  extractedRentRollSource   String?
 
   // generated columns added in raw SQL migration. Resolution order is now
   // ASSESSOR-first (most reliable), falling back to MLS, then AI:
@@ -269,6 +275,7 @@ model Listing {
   conversations ChatConversation[]
   contact       ListingContact?
   starredBy     StarredListing[]
+  emailThreads  EmailThread[]
   createdAt     DateTime           @default(now())
 
   @@index([price])
@@ -636,4 +643,75 @@ model ChatMessage {
   conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt])
+}
+
+// -------------------- EMAILS --------------------
+
+// State machine: DRAFT (created in Gmail, not yet sent) -> SENT (poller saw
+// outbound message in thread) -> REPLIED (inbound arrived) -> PARSED (GPT-5
+// parser extracted a rent roll). FAILED = parse or send error; recoverable
+// via emails.parseMessage / manual retry.
+enum EmailThreadStatus {
+  DRAFT
+  SENT
+  REPLIED
+  PARSED
+  FAILED
+}
+
+enum EmailDirection {
+  OUTBOUND
+  INBOUND
+}
+
+/// One outreach thread per (user, listing). Dedup is enforced by the
+/// composite unique — both manual click and the under-$450/sqft auto-trigger
+/// no-op if a row already exists.
+model EmailThread {
+  id            String            @id @default(cuid())
+  userId        String
+  listingMlsId  String
+  gmailThreadId String? // populated once the draft is created
+  gmailDraftId  String?
+  status        EmailThreadStatus @default(DRAFT)
+  toEmail       String
+  subject       String
+  // "manual" | "auto_under_450"
+  trigger       String
+  createdAt     DateTime          @default(now())
+  sentAt        DateTime?
+  lastSyncedAt  DateTime?
+  parsedAt      DateTime?
+  parseError    String?
+
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing  Listing        @relation(fields: [listingMlsId], references: [mlsId], onDelete: Cascade)
+  messages EmailMessage[]
+
+  @@unique([userId, listingMlsId])
+  @@index([status])
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+model EmailMessage {
+  id             String         @id @default(cuid())
+  threadId       String
+  gmailMessageId String         @unique
+  direction      EmailDirection
+  fromEmail      String
+  toEmail        String
+  subject        String
+  snippet        String?
+  bodyText       String?        @db.Text
+  receivedAt     DateTime
+  /// `[{ filename, mimeType, size, gmailAttachmentId }]`
+  attachments    Json?
+  /// Set when this is the inbound message that yielded a parsed rent roll.
+  /// Same shape as Listing.extractedRentRoll (RentRollEntry[]).
+  parsedRentRoll Json?
+  createdAt      DateTime       @default(now())
+
+  thread EmailThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, receivedAt])
 }

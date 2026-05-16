@@ -2,6 +2,7 @@ import { Box, Chip, Paper, Stack, Tooltip, Typography } from "@mui/material";
 import type { RenovationLevel } from "@prisma/client";
 import { Metric } from "./Metric";
 import { RentRollSection } from "./RentRollSection";
+import { EmailHistorySection } from "./EmailHistorySection";
 import type { ListingForAI } from "./types";
 
 export const RENO_COLOR: Record<RenovationLevel, "error" | "warning" | "info" | "success"> = {
@@ -158,6 +159,10 @@ export function AIInsightsCard({ listing }: { listing: ListingForAI }) {
       </Stack>
 
       <RentRollSection listing={listing} />
+
+      <Box sx={{ mb: 1.5 }}>
+        <EmailHistorySection listingMlsId={listing.mlsId} />
+      </Box>
 
       {!!capex?.length && (
         <Box sx={{ mb: 1.5 }}>

@@ -1,4 +1,8 @@
+"use client";
+
+import * as React from "react";
 import {
+  CircularProgress,
   IconButton,
   Link as MuiLink,
   Stack,
@@ -7,17 +11,24 @@ import {
 } from "@mui/material";
 import PhoneRoundedIcon from "@mui/icons-material/PhoneRounded";
 import EmailRoundedIcon from "@mui/icons-material/EmailRounded";
+import MailOutlineRoundedIcon from "@mui/icons-material/MailOutlineRounded";
+import DraftsRoundedIcon from "@mui/icons-material/DraftsRounded";
+import { trpc } from "@/lib/trpc/client";
 
 export function ContactCard({
   role,
   name,
   phone,
   email,
+  listingMlsId,
 }: {
   role: string;
   name: string | null;
   phone?: string | null;
   email?: string | null;
+  /** When set, renders the "Request rent roll" button for this row.
+   *  Only the primary "Listed by" row should pass this. */
+  listingMlsId?: string;
 }) {
   const telHref = phone ? `tel:${phone.replace(/[^\d+]/g, "")}` : null;
   const mailHref = email ? `mailto:${email}` : null;
@@ -72,6 +83,101 @@ export function ContactCard({
           </IconButton>
         </Tooltip>
       )}
+      {listingMlsId && email && (
+        <RequestRentRollButton listingMlsId={listingMlsId} agentEmail={email} />
+      )}
     </Stack>
+  );
+}
+
+function RequestRentRollButton({
+  listingMlsId,
+  agentEmail,
+}: {
+  listingMlsId: string;
+  agentEmail: string;
+}) {
+  const connection = trpc.emails.connectionStatus.useQuery(undefined, {
+    staleTime: 60 * 1000,
+  });
+  const existing = trpc.emails.forListing.useQuery({ listingMlsId });
+  const utils = trpc.useUtils();
+  const request = trpc.emails.requestRentRoll.useMutation({
+    onSuccess: (result) => {
+      void utils.emails.forListing.invalidate({ listingMlsId });
+      void utils.emails.listThreads.invalidate();
+      if (result.draftUrl) {
+        window.open(result.draftUrl, "_blank", "noopener");
+      }
+    },
+  });
+
+  const isConfigured = connection.data?.configured ?? false;
+  const isConnected = connection.data?.connected ?? false;
+  const hasDraft = Boolean(existing.data);
+
+  if (!isConfigured) {
+    return null;
+  }
+
+  if (!isConnected) {
+    return (
+      <Tooltip title="Connect Gmail on the Emails page to request rent rolls">
+        <span>
+          <IconButton
+            size="small"
+            disabled
+            sx={{ p: 0.25, color: "text.disabled" }}
+          >
+            <MailOutlineRoundedIcon sx={{ fontSize: 16 }} />
+          </IconButton>
+        </span>
+      </Tooltip>
+    );
+  }
+
+  if (hasDraft) {
+    const draftId = existing.data?.gmailDraftId;
+    const threadId = existing.data?.gmailThreadId;
+    const href = draftId
+      ? `https://mail.google.com/mail/u/0/#drafts?compose=${draftId}`
+      : threadId
+        ? `https://mail.google.com/mail/u/0/#all/${threadId}`
+        : undefined;
+    return (
+      <Tooltip
+        title={`Rent-roll outreach already exists (${existing.data?.status?.toLowerCase()}) — open in Gmail`}
+      >
+        <IconButton
+          size="small"
+          component={href ? MuiLink : "button"}
+          href={href}
+          target={href ? "_blank" : undefined}
+          rel={href ? "noopener" : undefined}
+          sx={{ p: 0.25, color: "success.main" }}
+        >
+          <DraftsRoundedIcon sx={{ fontSize: 16 }} />
+        </IconButton>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <Tooltip title={`Create Gmail draft to ${agentEmail} requesting the rent roll`}>
+      <span>
+        <IconButton
+          size="small"
+          disabled={request.isPending}
+          onClick={() => request.mutate({ listingMlsId })}
+          sx={{ p: 0.25, color: "primary.main" }}
+        >
+          {request.isPending ? (
+            <CircularProgress size={14} />
+          ) : (
+            <MailOutlineRoundedIcon sx={{ fontSize: 16 }} />
+          )}
+        </IconButton>
+      </span>
+    </Tooltip>
   );
 }

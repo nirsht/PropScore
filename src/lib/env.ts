@@ -44,6 +44,26 @@ const schema = z.object({
     .string()
     .url()
     .default("https://api.rentcast.io/v1"),
+
+  // Gmail integration — per-user OAuth via NextAuth Google provider.
+  // Tokens land in the existing Account table. Used for creating
+  // rent-roll request drafts and polling agent replies.
+  GOOGLE_CLIENT_ID: z.string().optional().or(z.literal("")),
+  GOOGLE_CLIENT_SECRET: z.string().optional().or(z.literal("")),
+
+  // Phase-2 rent-roll parser (separate from OPENAI_MODEL so we don't
+  // disturb other extraction paths). gpt-5 by default; override per
+  // environment if needed.
+  OPENAI_RENT_ROLL_MODEL: z.string().min(1).default("gpt-5"),
+
+  // Auto-trigger: nightly draft creation for active listings with
+  // price/sqft below this threshold. Dedup is enforced at the DB layer.
+  EMAIL_AUTO_PRICE_PER_SQFT: z.coerce.number().positive().default(450),
+  // Safety switch — false until manual smoke test passes in prod.
+  EMAIL_AUTO_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === "true" || v === "1"),
 });
 
 const parsed = schema.safeParse(process.env);

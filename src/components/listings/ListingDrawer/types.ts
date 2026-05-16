@@ -70,6 +70,10 @@ export type ListingForAI = {
   convertedAduRationale: string | null;
   convertedAduSource: string | null;
   extractFetchedAt: Date | string | null;
+  /** "ai_extraction" | "email_reply" | null — drives the source badge in
+   *  RentRollSection so the user knows whether numbers came from MLS remarks
+   *  or an actual agent rent roll. */
+  extractedRentRollSource: string | null;
   privateRemarks: string | null;
 };
 

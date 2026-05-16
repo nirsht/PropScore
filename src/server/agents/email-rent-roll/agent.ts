@@ -1,0 +1,406 @@
+import { PDFParse } from "pdf-parse";
+import * as XLSX from "xlsx";
+import { Prisma } from "@prisma/client";
+import { z } from "zod";
+import { db } from "@/lib/db";
+import { env } from "@/lib/env";
+import { openai } from "@/lib/openai";
+import { getAttachment } from "@/lib/google/gmail";
+import { RentRollEntry } from "@/server/agents/listing-extract/schema";
+
+// Output schema — strict subset of ListingExtractOutput for the email path.
+// We only ingest what the agent actually shares (rent roll + occupancy).
+// Other ADU/unit-mix fields stay owned by the listing-extract agent.
+export const EmailRentRollOutput = z.object({
+  rentRoll: z.array(RentRollEntry).nullable(),
+  totalMonthlyRent: z.number().nullable(),
+  occupancy: z.number().min(0).max(1).nullable(),
+  // One-sentence summary of what was found / why it was empty. Surfaced in
+  // EmailHistorySection so the user can audit a no-op parse.
+  rationale: z.string().min(1).max(400),
+});
+export type EmailRentRollOutput = z.infer<typeof EmailRentRollOutput>;
+
+// Cost guards — kill switches before we touch the LLM. Numbers picked to fit a
+// reasonable agent rent-roll (≤5 small files, ≤25 MB total).
+const MAX_ATTACHMENTS = 5;
+const MAX_TOTAL_BYTES = 25 * 1024 * 1024;
+
+const SYSTEM_PROMPT = `You parse rent rolls out of real-estate broker emails.
+
+The user will share an email body and any attachments the broker sent (rent roll
+PDF, photo, spreadsheet, etc.). Your job is to extract a clean rent roll for
+the building.
+
+Rules:
+- Emit one entry per RESIDENTIAL unit. Skip commercial / retail / parking
+  rows unless the building is mostly commercial.
+- "rent" = current actual monthly rent in dollars (numeric, no $ sign). If a
+  unit is vacant (rent = $0 or "vacant"), skip that row from rentRoll but
+  reduce occupancy proportionally.
+- "beds" and "baths" — if the table doesn't list them per-unit, infer from
+  the building's listed unit mix (e.g. "10x 1BR/1BA" → beds=1, baths=1 for
+  all rows). Use null when truly unknowable.
+- "sqft" — populate when the rent roll lists it per unit.
+- "unitLabel" — short identifier from the rent roll (Unit 1, A, 101). Trim
+  to ≤40 chars.
+- "totalMonthlyRent" — sum of rent across all rentRoll entries (residential).
+  Round to a whole dollar.
+- "occupancy" — fraction in [0,1]. occupied_units / total_units.
+- If you cannot find a rent roll at all, return rentRoll=null and write a
+  rationale explaining what you saw instead (e.g. "Agent declined to share").
+- NEVER fabricate rents. If a value is illegible, omit that field, not the row.
+- Output JSON conforming to the response schema. No prose outside JSON.`;
+
+const PER_PDF_PAGE_CAP = 20;
+
+type AttachmentInput = {
+  filename: string;
+  mimeType: string;
+  size: number;
+  gmailAttachmentId: string;
+};
+
+async function fetchAttachmentBuffer(
+  userId: string,
+  gmailMessageId: string,
+  attachmentId: string,
+): Promise<Buffer> {
+  return getAttachment(userId, gmailMessageId, attachmentId);
+}
+
+async function pdfToText(buf: Buffer): Promise<string> {
+  let parser: PDFParse | null = null;
+  try {
+    parser = new PDFParse({ data: buf });
+    const result = await parser.getText();
+    return (result.text ?? "").trim();
+  } catch {
+    return "";
+  } finally {
+    if (parser) await parser.destroy().catch(() => undefined);
+  }
+}
+
+function xlsxToText(buf: Buffer): string {
+  try {
+    const wb = XLSX.read(buf, { type: "buffer" });
+    const chunks: string[] = [];
+    for (const sheetName of wb.SheetNames) {
+      const sheet = wb.Sheets[sheetName];
+      if (!sheet) continue;
+      const csv = XLSX.utils.sheet_to_csv(sheet);
+      if (csv.trim()) {
+        chunks.push(`# Sheet: ${sheetName}\n${csv}`);
+      }
+    }
+    return chunks.join("\n\n");
+  } catch {
+    return "";
+  }
+}
+
+// Content block builder. We emit a text block per attachment with extracted
+// text where possible, and an image_url block for image attachments (and PDFs
+// that yielded no text). The user message is a single multimodal turn.
+type ContentBlock =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+
+async function buildAttachmentBlocks(args: {
+  userId: string;
+  gmailMessageId: string;
+  attachments: AttachmentInput[];
+}): Promise<ContentBlock[]> {
+  const out: ContentBlock[] = [];
+  let totalBytes = 0;
+  const slice = args.attachments.slice(0, MAX_ATTACHMENTS);
+
+  for (const att of slice) {
+    if (totalBytes + att.size > MAX_TOTAL_BYTES) {
+      out.push({
+        type: "text",
+        text: `[Skipped ${att.filename}: total attachment size would exceed ${MAX_TOTAL_BYTES} bytes]`,
+      });
+      continue;
+    }
+    let buf: Buffer;
+    try {
+      buf = await fetchAttachmentBuffer(args.userId, args.gmailMessageId, att.gmailAttachmentId);
+    } catch (err) {
+      out.push({
+        type: "text",
+        text: `[Failed to fetch ${att.filename}: ${(err as Error).message}]`,
+      });
+      continue;
+    }
+    totalBytes += buf.length;
+
+    const mime = att.mimeType.toLowerCase();
+
+    if (mime === "application/pdf" || att.filename.toLowerCase().endsWith(".pdf")) {
+      const text = await pdfToText(buf);
+      if (text && text.length > 60) {
+        out.push({
+          type: "text",
+          text: `# Attachment: ${att.filename} (PDF, text-extracted)\n\n${text.slice(0, 60_000)}`,
+        });
+      } else {
+        // Scanned PDF — pass as image to GPT vision. We send the raw PDF
+        // bytes inline; modern OpenAI vision endpoints accept PDF data URIs
+        // up to ~20 pages.
+        const dataUrl = `data:application/pdf;base64,${buf.toString("base64")}`;
+        out.push({
+          type: "text",
+          text: `# Attachment: ${att.filename} (PDF, image — first ${PER_PDF_PAGE_CAP} pages)`,
+        });
+        out.push({ type: "image_url", image_url: { url: dataUrl } });
+      }
+      continue;
+    }
+
+    if (mime.startsWith("image/")) {
+      const dataUrl = `data:${mime};base64,${buf.toString("base64")}`;
+      out.push({ type: "text", text: `# Attachment: ${att.filename} (image)` });
+      out.push({ type: "image_url", image_url: { url: dataUrl } });
+      continue;
+    }
+
+    if (
+      mime === "text/csv" ||
+      mime === "application/vnd.ms-excel" ||
+      mime.includes("spreadsheetml") ||
+      att.filename.toLowerCase().match(/\.(csv|xls|xlsx)$/)
+    ) {
+      const csv = xlsxToText(buf);
+      out.push({
+        type: "text",
+        text: `# Attachment: ${att.filename} (spreadsheet)\n\n${csv.slice(0, 60_000)}`,
+      });
+      continue;
+    }
+
+    if (mime.startsWith("text/")) {
+      out.push({
+        type: "text",
+        text: `# Attachment: ${att.filename} (text)\n\n${buf.toString("utf8").slice(0, 30_000)}`,
+      });
+      continue;
+    }
+
+    out.push({
+      type: "text",
+      text: `[Attachment ${att.filename} (${mime}) skipped — unsupported MIME type]`,
+    });
+  }
+  return out;
+}
+
+function buildResponseSchema(): Record<string, unknown> {
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      rentRoll: {
+        anyOf: [
+          { type: "null" },
+          {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                rent: { type: "number" },
+                beds: { anyOf: [{ type: "integer" }, { type: "null" }] },
+                baths: { anyOf: [{ type: "number" }, { type: "null" }] },
+                sqft: { anyOf: [{ type: "number" }, { type: "null" }] },
+                unitLabel: { anyOf: [{ type: "string" }, { type: "null" }] },
+              },
+              required: ["rent", "beds", "baths"],
+            },
+          },
+        ],
+      },
+      totalMonthlyRent: { anyOf: [{ type: "number" }, { type: "null" }] },
+      occupancy: { anyOf: [{ type: "number" }, { type: "null" }] },
+      rationale: { type: "string" },
+    },
+    required: ["rentRoll", "totalMonthlyRent", "occupancy", "rationale"],
+  };
+}
+
+/**
+ * Parse the rent roll out of an inbound email message. Multimodal single-shot
+ * call to OPENAI_RENT_ROLL_MODEL (default gpt-5). Persists into Listing
+ * (extractedRentRoll / extractedTotalMonthlyRent / extractedOccupancy /
+ * extractedRentRollSource="email_reply") and onto EmailMessage.parsedRentRoll.
+ * Updates the thread status to PARSED on success, FAILED on schema mismatch.
+ */
+export async function parseEmailRentRoll(emailMessageId: string): Promise<EmailRentRollOutput> {
+  const message = await db.emailMessage.findUnique({
+    where: { id: emailMessageId },
+    include: {
+      thread: {
+        include: {
+          listing: {
+            select: {
+              mlsId: true,
+              address: true,
+              units: true,
+              sqft: true,
+              extractedUnitMix: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!message) throw new Error(`EmailMessage not found: ${emailMessageId}`);
+  if (message.direction !== "INBOUND") {
+    throw new Error(`Not an inbound message: ${emailMessageId}`);
+  }
+  const thread = message.thread;
+  const listing = thread.listing;
+
+  const attachments = (message.attachments as AttachmentInput[] | null) ?? [];
+  const attachmentBlocks = await buildAttachmentBlocks({
+    userId: thread.userId,
+    gmailMessageId: message.gmailMessageId,
+    attachments,
+  });
+
+  const listingContext = [
+    `Listing: ${listing.address} (mlsId=${listing.mlsId})`,
+    listing.units != null ? `Units: ${listing.units}` : null,
+    listing.sqft != null ? `Building sqft: ${listing.sqft}` : null,
+    listing.extractedUnitMix
+      ? `Prior unit mix (from MLS extract): ${JSON.stringify(listing.extractedUnitMix)}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const userBlocks: ContentBlock[] = [
+    {
+      type: "text",
+      text: [
+        "Listing context:",
+        listingContext,
+        "",
+        "Email reply from:",
+        `${message.fromEmail}`,
+        "",
+        "Subject:",
+        message.subject,
+        "",
+        "Body:",
+        message.bodyText ?? "(empty)",
+      ].join("\n"),
+    },
+    ...attachmentBlocks,
+  ];
+
+  const started = Date.now();
+  let parsed: EmailRentRollOutput;
+  try {
+    const completion = await openai.chat.completions.create({
+      model: env.OPENAI_RENT_ROLL_MODEL,
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        // OpenAI types accept multimodal content as an array of parts when
+        // the role is user. The Node SDK's types are slightly stricter; we
+        // cast to the SDK's expected shape.
+        { role: "user", content: userBlocks as unknown as string },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "email_rent_roll_output",
+          schema: buildResponseSchema(),
+          strict: false,
+        },
+      },
+    });
+
+    const text = completion.choices[0]?.message?.content ?? "";
+    const json = JSON.parse(text);
+    parsed = EmailRentRollOutput.parse(json);
+
+    await db.aIEnrichment.create({
+      data: {
+        listingMlsId: listing.mlsId,
+        agentName: "email-rent-roll",
+        output: parsed as object,
+      },
+    });
+
+    await db.agentTrace.create({
+      data: {
+        agentName: "email-rent-roll",
+        userId: thread.userId,
+        input: {
+          emailMessageId: message.id,
+          listingMlsId: listing.mlsId,
+          attachmentCount: attachments.length,
+        },
+        output: parsed as object,
+        latencyMs: Date.now() - started,
+      },
+    });
+  } catch (err) {
+    const errorMessage = (err as Error).message ?? "Unknown parse error";
+    await db.emailThread.update({
+      where: { id: thread.id },
+      data: {
+        status: "FAILED",
+        parseError: errorMessage.slice(0, 500),
+      },
+    });
+    await db.agentTrace.create({
+      data: {
+        agentName: "email-rent-roll",
+        userId: thread.userId,
+        input: { emailMessageId: message.id, listingMlsId: listing.mlsId },
+        error: errorMessage.slice(0, 1000),
+        latencyMs: Date.now() - started,
+      },
+    });
+    throw err;
+  }
+
+  // Persist into Listing and EmailMessage. We only overwrite listing rent
+  // roll if the parse actually yielded one — otherwise we leave the AI-
+  // extracted fields alone and mark the thread as REPLIED-but-empty.
+  if (parsed.rentRoll && parsed.rentRoll.length > 0) {
+    await db.listing.update({
+      where: { mlsId: listing.mlsId },
+      data: {
+        extractedRentRoll: parsed.rentRoll as unknown as Prisma.InputJsonValue,
+        extractedTotalMonthlyRent:
+          parsed.totalMonthlyRent != null ? Math.round(parsed.totalMonthlyRent) : null,
+        extractedOccupancy: parsed.occupancy,
+        extractedRentRollSource: "email_reply",
+        extractFetchedAt: message.receivedAt,
+      },
+    });
+  }
+
+  await db.emailMessage.update({
+    where: { id: message.id },
+    data: {
+      parsedRentRoll: parsed.rentRoll
+        ? (parsed.rentRoll as unknown as Prisma.InputJsonValue)
+        : Prisma.JsonNull,
+    },
+  });
+
+  await db.emailThread.update({
+    where: { id: thread.id },
+    data: {
+      status: parsed.rentRoll && parsed.rentRoll.length > 0 ? "PARSED" : "REPLIED",
+      parsedAt: parsed.rentRoll && parsed.rentRoll.length > 0 ? new Date() : null,
+      parseError: null,
+    },
+  });
+
+  return parsed;
+}
