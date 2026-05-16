@@ -82,6 +82,11 @@ export const FilterInput = z.object({
   // false = only listings flagged as exempt.
   rentControlCovered: z.boolean().nullable().optional(),
 
+  // Tri-state for soft-story red flag: undefined/null = all, true = on the
+  // SF soft-story list AND not yet retrofitted, false = not on the list or
+  // retrofit complete.
+  softStoryRedFlag: z.boolean().nullable().optional(),
+
   // Per-user favorites filter. When true, restricts to listings the current
   // user has starred (joined against StarredListing in the SQL builder).
   starredOnly: z.boolean().optional(),

@@ -12,6 +12,12 @@ export type RiskComplianceCardListing = {
   // Derived (no fetch)
   rentControlCovered: boolean | null;
   rentControlComputedAt: Date | string | null;
+  // SF mandatory soft-story retrofit program (Socrata jwdp-cqyc).
+  // `softStoryRedFlag === true` only when on the list AND not yet retrofitted.
+  softStoryRedFlag: boolean | null;
+  softStoryTier: number | null;
+  softStoryStatus: string | null;
+  softStoryFetchedAt: Date | string | null;
 };
 
 type LatestNov = {
@@ -46,7 +52,10 @@ export function RiskComplianceCard({
   const hasViolations = listing.codeViolationsFetchedAt != null;
   const hasHousing = listing.housingInventoryFetchedAt != null;
   const hasRentControl = listing.rentControlComputedAt != null;
-  const hasAnything = hasViolations || hasHousing || hasRentControl;
+  const softStoryRedFlag =
+    listing.softStoryFetchedAt != null && listing.softStoryRedFlag === true;
+  const hasAnything =
+    hasViolations || hasHousing || hasRentControl || softStoryRedFlag;
 
   if (!hasAnything) return null;
 
@@ -224,6 +233,44 @@ export function RiskComplianceCard({
                 color={rentCtrl ? "info" : "default"}
                 variant={rentCtrl ? "filled" : "outlined"}
                 label={rentCtrl ? "Likely rent-controlled" : "Likely exempt"}
+              />
+            </Tooltip>
+          </Stack>
+        </Box>
+      )}
+
+      {/* Row 4 — Soft-story seismic risk (red flag only) */}
+      {softStoryRedFlag && (
+        <Box sx={{ mt: hasRentControl ? 1.5 : 0 }}>
+          <Typography variant="caption" color="text.secondary">
+            Seismic risk (soft story)
+          </Typography>
+          <Stack
+            direction="row"
+            spacing={1}
+            alignItems="center"
+            sx={{ mt: 0.5 }}
+            flexWrap="wrap"
+            useFlexGap
+          >
+            <Tooltip
+              arrow
+              placement="top"
+              title={
+                `Listed on SF's mandatory soft-story retrofit program${
+                  listing.softStoryStatus ? ` — status: ${listing.softStoryStatus}` : ""
+                }. Soft-story buildings have a weak first story and are at elevated risk of damage in a quake. Verify outstanding retrofit obligation and budget before underwriting.`
+              }
+            >
+              <Chip
+                size="small"
+                color="warning"
+                variant="filled"
+                label={
+                  listing.softStoryTier != null
+                    ? `Soft story (Tier ${listing.softStoryTier})`
+                    : "Soft story"
+                }
               />
             </Tooltip>
           </Stack>

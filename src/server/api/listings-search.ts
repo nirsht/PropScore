@@ -200,6 +200,10 @@ function buildWhere(
     where.push(Prisma.sql`"rentControlCovered" = ${input.rentControlCovered}`);
   }
 
+  if (input.softStoryRedFlag != null) {
+    where.push(Prisma.sql`"softStoryRedFlag" = ${input.softStoryRedFlag}`);
+  }
+
   if (input.starredOnly) {
     if (opts.userId) {
       where.push(
