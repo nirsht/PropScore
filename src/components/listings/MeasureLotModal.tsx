@@ -4,7 +4,6 @@ import * as React from "react";
 import {
   Box,
   Button,
-  Chip,
   Dialog,
   IconButton,
   Stack,
@@ -19,66 +18,15 @@ import Map, {
 } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
-import UndoRoundedIcon from "@mui/icons-material/UndoRounded";
-import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import StraightenRoundedIcon from "@mui/icons-material/StraightenRounded";
-
-type Point = { lng: number; lat: number };
-
-const SATELLITE_STYLE = {
-  version: 8,
-  sources: {
-    sat: {
-      type: "raster" as const,
-      tiles: [
-        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-      ],
-      tileSize: 256,
-      attribution: "Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community",
-      maxzoom: 19,
-    },
-    labels: {
-      type: "raster" as const,
-      tiles: [
-        "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
-      ],
-      tileSize: 256,
-      maxzoom: 19,
-    },
-  },
-  layers: [
-    { id: "sat", type: "raster" as const, source: "sat" },
-    { id: "labels", type: "raster" as const, source: "labels" },
-  ],
-};
-
-const SQM_TO_SQFT = 10.7639;
-const EARTH_RADIUS_M = 6_378_137;
-
-/**
- * Spherical excess (planimetric) area for a polygon defined by lng/lat
- * vertices. Plenty accurate for parcel-scale geometry — Karney's algorithm
- * would only matter for >100km polygons.
- */
-function computeAreaSqft(points: Point[]): number | null {
-  if (points.length < 3) return null;
-  let total = 0;
-  for (let i = 0; i < points.length; i++) {
-    const a = points[i]!;
-    const b = points[(i + 1) % points.length]!;
-    total +=
-      toRad(b.lng - a.lng) *
-      (2 + Math.sin(toRad(a.lat)) + Math.sin(toRad(b.lat)));
-  }
-  const sqMeters = Math.abs((total * EARTH_RADIUS_M * EARTH_RADIUS_M) / 2);
-  return sqMeters * SQM_TO_SQFT;
-}
-
-function toRad(deg: number) {
-  return (deg * Math.PI) / 180;
-}
-
-const fmt = (n: number) => `${Math.round(n).toLocaleString()} sqft`;
+import {
+  type Point,
+  buildInProgressLineGeoJson,
+  buildPolygonGeoJson,
+  computeAreaSqft,
+} from "./MeasureLotModal/geoUtils";
+import { SATELLITE_STYLE } from "./MeasureLotModal/mapConfig";
+import { MeasureResults } from "./MeasureLotModal/MeasureResults";
 
 export function MeasureLotModal({
   open,
@@ -137,41 +85,8 @@ export function MeasureLotModal({
     setPoints((prev) => prev.map((p, idx) => (idx === i ? { lng: ll.lng, lat: ll.lat } : p)));
   }
 
-  const polygon =
-    points.length >= 3
-      ? {
-          type: "FeatureCollection" as const,
-          features: [
-            {
-              type: "Feature" as const,
-              properties: {},
-              geometry: {
-                type: "Polygon" as const,
-                coordinates: [
-                  [...points.map((p) => [p.lng, p.lat]), [points[0]!.lng, points[0]!.lat]],
-                ],
-              },
-            },
-          ],
-        }
-      : null;
-
-  const inProgressLine =
-    points.length >= 2 && points.length < 3
-      ? {
-          type: "FeatureCollection" as const,
-          features: [
-            {
-              type: "Feature" as const,
-              properties: {},
-              geometry: {
-                type: "LineString" as const,
-                coordinates: points.map((p) => [p.lng, p.lat]),
-              },
-            },
-          ],
-        }
-      : null;
+  const polygon = buildPolygonGeoJson(points);
+  const inProgressLine = buildInProgressLineGeoJson(points);
 
   return (
     <Dialog
@@ -306,98 +221,17 @@ export function MeasureLotModal({
         </Box>
       </Box>
 
-      {/* Results + actions */}
-      <Stack
-        direction={{ xs: "column", md: "row" }}
-        spacing={2}
-        alignItems={{ md: "center" }}
-        sx={{
-          px: 2,
-          py: 1.5,
-          borderTop: 1,
-          borderColor: "divider",
-          bgcolor: "background.paper",
-        }}
-      >
-        <Stack direction="row" spacing={3} flexWrap="wrap" useFlexGap sx={{ flex: 1 }}>
-          <Stat
-            label="Measured"
-            value={measured != null ? fmt(measured) : "—"}
-            emphasis
-          />
-          <Stat
-            label="API"
-            value={apiLotSizeSqft != null ? fmt(apiLotSizeSqft) : "—"}
-          />
-          {delta != null && (
-            <Stat
-              label="Δ vs API"
-              value={`${delta > 0 ? "+" : ""}${Math.round(delta).toLocaleString()} sqft`}
-              tone={driftPct != null && driftPct > 0.2 ? "warn" : "ok"}
-            />
-          )}
-          {ratio != null && (
-            <Stat label="Ratio" value={`${Math.round(ratio * 100)}%`} />
-          )}
-        </Stack>
-
-        <Stack direction="row" spacing={1} alignItems="center">
-          {points.length > 0 && (
-            <Chip
-              size="small"
-              variant="outlined"
-              label={`${points.length} corner${points.length === 1 ? "" : "s"}`}
-            />
-          )}
-          <Button
-            size="small"
-            startIcon={<UndoRoundedIcon fontSize="small" />}
-            onClick={() => setPoints((p) => p.slice(0, -1))}
-            disabled={!points.length}
-          >
-            Undo
-          </Button>
-          <Button
-            size="small"
-            startIcon={<RefreshRoundedIcon fontSize="small" />}
-            onClick={() => setPoints([])}
-            disabled={!points.length}
-          >
-            Reset
-          </Button>
-          <Button variant="contained" size="small" onClick={onClose}>
-            Done
-          </Button>
-        </Stack>
-      </Stack>
+      <MeasureResults
+        measured={measured}
+        apiLotSizeSqft={apiLotSizeSqft}
+        delta={delta}
+        ratio={ratio}
+        driftPct={driftPct}
+        pointCount={points.length}
+        onUndo={() => setPoints((p) => p.slice(0, -1))}
+        onReset={() => setPoints([])}
+        onDone={onClose}
+      />
     </Dialog>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  emphasis,
-  tone,
-}: {
-  label: string;
-  value: string;
-  emphasis?: boolean;
-  tone?: "ok" | "warn";
-}) {
-  const color =
-    tone === "warn" ? "warning.main" : emphasis ? "primary.main" : "text.primary";
-  return (
-    <Box>
-      <Typography variant="caption" color="text.secondary">
-        {label}
-      </Typography>
-      <Typography
-        variant={emphasis ? "h6" : "body1"}
-        sx={{ fontWeight: emphasis ? 700 : 500, color, lineHeight: 1.2 }}
-      >
-        {value}
-      </Typography>
-    </Box>
   );
 }

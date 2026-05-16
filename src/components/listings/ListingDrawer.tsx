@@ -2,59 +2,36 @@
 
 import * as React from "react";
 import {
-  Accordion,
-  AccordionDetails,
-  AccordionSummary,
   Alert,
   Box,
-  Button,
-  Chip,
-  CircularProgress,
   Divider,
   Drawer,
-  IconButton,
   Paper,
   Skeleton,
   Stack,
   Tab,
   Tabs,
-  Tooltip,
   Typography,
 } from "@mui/material";
-import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
-import LocationOnRoundedIcon from "@mui/icons-material/LocationOnRounded";
-import HelpOutlineRoundedIcon from "@mui/icons-material/HelpOutlineRounded";
-import StreetviewRoundedIcon from "@mui/icons-material/StreetviewRounded";
-import PublicRoundedIcon from "@mui/icons-material/PublicRounded";
-import LayersRoundedIcon from "@mui/icons-material/LayersRounded";
-import WaterDamageRoundedIcon from "@mui/icons-material/WaterDamageRounded";
-import HomeWorkRoundedIcon from "@mui/icons-material/HomeWorkRounded";
-import DirectionsWalkRoundedIcon from "@mui/icons-material/DirectionsWalkRounded";
-import StraightenRoundedIcon from "@mui/icons-material/StraightenRounded";
-import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import ChatBubbleOutlineRoundedIcon from "@mui/icons-material/ChatBubbleOutlineRounded";
-import { StarCell } from "./ListingsGrid/gridCells";
 import HomeWorkOutlinedIcon from "@mui/icons-material/HomeWorkOutlined";
 import { trpc } from "@/lib/trpc/client";
 import { ChatPanel } from "@/components/chat/ChatPanel";
-import { EnrichWithAIButton } from "./EnrichWithAIButton";
 import { LocationRatingCard } from "./LocationRatingCard";
 import { PhotoLightbox } from "./PhotoLightbox";
 import { MeasureLotModal } from "./MeasureLotModal";
 import { AIInsightsCard } from "./ListingDrawer/AIInsightsCard";
 import { BuildingDetailsCard } from "./ListingDrawer/BuildingDetailsCard";
-import { ContactCard } from "./ListingDrawer/ContactCard";
 import { FeasibilityCard } from "./ListingDrawer/FeasibilityCard";
-import { RiskComplianceCard } from "./ListingDrawer/RiskComplianceCard";
-import { strField } from "./ListingDrawer/fieldGuards";
-import { deriveRatio, fmtDate, fmtMoney } from "./ListingDrawer/formatters";
+import { GisToolsSection } from "./ListingDrawer/GisToolsSection";
+import { HeaderAndContacts } from "./ListingDrawer/HeaderAndContacts";
 import { LotAndExtrasCard } from "./ListingDrawer/LotAndExtrasCard";
 import { MarketUpsideCard } from "./ListingDrawer/MarketUpsideCard";
-import { Metric } from "./ListingDrawer/Metric";
-import { PhotoStrip } from "./ListingDrawer/PhotoStrip";
-import { Rationale } from "./ListingDrawer/Rationale";
-import { ScoreBars } from "./ListingDrawer/ScoreBars";
-import { CopyAndOpenLink, ToolLink } from "./ListingDrawer/ToolLinks";
+import { OpportunityScoresCard } from "./ListingDrawer/OpportunityScoresCard";
+import { PhotosCard } from "./ListingDrawer/PhotosCard";
+import { RawPayloadCollapsible } from "./ListingDrawer/RawPayloadCollapsible";
+import { RiskComplianceCard } from "./ListingDrawer/RiskComplianceCard";
+import { useListingContact } from "./ListingDrawer/useListingContact";
 
 type Props = {
   mlsId: string | null;
@@ -105,46 +82,7 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
     .filter(Boolean)
     .join(", ");
 
-  // Redfin requires an internal /home/<id> for property pages and blocks
-  // server-side autocomplete via CloudFront, so we route through
-  // DuckDuckGo's `!ducky` bang — DDG redirects to the top Google result
-  // for `site:redfin.com <address>`, which is reliably the property page.
-  const redfinUrl = fullAddress
-    ? `https://duckduckgo.com/?q=${encodeURIComponent(`!ducky site:redfin.com ${fullAddress}`)}`
-    : "https://www.redfin.com";
-
-  // Zillow's `_rb` redirect expects dash-separated tokens, not URL-encoded
-  // spaces/commas — encodeURIComponent produces 404s.
-  const zillowSlug = fullAddress
-    .replace(/,/g, "")
-    .trim()
-    .replace(/\s+/g, "-");
-  const zillowUrl = zillowSlug
-    ? `https://www.zillow.com/homes/${zillowSlug}_rb/`
-    : "https://www.zillow.com";
-
-  // Bridge `sfar` (IDX) strips agent phone/email, so on its own these reads
-  // would all be null. The RentCast enrichment layer
-  // (`scripts/enrich-contacts.ts` → `ListingContact`) fills them in by
-  // address; we still fall back to `raw.*` so a future Bridge VOW feed
-  // upgrade lights up the same UI without any drawer changes.
-  const contact = listing?.contact ?? null;
-  const agentName = contact?.agentName ?? strField(raw.ListAgentFullName);
-  const agentPhone =
-    contact?.agentPhone ??
-    strField(raw.ListAgentDirectPhone) ??
-    strField(raw.ListAgentOfficePhone);
-  const agentEmail = contact?.agentEmail ?? strField(raw.ListAgentEmail);
-
-  // RentCast doesn't expose a co-listing-agent field. Co-agent contact
-  // stays Bridge-only until/unless we upgrade to a VOW feed.
-  const coAgentName = strField(raw.CoListAgentFullName);
-  const coAgentPhone = strField(raw.CoListAgentDirectPhone);
-  const coAgentEmail = strField(raw.CoListAgentEmail);
-
-  const officeName = contact?.officeName ?? strField(raw.ListOfficeName);
-  const officePhone = contact?.officePhone ?? strField(raw.ListOfficePhone);
-  const officeEmail = contact?.officeEmail ?? null;
+  const contact = useListingContact(listing?.contact, raw);
 
   return (
     <Drawer
@@ -218,117 +156,18 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
       {listing && tab === "details" && (
         <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
         <Stack spacing={2.5} sx={{ p: 3 }}>
-          {/* Header */}
-          <Stack direction="row" alignItems="flex-start" spacing={1}>
-            <Box sx={{ flex: 1 }}>
-              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
-                <Chip
-                  size="small"
-                  color={listing.status === "Active" ? "success" : "default"}
-                  label={listing.status}
-                />
-                <Chip size="small" variant="outlined" label={listing.propertyType} />
-              </Stack>
-              <Typography variant="h5" sx={{ lineHeight: 1.2 }}>
-                {address}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {[listing.city, listing.state, listing.postalCode].filter(Boolean).join(", ")}
-              </Typography>
-            </Box>
-            <StarCell mlsId={listing.mlsId} />
-            <IconButton onClick={onClose} size="small">
-              <CloseRoundedIcon />
-            </IconButton>
-          </Stack>
+          <HeaderAndContacts
+            listing={listing}
+            address={address}
+            contact={contact}
+            onClose={onClose}
+          />
 
-          {/* Raw IDs & timestamps — moved up so the source of truth is at the top */}
-          <Paper variant="outlined" sx={{ p: 1.5 }}>
-            <Stack spacing={1.25}>
-              {(agentName || agentPhone || agentEmail || coAgentName ||
-                coAgentPhone || coAgentEmail || officeName || officePhone ||
-                officeEmail) && (
-                <>
-                  <Stack spacing={0.25}>
-                    {(agentName || agentPhone || agentEmail) && (
-                      <ContactCard
-                        role="Listed by"
-                        name={agentName}
-                        phone={agentPhone}
-                        email={agentEmail}
-                        listingMlsId={listing.mlsId}
-                      />
-                    )}
-                    {(coAgentName || coAgentPhone || coAgentEmail) && (
-                      <ContactCard
-                        role="Co-listed by"
-                        name={coAgentName}
-                        phone={coAgentPhone}
-                        email={coAgentEmail}
-                      />
-                    )}
-                    {(officeName || officePhone || officeEmail) && (
-                      <ContactCard
-                        role="Brokerage"
-                        name={officeName}
-                        phone={officePhone}
-                        email={officeEmail}
-                      />
-                    )}
-                  </Stack>
-                  <Divider />
-                </>
-              )}
-              <Stack
-                direction="row"
-                spacing={2.5}
-                flexWrap="wrap"
-                useFlexGap
-                alignItems="center"
-              >
-                <Metric label="MLS ID" value={listing.mlsId} small />
-                <Metric label="Posted" value={fmtDate(listing.postDate)} small />
-                <Metric label="Updated" value={fmtDate(listing.listingUpdatedAt)} small />
-                <Metric
-                  label="Bridge mod"
-                  value={fmtDate(listing.bridgeModificationTimestamp)}
-                  small
-                />
-              </Stack>
-            </Stack>
-          </Paper>
-
-          {/* Headline strip — price, $/sqft, $/unit, DOM (no comparison data) */}
-          <Paper variant="outlined" sx={{ p: 2 }}>
-            <Stack direction="row" spacing={3} flexWrap="wrap" useFlexGap>
-              <Metric label="Price" value={fmtMoney(listing.price)} emphasis />
-              <Metric
-                label="$/Sqft"
-                value={fmtMoney(
-                  deriveRatio(
-                    listing.price,
-                    listing.assessorBuildingSqft ?? listing.sqft,
-                  ),
-                )}
-              />
-              <Metric
-                label="$/Unit"
-                value={fmtMoney(
-                  deriveRatio(listing.price, listing.assessorUnits ?? listing.units),
-                )}
-              />
-              <Metric label="DOM" value={listing.daysOnMls.toString()} />
-            </Stack>
-          </Paper>
-
-          {/* Building Details — replaces the old headline metrics + source-comparison
-              cards. 3-column MLS / Assessor / AI grid with row highlighting. */}
+          {/* Building Details — 3-column MLS / Assessor / AI grid. */}
           <BuildingDetailsCard listing={listing} />
 
           {/* AI insights — merges photo-vision (renovation, stories) with the new
-              listing-extract output (rent roll, capex, ADU). Sits directly under
-              the building details so AI-derived facts read alongside the source
-              data. */}
+              listing-extract output (rent roll, capex, ADU). */}
           <AIInsightsCard
             listing={{
               ...listing,
@@ -336,10 +175,7 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
             }}
           />
 
-          {/* ADU & reconfiguration feasibility — SF Open Data signals
-              (land use, construction, permit precedent). Sits below the AI
-              extracts so the data confirms or weakens the AI ADU read, and
-              the boosts feed the ADU bar in the score chart below. */}
+          {/* ADU & reconfiguration feasibility — SF Open Data signals. */}
           <FeasibilityCard listing={listing} />
 
           {/* Risk & compliance — code enforcement (NOVs), unit-change history,
@@ -347,52 +183,11 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
               value-add weighted average. */}
           <RiskComplianceCard listing={listing} />
 
-          {/* Opportunity scores — bar chart at top, AI rationale collapsed below */}
-          <Paper variant="outlined" sx={{ p: 2 }}>
-            <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-              <Typography variant="subtitle2">Opportunity scores</Typography>
-              {score?.computedBy === "AI" && <Chip size="small" color="primary" label="AI" />}
-              <Tooltip
-                arrow
-                placement="top"
-                title={
-                  score?.computedBy === "AI"
-                    ? "Bars compare GPT's reasoned score (current) against the deterministic heuristic baseline (recomputed from the listing data on every read). Hover any bar pair to see the values and the Δ."
-                    : "These are heuristic scores computed during ETL. Click 'AI score' to re-score with GPT — once you do, the chart will show both alongside each other so you can see the AI's delta."
-                }
-              >
-                <HelpOutlineRoundedIcon
-                  sx={{ fontSize: 16, opacity: 0.55, cursor: "help" }}
-                />
-              </Tooltip>
-              <Box sx={{ flex: 1 }} />
-              <EnrichWithAIButton mlsId={listing.mlsId} />
-            </Stack>
-            <ScoreBars score={score} heuristic={listing.heuristicSnapshot ?? null} />
-            {score?.computedBy === "AI" && score?.breakdown && (
-              <Accordion
-                disableGutters
-                elevation={0}
-                sx={{
-                  mt: 1.5,
-                  bgcolor: "transparent",
-                  "&:before": { display: "none" },
-                }}
-              >
-                <AccordionSummary
-                  expandIcon={<ExpandMoreRoundedIcon />}
-                  sx={{ px: 0, minHeight: 32, "& .MuiAccordionSummary-content": { my: 0.5 } }}
-                >
-                  <Typography variant="caption" color="text.secondary">
-                    Show AI rationale
-                  </Typography>
-                </AccordionSummary>
-                <AccordionDetails sx={{ px: 0, pt: 0 }}>
-                  <Rationale breakdown={score.breakdown as Record<string, unknown>} />
-                </AccordionDetails>
-              </Accordion>
-            )}
-          </Paper>
+          <OpportunityScoresCard
+            mlsId={listing.mlsId}
+            score={score}
+            heuristic={listing.heuristicSnapshot ?? null}
+          />
 
           {/* Location rating — Walk Score (30%) + neighborhood safety from
               DataSF crime incidents (70%). Independent of the value-add
@@ -437,99 +232,20 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
             zoningMaxUnits={listing.zoningMaxUnits ?? null}
           />
 
-          {/* GIS tools row */}
-          <Paper variant="outlined" sx={{ p: 2 }}>
-            <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
-              GIS &amp; external tools
-            </Typography>
-            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-              <ToolLink
-                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress || `${lat},${lng}`)}`}
-                icon={<LocationOnRoundedIcon fontSize="small" />}
-                label="Google Maps"
-              />
-              <ToolLink
-                href={(() => {
-                  const query =
-                    lat != null && lng != null
-                      ? `${lat},${lng}`
-                      : [listing?.address, listing?.city, listing?.state]
-                          .filter((p): p is string => Boolean(p))
-                          .map((p) => encodeURIComponent(p))
-                          .join(',+')
-                          .replace(/%20/g, '+');
-                  const coords = lat != null && lng != null ? `/@${lat},${lng},150a,500d,35y,0h,0t,0r` : '';
-                  return `https://earth.google.com/web/search/${query}${coords}`;
-                })()}
-                icon={<PublicRoundedIcon fontSize="small" />}
-                label="Google Earth (3D)"
-              />
-              <ToolLink
-                href={
-                  lat != null && lng != null
-                    ? `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lng}`
-                    : `https://www.google.com/maps?q=${encodeURIComponent(fullAddress)}&layer=c`
-                }
-                icon={<StreetviewRoundedIcon fontSize="small" />}
-                label="Street View"
-              />
-              <ToolLink
-                href={zillowUrl}
-                icon={<HomeWorkRoundedIcon fontSize="small" />}
-                label="Zillow"
-              />
-              <CopyAndOpenLink
-                href={redfinUrl}
-                icon={<HomeWorkRoundedIcon fontSize="small" />}
-                label="Redfin"
-                copyText={fullAddress}
-              />
-              <ToolLink
-                href={`https://www.walkscore.com/score/${encodeURIComponent(fullAddress)}`}
-                icon={<DirectionsWalkRoundedIcon fontSize="small" />}
-                label="WalkScore"
-              />
-              <ToolLink
-                href={`https://www.bing.com/maps?q=${encodeURIComponent(fullAddress)}&style=h`}
-                icon={<LayersRoundedIcon fontSize="small" />}
-                label="Bing Aerial"
-              />
-              <ToolLink
-                href={`https://hazards-fema.maps.arcgis.com/apps/webappviewer/index.html?id=8b0adb51996444d4879338b5529aa9cd&find=${encodeURIComponent(fullAddress)}`}
-                icon={<WaterDamageRoundedIcon fontSize="small" />}
-                label="FEMA Flood"
-              />
-              <CopyAndOpenLink
-                href="https://sfplanninggis.org/pim"
-                icon={<LayersRoundedIcon fontSize="small" />}
-                label="SF PIM"
-                copyText={fullAddress}
-              />
-              <CopyAndOpenLink
-                href="https://build.symbium.com"
-                icon={<HomeWorkRoundedIcon fontSize="small" />}
-                label="Symbium"
-                copyText={fullAddress}
-              />
-              <Tooltip title="Trace the parcel on a satellite map and compare to the API's lot size" arrow>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  color="primary"
-                  startIcon={<StraightenRoundedIcon fontSize="small" />}
-                  onClick={() => setMeasureOpen(true)}
-                  disabled={lat == null || lng == null}
-                >
-                  Measure lot
-                </Button>
-              </Tooltip>
-            </Stack>
-          </Paper>
+          <GisToolsSection
+            fullAddress={fullAddress}
+            address={listing?.address}
+            city={listing?.city}
+            state={listing?.state}
+            lat={lat}
+            lng={lng}
+            onMeasureClick={() => setMeasureOpen(true)}
+          />
 
           {/* Lot & extras (parking, HOA, tax, lot features, view) */}
           <LotAndExtrasCard raw={raw} />
 
-          {/* Public remarks — moved above map */}
+          {/* Public remarks */}
           {(raw.PublicRemarks as string | undefined) && (
             <Paper variant="outlined" sx={{ p: 2 }}>
               <Typography variant="subtitle2" sx={{ mb: 1 }}>
@@ -550,47 +266,14 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
             </Paper>
           )}
 
-          {/* Photos */}
-          <Paper variant="outlined" sx={{ p: 2 }}>
-            <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-              <Typography variant="subtitle2">Photos</Typography>
-              {photosQuery.isLoading && <CircularProgress size={14} />}
-              {photosQuery.data?.via && photosQuery.data.via !== "none" && (
-                <Chip
-                  size="small"
-                  variant="outlined"
-                  label={photosQuery.data.via}
-                  sx={{ fontSize: 10 }}
-                />
-              )}
-              <Box sx={{ flex: 1 }} />
-              <Typography variant="caption" color="text.secondary">
-                {photosQuery.data?.items.length ?? 0} photos
-              </Typography>
-              <Button size="small" variant="text" onClick={refreshPhotos}>
-                Refresh
-              </Button>
-            </Stack>
-            <PhotoStrip
-              loading={photosQuery.isLoading}
-              items={photoItems}
-              onOpen={openPhoto}
-            />
-            {photosQuery.data &&
-              !photosQuery.data.items.length &&
-              photosQuery.data.via === "none" &&
-              photosQuery.data.attempts.length > 0 && (
-                <Box sx={{ mt: 1.5 }}>
-                  <Typography variant="caption" color="text.secondary">
-                    Tried {photosQuery.data.attempts.length} Bridge endpoints — none returned media.
-                    Run <code>pnpm bootstrap:bridge</code> to inspect what `sfar` exposes.
-                  </Typography>
-                </Box>
-              )}
-          </Paper>
+          <PhotosCard
+            loading={photosQuery.isLoading}
+            data={photosQuery.data}
+            onOpenPhoto={openPhoto}
+            onRefresh={refreshPhotos}
+          />
 
-          {/* Map preview — kept at the bottom as a visual anchor under the
-              data-heavy sections above. */}
+          {/* Map preview */}
           {lat != null && lng != null && (
             <Paper variant="outlined" sx={{ overflow: "hidden" }}>
               <Box
@@ -610,27 +293,7 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
             </Paper>
           )}
 
-          {/* Raw payload, collapsed */}
-          <Paper variant="outlined" sx={{ p: 2 }}>
-            <details>
-              <summary style={{ cursor: "pointer", fontSize: 13, opacity: 0.8 }}>
-                Raw MLS payload
-              </summary>
-              <Box
-                component="pre"
-                sx={{
-                  mt: 1.5,
-                  p: 1.5,
-                  fontSize: 11,
-                  overflowX: "auto",
-                  bgcolor: "background.paper",
-                  borderRadius: 1,
-                }}
-              >
-                {JSON.stringify(raw, null, 2)}
-              </Box>
-            </details>
-          </Paper>
+          <RawPayloadCollapsible raw={raw} />
 
           <Divider sx={{ my: 1 }} />
         </Stack>
