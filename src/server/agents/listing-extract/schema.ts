@@ -52,8 +52,12 @@ export const ConvertedAduSourceEnum = z.enum([
 // Per-field evidence anchoring `unitMix` to the verbatim text it came from.
 // Surfaced in the Building details "Trail of evidence" panel so a reader can
 // audit the AI's Units cell against the source.
+//
+// The prompt asks for ≤600 chars, but the model occasionally overshoots on
+// dense tabular rent rolls. The schema cap is generous (1500) so a long
+// quote doesn't fail the whole extract; the UI still truncates for display.
 export const UnitMixEvidence = z.object({
-  sourceQuote: z.string().min(1).max(600),
+  sourceQuote: z.string().min(1).max(1500),
   sourceField: z.enum(["publicRemarks", "privateRemarks"]),
 });
 
