@@ -17,13 +17,13 @@ enum Role {
 }
 
 model User {
-  id             String        @id @default(cuid())
-  email          String        @unique
+  id             String             @id @default(cuid())
+  email          String             @unique
   name           String?
   hashedPassword String?
-  role           Role          @default(USER)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  role           Role               @default(USER)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
   accounts       Account[]
   sessions       Session[]
   savedFilters   SavedFilter[]
@@ -69,31 +69,31 @@ model VerificationToken {
 // -------------------- LISTINGS --------------------
 
 model Listing {
-  mlsId                       String    @id
-  address                     String
-  city                        String?
-  state                       String?
-  postalCode                  String?
-  lat                         Float?
-  lng                         Float?
+  mlsId      String  @id
+  address    String
+  city       String?
+  state      String?
+  postalCode String?
+  lat        Float?
+  lng        Float?
   // PostGIS geography(Point,4326) column added by raw SQL migration as "geom"
   // (Prisma doesn't model PostGIS types directly; we query via $queryRaw.)
 
-  price                       Int
-  daysOnMls                   Int
-  postDate                    DateTime
-  listingUpdatedAt            DateTime
-  status                      String
+  price            Int
+  daysOnMls        Int
+  postDate         DateTime
+  listingUpdatedAt DateTime
+  status           String
 
-  propertyType                String
-  sqft                        Int?
-  lotSizeSqft                 Int?
-  units                       Int?
-  beds                        Int?
-  baths                       Float?
-  occupancy                   Float?
-  yearBuilt                   Int?
-  stories                     Int?
+  propertyType String
+  sqft         Int?
+  lotSizeSqft  Int?
+  units        Int?
+  beds         Int?
+  baths        Float?
+  occupancy    Float?
+  yearBuilt    Int?
+  stories      Int?
 
   // SF Assessor Secured Property Tax Roll (Socrata wv5m-vpq2) — official
   // parcel record. Filled by the second-pass enrichment script
@@ -132,15 +132,15 @@ model Listing {
   // AI listing-extract (gpt-4o-mini). Parses the public/private remarks for
   // unit mix, rent roll, capex, ADU potential. Headline fields denormalized
   // onto Listing for filtering/scoring; full output in AIEnrichment.
-  extractedUnitMix          Json?
-  extractedRentRoll         Json?
-  extractedTotalMonthlyRent Int?
-  extractedOccupancy        Float?
+  extractedUnitMix           Json?
+  extractedRentRoll          Json?
+  extractedTotalMonthlyRent  Int?
+  extractedOccupancy         Float?
   // AI-estimated market-rate rents per unit type — emitted alongside
   // unitMix even when actual rents are present in the listing, so the UI
   // can fall back to the estimate for unit types not in the rent roll.
   // Shape: [{ beds, baths, estimatedRent, rationale }].
-  aiRentEstimate            Json?
+  aiRentEstimate             Json?
   // Same shape as aiRentEstimate, but post a moderate cosmetic renovation
   // (kitchens/baths refreshed, paint, modern fixtures). Always strictly
   // higher than aiRentEstimate for the same unit type.
@@ -150,7 +150,8 @@ model Listing {
   // detached = vacant-yard play (lot-minus-footprint heuristic).
   // converted = repurpose-existing-space play (basement / garage).
   // Each is a 0–100 score with its own rationale; the value-add scorer
-  // takes max(detached, converted) as the ADU contribution.
+  // takes max(detached, converted) as the AI base, then applies structural
+  // feasibility boosts (construction type / land use / permit precedent).
   detachedAduScore          Int?
   detachedAduRationale      String?
   convertedAduScore         Int?
@@ -177,20 +178,83 @@ model Listing {
   //   walkScore               0–100 from Walk Score API, refreshed every 90d.
   //   locationScore           0.3*walkScore + 0.7*Neighborhood.crimeScore
   //                           (nulls are reweighted; see scoring/location.ts).
-  neighborhood              String?
-  neighborhoodRel           Neighborhood? @relation(fields: [neighborhood], references: [name], onDelete: SetNull)
-  walkScore                 Int?
-  walkScoreFetchedAt        DateTime?
-  locationScore             Float?
-  locationScoreUpdatedAt    DateTime?
+  neighborhood           String?
+  neighborhoodRel        Neighborhood? @relation(fields: [neighborhood], references: [name], onDelete: SetNull)
+  walkScore              Int?
+  walkScoreFetchedAt     DateTime?
+  locationScore          Float?
+  locationScoreUpdatedAt DateTime?
+
+  // Market Upside inputs (added 2026-05-08).
+  //   zoningDistrict     SF Planning base district (e.g. "RH-2", "RM-1").
+  //                      Resolved by `scripts/enrich-zoning.ts` via PostGIS
+  //                      ST_Intersects against the `zoning_polygon` table.
+  //   zoningMaxUnits     Max units allowed under base zoning, derived from
+  //                      `ZoningRule` (fixed for RH-*, lot-area-based for
+  //                      RM-*). Null when district has no static cap or the
+  //                      rule is unmapped. Does NOT include state-law
+  //                      overlays (SB-9, AB-2011, density bonuses).
+  //   assessedValueTotal generated column added in raw SQL migration:
+  //     GENERATED ALWAYS AS (COALESCE(assessorBuildingValue,0) +
+  //                          COALESCE(assessorLandValue,0)) STORED
+  zoningDistrict  String?
+  zoningMaxUnits  Int?
+  zoningFetchedAt DateTime?
+
+  // Feasibility inputs (added 2026-05-08): SF Open Data signals for ADU /
+  // floor-plan reconfiguration potential. See ADU-FEASIBILITY plan.
+  //   landUse*       — Socrata fdfd-xptc, joined on `mapblklot == blockLot`.
+  //   permits*       — denormalized summary of BuildingPermit (Socrata
+  //                    i98e-djp9). Heavy raw rows live in BuildingPermit;
+  //                    these counts are recomputed by `enrich:permits`.
+  landUseCategory  String? // RESIDENT | MIXRES | MIXED | RETAIL/ENT | PDR | …
+  landUseResUnits  Int? // resunits
+  landUseResSqft   Int? // res
+  landUseCommSqft  Int? // totalcomm
+  landUseFetchedAt DateTime?
+
+  permitsOwnParcelCount       Int?
+  permitsOwnParcelAduCount    Int?
+  permitsBlockAduRecentCount  Int?
+  permitsRadiusAduRecentCount Int?
+  /// `{ permitNumber, filedDate, description, address }` for the most recent
+  /// ADU/legalization permit on the same `block` (excluding own parcel) —
+  /// surfaces in the FeasibilityCard as a precedent breadcrumb.
+  latestAduPermitOnBlock      Json?
+  permitsFetchedAt            DateTime?
+
+  // Risk & Compliance signals (added 2026-05-08): regulatory-health overlays
+  // for the RiskComplianceCard + filters. Filter+display only — these do NOT
+  // enter the value-add weighted average.
+  //   codeViolations*   — DBI Notice of Violations (Socrata). Joined on the
+  //                       canonical block||lot. Open + 5y history per parcel.
+  //   housingNetUnit*   — SF Housing Inventory (Socrata 6v9b-p59r). Sum of
+  //                       net unit changes attributed to this parcel over the
+  //                       last 5 reporting years.
+  //   rentControl*      — Pure compute from yearBuilt + units + landUse;
+  //                       reflects SF rent ordinance coverage (multi-unit
+  //                       residential built before 1979-06-13).
+  codeViolationsOpenCount     Int?
+  codeViolationsRecentCount   Int?
+  /// `{ complaintNumber, dateFiled, status, description, address }` for the
+  /// most recent NOV on this parcel — surfaces in the RiskComplianceCard.
+  codeViolationsLatest        Json?
+  codeViolationsFetchedAt     DateTime?
+
+  housingNetUnitChange5y      Int?
+  housingInventoryFetchedAt   DateTime?
+
+  rentControlCovered          Boolean?
+  rentControlComputedAt       DateTime?
 
   raw                         Json
   bridgeModificationTimestamp DateTime
 
-  score          Score?
-  enrichments    AIEnrichment[]
-  conversations  ChatConversation[]
-  createdAt      DateTime      @default(now())
+  score         Score?
+  enrichments   AIEnrichment[]
+  conversations ChatConversation[]
+  contact       ListingContact?
+  createdAt     DateTime           @default(now())
 
   @@index([price])
   @@index([daysOnMls])
@@ -202,6 +266,81 @@ model Listing {
   @@index([renovationLevel])
   @@index([neighborhood])
   @@index([locationScore(sort: Desc)])
+  @@index([zoningDistrict])
+  @@index([landUseCategory])
+  @@index([codeViolationsOpenCount])
+  @@index([housingNetUnitChange5y])
+  @@index([rentControlCovered])
+}
+
+// -------------------- BUILDING PERMITS --------------------
+
+/// SF DBI Building Permits (Socrata i98e-djp9) — one row per permit, hydrated
+/// from the same parcels we have listings on, plus the rest of the block for
+/// "neighbor precedent" lookups. Idempotent: keyed on `permitNumber`. The
+/// `geom` column is a PostGIS geography(Point,4326) added by raw SQL
+/// migration (Prisma can't model PostGIS types directly).
+model BuildingPermit {
+  permitNumber             String    @id
+  blockLot                 String // canonical 7-char block||lot
+  block                    String
+  lot                      String
+  filedDate                DateTime?
+  issuedDate               DateTime?
+  status                   String?
+  description              String?
+  /// `permit.adu == "Y"` (the dataset's own ADU flag).
+  aduFlag                  Boolean   @default(false)
+  /// Description matches /\b(ADU|accessory dwelling|unit add|unit legaliz|legaliz.*unit)/i.
+  /// Catches the many ADU/legalization permits filed before SF added the
+  /// explicit `adu` column.
+  aduKeyword               Boolean   @default(false)
+  existingUnits            Int?
+  proposedUnits            Int?
+  existingConstructionType String?
+  proposedConstructionType String?
+  existingUse              String?
+  proposedUse              String?
+  lat                      Float?
+  lng                      Float?
+  raw                      Json
+  fetchedAt                DateTime  @default(now())
+
+  @@index([blockLot])
+  @@index([block])
+  @@index([filedDate])
+  @@index([aduFlag])
+  @@index([aduKeyword])
+}
+
+// Agent + brokerage contact details for a listing. Bridge `sfar` (IDX) strips
+// `ListAgentDirectPhone`, `ListAgentEmail`, `ListOfficePhone`, etc., so the
+// drawer's "Listed by" / Brokerage rows have nothing to render. We hydrate
+// this table from the RentCast API (`listingAgent` + `listingOffice` blobs)
+// keyed by listing address — see scripts/enrich-contacts.ts.
+//
+// `source` lets us swap to a future Bridge VOW/BBO feed without renaming
+// columns. `fetchedAt + miss` together drive the refresh policy:
+//   - hit  → refresh every 30d (catches agent moves)
+//   - miss → retry monthly (RentCast may not have the address yet)
+model ListingContact {
+  id            String   @id @default(cuid())
+  listingMlsId  String   @unique
+  listing       Listing  @relation(fields: [listingMlsId], references: [mlsId], onDelete: Cascade)
+  source        String // "rentcast" | "rentcast_miss" | "bridge_vow" | "manual"
+  agentName     String?
+  agentPhone    String?
+  agentEmail    String?
+  agentWebsite  String?
+  officeName    String?
+  officePhone   String?
+  officeEmail   String?
+  officeWebsite String?
+  fetchedAt     DateTime @default(now())
+  raw           Json?
+
+  @@index([fetchedAt])
+  @@index([source])
 }
 
 // -------------------- LOCATION --------------------
@@ -212,15 +351,46 @@ model Listing {
 // Crime stats are recomputed every nightly refresh from a single SoQL
 // `$group` query against DataSF's wg3w-h783 incidents dataset.
 model Neighborhood {
-  name              String   @id
+  name              String    @id
   // boundary geography(Polygon,4326) — added in raw SQL migration; queried
   // via $queryRaw with ST_Intersects for listing→neighborhood join.
-  crimeScore        Float?   // 0–100, higher = safer (percentile-ranked across SF)
-  weightedIncidents Float?   // raw weighted incident count (debugging)
+  crimeScore        Float? // 0–100, higher = safer (percentile-ranked across SF)
+  weightedIncidents Float? // raw weighted incident count (debugging)
   crimeUpdatedAt    DateTime?
 
-  listings    Listing[]
-  crimeStats  NeighborhoodCrimeStat[]
+  // Market Upside comp aggregates (added 2026-05-08). Recomputed wholesale
+  // by `scripts/refresh-neighborhood-comps.ts` from the Listing table.
+  // medianAssessed* uses any listing with assessor totals (active+pending+
+  // sold) since assessment delta is a within-cohort comparison.
+  // medianSoldPrice* uses status IN ('Sold','Closed') with postDate within
+  // the last 24 months. compSampleSize is the smaller of the two cohorts;
+  // downstream scoring returns null when sampleSize < 5.
+  medianAssessedPerSqft  Float?
+  medianAssessedPerUnit  Float?
+  medianSoldPricePerSqft Float?
+  medianSoldPricePerUnit Float?
+  compSampleSize         Int?
+  compsUpdatedAt         DateTime?
+
+  listings   Listing[]
+  crimeStats NeighborhoodCrimeStat[]
+}
+
+// Curated mapping of SF Planning base zoning district → max-allowed units.
+// Seeded once via `scripts/seed-zoning-rules.ts`. RH-* set `maxUnitsFixed`
+// directly; RM-* use `maxUnitsPerLotSqft` (e.g. RM-1 = 1 unit per 800 sqft
+// of lot area). NCT/C-3 districts are seeded with both columns null and a
+// `notes` string so the enrichment script can flag "no static cap" without
+// re-querying.
+//
+// State-law overlays (SB-9, AB-2011, density bonuses) are explicitly NOT
+// modeled here — v1 only reflects base zoning. The UI surfaces this caveat
+// next to the under-utilization signal.
+model ZoningRule {
+  district           String  @id
+  maxUnitsFixed      Int?
+  maxUnitsPerLotSqft Float?
+  notes              String?
 }
 
 // Per-neighborhood/category aggregate for the rolling 12-month window.
@@ -228,7 +398,7 @@ model Neighborhood {
 // windows are deleted, so this table is small (~120 rows: 41 × 3 categories).
 model NeighborhoodCrimeStat {
   neighborhood String
-  category     String   // "violent" | "property" | "qol"
+  category     String // "violent" | "property" | "qol"
   count        Int
   windowStart  DateTime
   windowEnd    DateTime
@@ -252,22 +422,32 @@ enum ScoreSource {
 }
 
 model Score {
-  listingMlsId        String      @id
-  listing             Listing     @relation(fields: [listingMlsId], references: [mlsId], onDelete: Cascade)
+  listingMlsId String  @id
+  listing      Listing @relation(fields: [listingMlsId], references: [mlsId], onDelete: Cascade)
 
-  densityScore        Float
-  vacancyScore        Float
-  motivationScore     Float
+  densityScore         Float
+  vacancyScore         Float
+  motivationScore      Float
   // Added 2026-05-08: stored as nullable so we can backfill incrementally.
   // `locationScore` mirrors Listing.locationScore at score-time; `aduScore`
   // is the numeric mapping of Listing.aduPotential. Both feed into
   // valueAddWeightedAvg under the new 5-component scheme.
-  locationScore       Float?
-  aduScore            Float?
-  valueAddWeightedAvg Float
-  breakdown           Json
-  computedBy          ScoreSource
-  computedAt          DateTime    @default(now())
+  locationScore        Float?
+  aduScore             Float?
+  // Market Upside (added 2026-05-08). Two sub-signals plus a combined
+  // top-line score. Computed and surfaced but NOT folded into
+  // valueAddWeightedAvg in v1 — we want to validate the signal in the UI
+  // before changing the grid sort key.
+  //   assessmentDeltaScore  Assessor total vs. neighborhood comp median.
+  //   zoningUpsideScore     Current units vs. base-zoning max (no overlays).
+  //   marketUpsideScore     Average of non-null sub-scores; null if both null.
+  assessmentDeltaScore Float?
+  zoningUpsideScore    Float?
+  marketUpsideScore    Float?
+  valueAddWeightedAvg  Float
+  breakdown            Json
+  computedBy           ScoreSource
+  computedAt           DateTime    @default(now())
 
   @@index([valueAddWeightedAvg(sort: Desc)])
   @@index([densityScore(sort: Desc)])
@@ -275,6 +455,7 @@ model Score {
   @@index([motivationScore(sort: Desc)])
   @@index([locationScore(sort: Desc)])
   @@index([aduScore(sort: Desc)])
+  @@index([marketUpsideScore(sort: Desc)])
 }
 
 model AIEnrichment {

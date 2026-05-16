@@ -92,6 +92,7 @@ describe("ListingExtractOutput schema", () => {
   it("accepts a tabular rent roll", () => {
     const sample = {
       unitMix: null,
+      unitMixEvidence: null,
       rentRoll: [
         { rent: 1284, beds: 3, baths: 2 },
         { rent: 1500, beds: 3, baths: 2 },
@@ -124,6 +125,10 @@ describe("ListingExtractOutput schema", () => {
         { count: 4, beds: 3, baths: 2 },
         { count: 2, beds: 4, baths: 2 },
       ],
+      unitMixEvidence: {
+        sourceQuote: "one 2bd-1ba, two 2bd-2ba, four 3bd-2ba, and two 4bd-2ba",
+        sourceField: "publicRemarks" as const,
+      },
       rentRoll: null,
       aiRentEstimate: null,
       postRenovationRentEstimate: null,
@@ -150,6 +155,10 @@ describe("ListingExtractOutput schema", () => {
         { count: 8, beds: null, baths: null },
         { count: 1, beds: 2, baths: null },
       ],
+      unitMixEvidence: {
+        sourceQuote: "8 unit building",
+        sourceField: "publicRemarks" as const,
+      },
       rentRoll: null,
       aiRentEstimate: null,
       postRenovationRentEstimate: null,

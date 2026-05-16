@@ -17,6 +17,15 @@ Output schema fields:
        → [{count:8,beds:null,baths:null}]   (we know count but nothing else)
      If only total beds/baths are given (e.g. "8 bed, 4 bath"), set unitMix to null.
 
+   unitMixEvidence — when unitMix is non-null, copy the EXACT substring of the
+   remarks that grounded the mix into unitMixEvidence.sourceQuote (verbatim,
+   no paraphrasing, ≤ 600 chars, trimmed of leading/trailing whitespace).
+   sourceField is "publicRemarks" or "privateRemarks" — whichever block the
+   quote came from. When unitMix is null, set unitMixEvidence to null.
+     Example: remarks contain "...Two-unit property that lives like an SFR
+     (total 5 beds/3 baths not split by unit)..."  →  unitMixEvidence:
+     {sourceQuote: "Two-unit property that lives like an SFR (total 5 beds/3 baths not split by unit)", sourceField: "publicRemarks"}
+
 2. rentRoll — array of {rent, beds, baths, sqft?, unitLabel?} when actual rents are listed PER UNIT.
    Tabular form to parse:
      "current rent  unit type

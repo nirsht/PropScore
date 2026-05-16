@@ -20,6 +20,15 @@ export const scoringRouter = router({
           locationScore: l.locationScore,
           detachedAduScore: l.detachedAduScore,
           convertedAduScore: l.convertedAduScore,
+          assessorConstructionType: l.assessorConstructionType,
+          landUseCategory: l.landUseCategory,
+          permitsOwnParcelAduCount: l.permitsOwnParcelAduCount,
+          permitsBlockAduRecentCount: l.permitsBlockAduRecentCount,
+          permitsRadiusAduRecentCount: l.permitsRadiusAduRecentCount,
+          codeViolationsOpenCount: l.codeViolationsOpenCount,
+          codeViolationsRecentCount: l.codeViolationsRecentCount,
+          housingNetUnitChange5y: l.housingNetUnitChange5y,
+          rentControlCovered: l.rentControlCovered,
         });
         await ctx.db.score.upsert({
           where: { listingMlsId: l.mlsId },

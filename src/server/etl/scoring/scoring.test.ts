@@ -54,4 +54,44 @@ describe("computeHeuristicScore", () => {
     const occ = computeHeuristicScore(baseListing({ occupancy: 1.0 }));
     expect(occ.vacancyScore).toBeLessThanOrEqual(5);
   });
+
+  it("emits breakdown version 6", () => {
+    const score = computeHeuristicScore(baseListing());
+    expect((score.breakdown as { version: number }).version).toBe(6);
+  });
+
+  it("market upside is null when neither sub-score fires", () => {
+    const score = computeHeuristicScore(baseListing());
+    expect(score.assessmentDeltaScore).toBeNull();
+    expect(score.zoningUpsideScore).toBeNull();
+    expect(score.marketUpsideScore).toBeNull();
+  });
+
+  it("market upside averages the non-null sub-scores", () => {
+    // Zoning slack = (8 - 2) / 8 = 0.75 → top band → 100.
+    // Assessment delta below sample threshold (no comps) → null.
+    // Combined = avg([100]) = 100.
+    const score = computeHeuristicScore(baseListing(), {
+      effectiveUnits: 2,
+      zoningMaxUnits: 8,
+    });
+    expect(score.zoningUpsideScore).toBe(100);
+    expect(score.assessmentDeltaScore).toBeNull();
+    expect(score.marketUpsideScore).toBe(100);
+  });
+
+  it("market upside scores do NOT change valueAddWeightedAvg in v1", () => {
+    // Pass only context that the upside sub-scores read; avoid touching the
+    // 5 weighted components (density/vacancy/motivation/location/adu).
+    const baseline = computeHeuristicScore(baseListing());
+    const withUpside = computeHeuristicScore(baseListing(), {
+      zoningMaxUnits: 12,
+      assessedValueTotal: 500_000,
+      assessorSqft: 4000,
+      neighborhoodMedianAssessedPerSqft: 500,
+      neighborhoodCompSampleSize: 25,
+    });
+    expect(withUpside.marketUpsideScore).not.toBeNull();
+    expect(withUpside.valueAddWeightedAvg).toBe(baseline.valueAddWeightedAvg);
+  });
 });

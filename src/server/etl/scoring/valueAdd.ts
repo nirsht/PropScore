@@ -76,13 +76,15 @@ export function landRatioScore(
 }
 
 /**
- * ADU potential as a value-add component. We carry two parallel 0–100 reads:
- * - detached: vacant-yard ADU (lot-minus-footprint heuristic).
- * - converted: repurposing existing space (basement / garage).
+ * AI ADU base score: max of the two 0–100 reads emitted by the listing-extract
+ * agent. detached = vacant-yard play; converted = repurpose-existing-space.
  *
  * The contribution to value-add is the MAX of the two — either path adds a
- * unit of cash flow, so we don't double-count and we don't average them
- * down. Returns null only when neither read is available.
+ * single unit of cash flow, so we don't double-count and we don't average
+ * them down. Returns null only when both reads are missing.
+ *
+ * The output feeds `applyAduFeasibilityBoosts` below, which layers in parcel-
+ * level structural evidence (construction type / land use / permit precedent).
  */
 export function aduCombinedScore(
   detached: number | null | undefined,
@@ -93,6 +95,94 @@ export function aduCombinedScore(
   );
   if (candidates.length === 0) return null;
   return Math.max(...candidates);
+}
+
+export type AduFeasibilityCtx = {
+  /** From assessor (sfpim). Wood frame / type V is reconfiguration-friendly. */
+  assessorConstructionType?: string | null;
+  /** From DataSF Land Use 2023. MIXRES enables ground-floor conversions. */
+  landUseCategory?: string | null;
+  /** Counts from BuildingPermit (filled by `enrich:permits`). */
+  permitsOwnParcelAduCount?: number | null;
+  permitsBlockAduRecentCount?: number | null;
+  permitsRadiusAduRecentCount?: number | null;
+};
+
+export type AduScoreBreakdown = {
+  aiBase: number | null;
+  base: number;
+  boosts: {
+    construction: number;
+    landUse: number;
+    ownParcel: number;
+    blockPrecedent: number;
+    radius: number;
+  };
+  final: number;
+};
+
+function isWoodFrame(constructionType: string | null | undefined): boolean {
+  if (!constructionType) return false;
+  // SF assessor `construction_type` values: "Wood Frame", "Type V", "Frame".
+  // Permits use "wood frame (5)". Match liberally.
+  return /\b(wood\s*frame|type\s*v|^frame$)\b/i.test(constructionType);
+}
+
+/**
+ * Augment the AI ADU base read with parcel-level feasibility evidence:
+ *   - Construction type (wood frame ⇒ easier reconfiguration)
+ *   - Land use category (MIXRES ⇒ flexible / RESIDENT ⇒ baseline)
+ *   - Permit precedent on the parcel, the block, and within ~500ft
+ *
+ * The AI base (`aduCombinedScore(detached, converted)`) is the anchor;
+ * structural data confirms or weakens it. A null AI base still yields a
+ * score (baseline 40) when at least one structural signal is available —
+ * structural feasibility alone is informative. When *no* signal is present
+ * (no AI, no land use, no construction type, no permits), returns null so
+ * the listing drops out of the weighted-avg divisor.
+ */
+export function applyAduFeasibilityBoosts(
+  aiBase: number | null,
+  ctx: AduFeasibilityCtx = {},
+): { score: number | null; breakdown: AduScoreBreakdown } {
+  const hasStructural =
+    ctx.assessorConstructionType != null ||
+    ctx.landUseCategory != null ||
+    ctx.permitsOwnParcelAduCount != null ||
+    ctx.permitsBlockAduRecentCount != null ||
+    ctx.permitsRadiusAduRecentCount != null;
+
+  // AI base passes through directly when available. The synthetic 40 only
+  // fires when the AI read is null but structural evidence is present —
+  // legacy behaviour preserved from the LOW/MEDIUM/HIGH days.
+  const base = aiBase != null ? aiBase : 40;
+
+  const construction = isWoodFrame(ctx.assessorConstructionType) ? 10 : 0;
+
+  const cat = ctx.landUseCategory?.toUpperCase() ?? null;
+  const landUse = cat === "MIXRES" ? 15 : cat === "RESIDENT" ? 5 : 0;
+
+  const ownParcel = (ctx.permitsOwnParcelAduCount ?? 0) > 0 ? 10 : 0;
+  const blockPrecedent = (ctx.permitsBlockAduRecentCount ?? 0) > 0 ? 20 : 0;
+  // Radius precedent only adds when there's no same-block precedent — same-
+  // block already captures the strongest signal, so don't double-count.
+  const radius =
+    blockPrecedent === 0 && (ctx.permitsRadiusAduRecentCount ?? 0) > 0 ? 10 : 0;
+
+  const final = Math.max(
+    0,
+    Math.min(100, base + construction + landUse + ownParcel + blockPrecedent + radius),
+  );
+
+  return {
+    score: aiBase == null && !hasStructural ? null : final,
+    breakdown: {
+      aiBase,
+      base,
+      boosts: { construction, landUse, ownParcel, blockPrecedent, radius },
+      final,
+    },
+  };
 }
 
 export type WeightedComponents = {

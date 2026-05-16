@@ -2,7 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { openai } from "@/lib/openai";
 import { BEST_PHOTO_SYSTEM_PROMPT, BUILDING_ANALYSIS_SYSTEM_PROMPT } from "./prompt";
-import { BuildingVisionOutput, RenovationLevelEnum, type BuildingVisionOutput as Output } from "./schema";
+import { BuildingVisionOutput, RenovationLevelEnum, StoriesEvidence, type BuildingVisionOutput as Output } from "./schema";
 import type { BridgeMediaItem } from "@/server/etl/bridge-client";
 
 const MAX_PHOTOS_TO_RANK = 12;
@@ -16,6 +16,7 @@ const SelectorOutput = z.object({
 
 const AnalysisOutput = z.object({
   stories: z.number().int().nullable(),
+  storiesEvidence: StoriesEvidence.nullable(),
   hasBasement: z.boolean().nullable(),
   hasPenthouse: z.boolean().nullable(),
   renovationLevel: RenovationLevelEnum.nullable(),
@@ -55,6 +56,7 @@ export async function runBuildingVision(
       bestPhotoUrl: null,
       bestPhotoReason: "No photos available for this listing.",
       stories: null,
+      storiesEvidence: null,
       hasBasement: null,
       hasPenthouse: null,
       renovationLevel: null,
@@ -112,6 +114,7 @@ export async function runBuildingVision(
         bestPhotoUrl: null,
         bestPhotoReason: selectorParsed.data.reason,
         stories: null,
+        storiesEvidence: null,
         hasBasement: null,
         hasPenthouse: null,
         renovationLevel: null,
@@ -164,6 +167,10 @@ export async function runBuildingVision(
       bestPhotoUrl,
       bestPhotoReason: selectorParsed.data.reason,
       stories: analysisParsed.data.stories,
+      storiesEvidence:
+        analysisParsed.data.stories != null
+          ? analysisParsed.data.storiesEvidence
+          : null,
       hasBasement: analysisParsed.data.hasBasement,
       hasPenthouse: analysisParsed.data.hasPenthouse,
       renovationLevel: analysisParsed.data.renovationLevel,

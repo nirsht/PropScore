@@ -26,7 +26,31 @@ export const listingsRouter = router({
           score: true,
           enrichments: { orderBy: { createdAt: "desc" }, take: 5 },
           neighborhoodRel: {
-            select: { name: true, crimeScore: true, crimeUpdatedAt: true },
+            select: {
+              name: true,
+              crimeScore: true,
+              crimeUpdatedAt: true,
+              medianAssessedPerSqft: true,
+              medianAssessedPerUnit: true,
+              medianSoldPricePerSqft: true,
+              medianSoldPricePerUnit: true,
+              compSampleSize: true,
+              compsUpdatedAt: true,
+            },
+          },
+          contact: {
+            select: {
+              source: true,
+              agentName: true,
+              agentPhone: true,
+              agentEmail: true,
+              agentWebsite: true,
+              officeName: true,
+              officePhone: true,
+              officeEmail: true,
+              officeWebsite: true,
+              fetchedAt: true,
+            },
           },
         },
       });
@@ -47,6 +71,10 @@ export const listingsRouter = router({
         return total > 0 ? total : null;
       })();
 
+      const assessedValueTotal =
+        (listing.assessorBuildingValue ?? 0) + (listing.assessorLandValue ?? 0) ||
+        null;
+
       const h = normalized
         ? computeHeuristicScore(normalized, {
             // Assessor-first resolution to match the table.
@@ -60,11 +88,28 @@ export const listingsRouter = router({
             assessorSqft: listing.assessorBuildingSqft,
             assessorBuildingValue: listing.assessorBuildingValue,
             assessorLandValue: listing.assessorLandValue,
+            assessedValueTotal,
             extractedOccupancy: listing.extractedOccupancy,
             extractedUnitsTotal,
             detachedAduScore: listing.detachedAduScore,
             convertedAduScore: listing.convertedAduScore,
             locationScore: listing.locationScore,
+            assessorConstructionType: listing.assessorConstructionType,
+            landUseCategory: listing.landUseCategory,
+            permitsOwnParcelAduCount: listing.permitsOwnParcelAduCount,
+            permitsBlockAduRecentCount: listing.permitsBlockAduRecentCount,
+            permitsRadiusAduRecentCount: listing.permitsRadiusAduRecentCount,
+            codeViolationsOpenCount: listing.codeViolationsOpenCount,
+            codeViolationsRecentCount: listing.codeViolationsRecentCount,
+            housingNetUnitChange5y: listing.housingNetUnitChange5y,
+            rentControlCovered: listing.rentControlCovered,
+            neighborhoodMedianAssessedPerSqft:
+              listing.neighborhoodRel?.medianAssessedPerSqft ?? null,
+            neighborhoodMedianAssessedPerUnit:
+              listing.neighborhoodRel?.medianAssessedPerUnit ?? null,
+            neighborhoodCompSampleSize:
+              listing.neighborhoodRel?.compSampleSize ?? null,
+            zoningMaxUnits: listing.zoningMaxUnits,
           })
         : null;
       const heuristicSnapshot = h
@@ -73,6 +118,14 @@ export const listingsRouter = router({
             vacancyScore: round1(h.vacancyScore),
             motivationScore: round1(h.motivationScore),
             valueAddWeightedAvg: round1(h.valueAddWeightedAvg),
+            marketUpsideScore:
+              h.marketUpsideScore != null ? round1(h.marketUpsideScore) : null,
+            assessmentDeltaScore:
+              h.assessmentDeltaScore != null
+                ? round1(h.assessmentDeltaScore)
+                : null,
+            zoningUpsideScore:
+              h.zoningUpsideScore != null ? round1(h.zoningUpsideScore) : null,
           }
         : null;
 

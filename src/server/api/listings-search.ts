@@ -178,9 +178,15 @@ function buildWhere(
   pushRange(where, '"vacancyScore"', input.vacancyScore);
   pushRange(where, '"motivationScore"', input.motivationScore);
   pushRange(where, '"valueAddWeightedAvg"', input.valueAddWeightedAvg);
+  pushRange(where, '"codeViolationsOpenCount"', input.codeViolationsOpenCount);
+  pushRange(where, '"housingNetUnitChange5y"', input.housingNetUnitChange5y);
 
   if (input.hasSizeDiscrepancy != null) {
     where.push(Prisma.sql`"hasSizeDiscrepancy" = ${input.hasSizeDiscrepancy}`);
+  }
+
+  if (input.rentControlCovered != null) {
+    where.push(Prisma.sql`"rentControlCovered" = ${input.rentControlCovered}`);
   }
 
   if (input.postDate?.min) {

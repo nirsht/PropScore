@@ -391,6 +391,18 @@ export function FilterBar() {
             value={state.valueAddWeightedAvg}
             onChange={(valueAddWeightedAvg) => set({ valueAddWeightedAvg })}
           />
+          <NumberRange
+            label="Open NOVs"
+            hint="DBI Notice of Violations open today on the parcel. Set max=0 to filter out parcels with active code-enforcement risk; set min≥3 to surface distressed-asset levers."
+            value={state.codeViolationsOpenCount}
+            onChange={(codeViolationsOpenCount) => set({ codeViolationsOpenCount })}
+          />
+          <NumberRange
+            label="Net unit Δ (5y)"
+            hint="Sum of net unit changes attributed to the parcel over the last 5 years. Negative = net loss (rental upside cap), positive = net gain."
+            value={state.housingNetUnitChange5y}
+            onChange={(housingNetUnitChange5y) => set({ housingNetUnitChange5y })}
+          />
           <DateRange
             label="Posted"
             hint="Listing post-date range (inclusive)"
@@ -470,6 +482,25 @@ function QuickChips() {
         set({ hasSizeDiscrepancy: next });
       },
     },
+    {
+      key: "rent-control",
+      label:
+        state.rentControlCovered === true
+          ? "Rent ctrl: covered"
+          : state.rentControlCovered === false
+            ? "Rent ctrl: exempt"
+            : "Rent ctrl: any",
+      active: state.rentControlCovered != null,
+      apply: () => {
+        const next =
+          state.rentControlCovered == null
+            ? true
+            : state.rentControlCovered
+              ? false
+              : undefined;
+        set({ rentControlCovered: next });
+      },
+    },
   ];
 
   return (
@@ -516,12 +547,15 @@ function countActive(s: ReturnType<typeof useFilter>["state"]): number {
     "vacancyScore",
     "motivationScore",
     "valueAddWeightedAvg",
+    "codeViolationsOpenCount",
+    "housingNetUnitChange5y",
   ] as const) {
     const v = s[k];
     if (v && (v.min != null || v.max != null)) n++;
   }
   if (s.postDate && (s.postDate.min || s.postDate.max)) n++;
   if (s.hasSizeDiscrepancy != null) n++;
+  if (s.rentControlCovered != null) n++;
   if (s.radius) n++;
   if (s.polygon) n++;
   return n;

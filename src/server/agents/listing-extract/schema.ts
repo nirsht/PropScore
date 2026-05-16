@@ -49,8 +49,17 @@ export const ConvertedAduSourceEnum = z.enum([
   "unfinished-space",
 ]);
 
+// Per-field evidence anchoring `unitMix` to the verbatim text it came from.
+// Surfaced in the Building details "Trail of evidence" panel so a reader can
+// audit the AI's Units cell against the source.
+export const UnitMixEvidence = z.object({
+  sourceQuote: z.string().min(1).max(600),
+  sourceField: z.enum(["publicRemarks", "privateRemarks"]),
+});
+
 export const ListingExtractOutput = z.object({
   unitMix: z.array(UnitMixEntry).nullable(),
+  unitMixEvidence: UnitMixEvidence.nullable(),
   rentRoll: z.array(RentRollEntry).nullable(),
   aiRentEstimate: z.array(RentEstimateEntry).nullable(),
   // Same shape as aiRentEstimate, but assumes a moderate cosmetic renovation
@@ -82,3 +91,4 @@ export type UnitMixEntry = z.infer<typeof UnitMixEntry>;
 export type RentRollEntry = z.infer<typeof RentRollEntry>;
 export type RentEstimateEntry = z.infer<typeof RentEstimateEntry>;
 export type ConvertedAduSource = z.infer<typeof ConvertedAduSourceEnum>;
+export type UnitMixEvidence = z.infer<typeof UnitMixEvidence>;

@@ -26,9 +26,15 @@ Return four facts as JSON:
    - UPDATED: cosmetic refresh — paint, replaced windows, light fixtures, partial modernization.
    - RENOVATED: full modernization — new facade treatment, contemporary materials, post-2015 feel.
 
+Also return storiesEvidence whenever stories is non-null:
+- sourceType: "exterior_photo" when the count came from a clear front-elevation shot, "interior_photo" when only interiors were available (e.g. visible staircases / floor markers), "mixed" when both contributed.
+- observation: one short clause (≤ 160 chars) naming the visual cue, e.g. "three rows of windows visible above ground level on the front facade" or "two stair landings visible between interior shots".
+Set storiesEvidence to null when stories is null.
+
 Output JSON exactly:
 {
-  "stories": int,
+  "stories": int | null,
+  "storiesEvidence": { "sourceType": "exterior_photo" | "interior_photo" | "mixed", "observation": string } | null,
   "hasBasement": bool,
   "hasPenthouse": bool,
   "renovationLevel": "DISTRESSED" | "ORIGINAL" | "UPDATED" | "RENOVATED",

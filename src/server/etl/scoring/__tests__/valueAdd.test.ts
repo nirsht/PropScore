@@ -3,6 +3,7 @@ import {
   RENOVATION_UPSIDE,
   VALUE_ADD_WEIGHTS,
   aduCombinedScore,
+  applyAduFeasibilityBoosts,
   landRatioScore,
   renovationUpsideScore,
   resolveWeights,
@@ -109,6 +110,67 @@ describe("aduCombinedScore", () => {
   it("returns the max of the two reads — one new unit, whichever path is cheapest", () => {
     expect(aduCombinedScore(40, 80)).toBe(80);
     expect(aduCombinedScore(95, 50)).toBe(95);
+  });
+});
+
+describe("applyAduFeasibilityBoosts", () => {
+  it("passes the AI base through when no structural data", () => {
+    const r = applyAduFeasibilityBoosts(72);
+    expect(r.score).toBe(72);
+    expect(r.breakdown.aiBase).toBe(72);
+    expect(r.breakdown.base).toBe(72);
+  });
+
+  it("returns null when no AI base AND no structural feasibility data", () => {
+    expect(applyAduFeasibilityBoosts(null).score).toBeNull();
+  });
+
+  it("returns a baseline score on structural data alone (no AI base)", () => {
+    const r = applyAduFeasibilityBoosts(null, { landUseCategory: "MIXRES" });
+    expect(r.score).not.toBeNull();
+    // Synthetic 40 baseline + 15 MIXRES boost.
+    expect(r.breakdown.base).toBe(40);
+    expect(r.breakdown.boosts.landUse).toBe(15);
+  });
+
+  it("wood-frame construction adds a boost", () => {
+    const without = applyAduFeasibilityBoosts(50);
+    const wood = applyAduFeasibilityBoosts(50, {
+      assessorConstructionType: "Wood Frame",
+    });
+    expect(wood.score!).toBeGreaterThan(without.score!);
+    expect(wood.breakdown.boosts.construction).toBe(10);
+  });
+
+  it("MIXRES land use adds more than RESIDENT", () => {
+    const mix = applyAduFeasibilityBoosts(50, { landUseCategory: "MIXRES" });
+    const res = applyAduFeasibilityBoosts(50, { landUseCategory: "RESIDENT" });
+    expect(mix.breakdown.boosts.landUse).toBeGreaterThan(res.breakdown.boosts.landUse);
+  });
+
+  it("same-block ADU precedent dominates over radius precedent", () => {
+    const block = applyAduFeasibilityBoosts(50, {
+      permitsBlockAduRecentCount: 1,
+      permitsRadiusAduRecentCount: 1,
+    });
+    const radiusOnly = applyAduFeasibilityBoosts(50, {
+      permitsRadiusAduRecentCount: 1,
+    });
+    // Block precedent +20; radius +10 only when block is 0 (no double-count).
+    expect(block.breakdown.boosts.blockPrecedent).toBe(20);
+    expect(block.breakdown.boosts.radius).toBe(0);
+    expect(radiusOnly.breakdown.boosts.radius).toBe(10);
+  });
+
+  it("caps the score at 100", () => {
+    const r = applyAduFeasibilityBoosts(80, {
+      assessorConstructionType: "Wood Frame",
+      landUseCategory: "MIXRES",
+      permitsOwnParcelAduCount: 1,
+      permitsBlockAduRecentCount: 1,
+      permitsRadiusAduRecentCount: 1,
+    });
+    expect(r.score).toBe(100);
   });
 });
 
@@ -220,6 +282,24 @@ describe("computeHeuristicScore — new signal flow", () => {
     });
     expect(lifted.aduScore).toBe(80);
     expect(lifted.valueAddWeightedAvg).toBeGreaterThan(baseline.valueAddWeightedAvg);
+  });
+
+  it("structural feasibility boosts lift the ADU score above the AI base", () => {
+    const aiOnly = computeHeuristicScore(baseListing(), {
+      detachedAduScore: 50,
+      convertedAduScore: 50,
+    });
+    const withFeasibility = computeHeuristicScore(baseListing(), {
+      detachedAduScore: 50,
+      convertedAduScore: 50,
+      assessorConstructionType: "Wood Frame",
+      landUseCategory: "MIXRES",
+      permitsBlockAduRecentCount: 2,
+    });
+    expect(withFeasibility.aduScore!).toBeGreaterThan(aiOnly.aduScore!);
+    expect(withFeasibility.valueAddWeightedAvg).toBeGreaterThan(
+      aiOnly.valueAddWeightedAvg,
+    );
   });
 
   it("uses extractedOccupancy for vacancy when present", () => {
