@@ -65,44 +65,65 @@ async function main() {
     if (batch.length === 0) break;
 
     const now = new Date();
-    await Promise.all(
-      batch.map(async (l) => {
-        if (!l.blockLot) {
-          await db.listing.update({
-            where: { mlsId: l.mlsId },
-            data: { softStoryFetchedAt: now },
-          });
-          unknown += 1;
-          return;
-        }
-        const record = softStoryMap.get(l.blockLot);
-        if (!record) {
-          await db.listing.update({
-            where: { mlsId: l.mlsId },
-            data: {
-              softStoryRedFlag: false,
-              softStoryTier: null,
-              softStoryStatus: null,
-              softStoryFetchedAt: now,
-            },
-          });
-          notListed += 1;
-          return;
-        }
-        const flag = !record.retrofitted;
-        await db.listing.update({
-          where: { mlsId: l.mlsId },
-          data: {
-            softStoryRedFlag: flag,
-            softStoryTier: record.tier,
-            softStoryStatus: record.status,
-            softStoryFetchedAt: now,
-          },
-        });
-        if (flag) redFlag += 1;
-        else onListButOk += 1;
-      }),
-    );
+    const unknownIds: string[] = [];
+    const notListedIds: string[] = [];
+    const listedGroups = new Map<
+      string,
+      { flag: boolean; tier: string | null; status: string | null; ids: string[] }
+    >();
+
+    for (const l of batch) {
+      if (!l.blockLot) {
+        unknownIds.push(l.mlsId);
+        continue;
+      }
+      const record = softStoryMap.get(l.blockLot);
+      if (!record) {
+        notListedIds.push(l.mlsId);
+        continue;
+      }
+      const flag = !record.retrofitted;
+      const key = `${flag}|${record.tier ?? ""}|${record.status ?? ""}`;
+      let group = listedGroups.get(key);
+      if (!group) {
+        group = { flag, tier: record.tier, status: record.status, ids: [] };
+        listedGroups.set(key, group);
+      }
+      group.ids.push(l.mlsId);
+    }
+
+    if (unknownIds.length > 0) {
+      await db.listing.updateMany({
+        where: { mlsId: { in: unknownIds } },
+        data: { softStoryFetchedAt: now },
+      });
+      unknown += unknownIds.length;
+    }
+    if (notListedIds.length > 0) {
+      await db.listing.updateMany({
+        where: { mlsId: { in: notListedIds } },
+        data: {
+          softStoryRedFlag: false,
+          softStoryTier: null,
+          softStoryStatus: null,
+          softStoryFetchedAt: now,
+        },
+      });
+      notListed += notListedIds.length;
+    }
+    for (const group of listedGroups.values()) {
+      await db.listing.updateMany({
+        where: { mlsId: { in: group.ids } },
+        data: {
+          softStoryRedFlag: group.flag,
+          softStoryTier: group.tier,
+          softStoryStatus: group.status,
+          softStoryFetchedAt: now,
+        },
+      });
+      if (group.flag) redFlag += group.ids.length;
+      else onListButOk += group.ids.length;
+    }
 
     processed += batch.length;
     cursor = batch[batch.length - 1]?.mlsId;
