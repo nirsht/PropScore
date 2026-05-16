@@ -27,6 +27,13 @@ export const SortKey = z.enum([
   "density",
   "vacancy",
   "motivation",
+  // AI-scored variants — sort by the columns populated by `runAIScoring`
+  // (Score.ai*). Listings never AI-scored show up as nulls and sort to the
+  // bottom under DESC.
+  "valueAddAi",
+  "densityAi",
+  "vacancyAi",
+  "motivationAi",
 ]);
 
 export const FilterInput = z.object({

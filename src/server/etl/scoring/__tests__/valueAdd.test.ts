@@ -57,6 +57,21 @@ describe("VALUE_ADD_WEIGHTS", () => {
     expect(VALUE_ADD_WEIGHTS.vacancy).toBeGreaterThan(VALUE_ADD_WEIGHTS.location);
     expect(VALUE_ADD_WEIGHTS.vacancy).toBeGreaterThan(VALUE_ADD_WEIGHTS.density);
   });
+
+  it("matches the documented ratio 35/25/20/15/5", () => {
+    expect(VALUE_ADD_WEIGHTS).toEqual({
+      vacancy: 0.35,
+      location: 0.25,
+      density: 0.20,
+      adu: 0.15,
+      motivation: 0.05,
+    });
+  });
+
+  it("ADU now outweighs motivation (post-2026-05-16 rebalance)", () => {
+    expect(VALUE_ADD_WEIGHTS.adu).toBeGreaterThan(VALUE_ADD_WEIGHTS.motivation);
+    expect(VALUE_ADD_WEIGHTS.adu).toBeLessThan(VALUE_ADD_WEIGHTS.density);
+  });
 });
 
 describe("RENOVATION_UPSIDE", () => {
@@ -177,6 +192,19 @@ describe("resolveWeights", () => {
 });
 
 describe("weightedValueAdd", () => {
+  it("applies the documented 35/25/20/15/5 weights to mixed components", () => {
+    // 0.35·70 + 0.25·80 + 0.20·60 + 0.15·50 + 0.05·40 = 24.5 + 20 + 12 + 7.5 + 2 = 66
+    expect(
+      weightedValueAdd({
+        vacancyScore: 70,
+        locationScore: 80,
+        densityScore: 60,
+        aduScore: 50,
+        motivationScore: 40,
+      }),
+    ).toBeCloseTo(66, 5);
+  });
+
   it("returns the input value when all components share the same score", () => {
     expect(
       weightedValueAdd({

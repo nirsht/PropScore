@@ -437,6 +437,23 @@ model Score {
   breakdown            Json
   computedBy           ScoreSource
   computedAt           DateTime    @default(now())
+  // Fingerprint of the AI-scoring input payload (sha256 of stable-key JSON).
+  // The nightly delta-AI job uses this to skip listings whose inputs haven't
+  // changed since the last AI run. Null = never AI-scored.
+  aiInputHash          String?
+
+  // Parallel AI-scored variants. The columns above (densityScore,
+  // vacancyScore, motivationScore, valueAddWeightedAvg, breakdown) are
+  // always heuristic and refreshed by `recompute:scores` every nightly.
+  // AI scoring writes only to the columns below, so the UI can sort by
+  // either source independently. Null until the listing has been
+  // AI-scored at least once.
+  aiDensityScore         Float?
+  aiVacancyScore         Float?
+  aiMotivationScore      Float?
+  aiValueAddWeightedAvg  Float?
+  aiBreakdown            Json?
+  aiComputedAt           DateTime?
 
   @@index([valueAddWeightedAvg(sort: Desc)])
   @@index([densityScore(sort: Desc)])
@@ -445,6 +462,10 @@ model Score {
   @@index([locationScore(sort: Desc)])
   @@index([aduScore(sort: Desc)])
   @@index([marketUpsideScore(sort: Desc)])
+  @@index([aiValueAddWeightedAvg(sort: Desc)])
+  @@index([aiDensityScore(sort: Desc)])
+  @@index([aiVacancyScore(sort: Desc)])
+  @@index([aiMotivationScore(sort: Desc)])
 }
 
 model AIEnrichment {
