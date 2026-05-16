@@ -1,9 +1,13 @@
 /**
  * One-off: recompute heuristic scores for every Listing using the current
- * weights and current normalize.ts logic. Skips rows whose Score was
- * computed by AI (those are preserved). Also re-derives sqft/units/etc. by
- * re-running normalize against `raw`, so changes to "0 → null" coercion
- * propagate.
+ * weights and current normalize.ts logic. Touches only the heuristic
+ * columns of Score (densityScore, vacancyScore, motivationScore,
+ * valueAddWeightedAvg, breakdown, computedBy, computedAt). AI columns
+ * (ai*) are written exclusively by `runAIScoring` and are left untouched
+ * here so the UI can sort by either source independently.
+ *
+ * Also re-derives sqft/units/etc. by re-running normalize against `raw`,
+ * so changes to "0 → null" coercion propagate.
  *
  * Usage: pnpm recompute:scores
  */
@@ -24,7 +28,6 @@ async function main() {
   let cursor: string | undefined;
   let processed = 0;
   let scored = 0;
-  let skippedAI = 0;
   let updatedListing = 0;
   let locationUpdated = 0;
 
@@ -41,11 +44,10 @@ async function main() {
       updatedListing: boolean;
       locationUpdated: boolean;
       scored: boolean;
-      skippedAI: boolean;
     };
 
     const results = await mapWithConcurrency(batch, CONCURRENCY, async (l): Promise<RowDelta> => {
-      const delta: RowDelta = { updatedListing: false, locationUpdated: false, scored: false, skippedAI: false };
+      const delta: RowDelta = { updatedListing: false, locationUpdated: false, scored: false };
       const raw = l.raw as Record<string, unknown>;
       const norm = normalizeListing(raw);
       if (!norm) return delta;
@@ -90,11 +92,6 @@ async function main() {
           },
         });
         delta.locationUpdated = true;
-      }
-
-      if (l.score?.computedBy === "AI") {
-        delta.skippedAI = true;
-        return delta;
       }
 
       const um = l.extractedUnitMix as Array<{ count?: number }> | null;
@@ -177,7 +174,6 @@ async function main() {
         if (r.value.updatedListing) updatedListing += 1;
         if (r.value.locationUpdated) locationUpdated += 1;
         if (r.value.scored) scored += 1;
-        if (r.value.skippedAI) skippedAI += 1;
       } else {
         console.error(`[recompute] mlsId=${batch[i]!.mlsId}:`, r.reason);
       }
@@ -185,7 +181,7 @@ async function main() {
 
     cursor = batch[batch.length - 1]?.mlsId;
     console.log(
-      `[recompute] processed=${processed}/${total}, scored=${scored}, normalizedFieldUpdates=${updatedListing}, locationUpdated=${locationUpdated}, skippedAI=${skippedAI}`,
+      `[recompute] processed=${processed}/${total}, scored=${scored}, normalizedFieldUpdates=${updatedListing}, locationUpdated=${locationUpdated}`,
     );
   }
 
@@ -193,7 +189,7 @@ async function main() {
   await db.$executeRawUnsafe(`REFRESH MATERIALIZED VIEW CONCURRENTLY "mv_listing_search"`);
 
   console.log(
-    `[recompute] done — processed=${processed}, scored=${scored}, normalizedFieldUpdates=${updatedListing}, locationUpdated=${locationUpdated}, skippedAI=${skippedAI}`,
+    `[recompute] done — processed=${processed}, scored=${scored}, normalizedFieldUpdates=${updatedListing}, locationUpdated=${locationUpdated}`,
   );
 }
 

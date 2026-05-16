@@ -20,9 +20,17 @@ const internal = new BaseAgent({
 });
 
 /**
- * Run AI scoring for one mlsId. Persists Score + AIEnrichment and stamps
- * `Score.aiInputHash` so the nightly delta driver can skip it next time
- * the inputs are unchanged.
+ * Run AI scoring for one mlsId. Writes the result into the ai* columns of
+ * Score and stamps `Score.aiInputHash` so the nightly delta driver can
+ * skip it next time the inputs are unchanged. Heuristic columns
+ * (densityScore, vacancyScore, motivationScore, valueAddWeightedAvg,
+ * breakdown) are left untouched — they're refreshed by `recompute:scores`
+ * each nightly, independent of AI.
+ *
+ * If no Score row exists yet (rare: on-demand AI before any heuristic
+ * recompute), seed the required heuristic columns by mirroring the AI
+ * result and tag computedBy=HEURISTIC so the next recompute overwrites
+ * them. The ai* columns hold the actual AI signal in both branches.
  */
 export async function runAIScoring(mlsId: string, userId: string | null) {
   const listing = await db.listing.findUnique({
@@ -35,6 +43,8 @@ export async function runAIScoring(mlsId: string, userId: string | null) {
   const aiInputHash = hashAIScoringInput(slim);
 
   const result = await internal.run({ input: { mlsId, listing: slim }, userId });
+  const aiBreakdown = { rationale: result.output.rationale, signals: result.output.signals };
+  const now = new Date();
 
   await db.score.upsert({
     where: { listingMlsId: mlsId },
@@ -44,19 +54,24 @@ export async function runAIScoring(mlsId: string, userId: string | null) {
       vacancyScore: result.output.vacancyScore,
       motivationScore: result.output.motivationScore,
       valueAddWeightedAvg: result.output.valueAddWeightedAvg,
-      breakdown: { rationale: result.output.rationale, signals: result.output.signals },
-      computedBy: "AI",
+      breakdown: aiBreakdown,
+      computedBy: "HEURISTIC",
       aiInputHash,
+      aiDensityScore: result.output.densityScore,
+      aiVacancyScore: result.output.vacancyScore,
+      aiMotivationScore: result.output.motivationScore,
+      aiValueAddWeightedAvg: result.output.valueAddWeightedAvg,
+      aiBreakdown,
+      aiComputedAt: now,
     },
     update: {
-      densityScore: result.output.densityScore,
-      vacancyScore: result.output.vacancyScore,
-      motivationScore: result.output.motivationScore,
-      valueAddWeightedAvg: result.output.valueAddWeightedAvg,
-      breakdown: { rationale: result.output.rationale, signals: result.output.signals },
-      computedBy: "AI",
-      computedAt: new Date(),
       aiInputHash,
+      aiDensityScore: result.output.densityScore,
+      aiVacancyScore: result.output.vacancyScore,
+      aiMotivationScore: result.output.motivationScore,
+      aiValueAddWeightedAvg: result.output.valueAddWeightedAvg,
+      aiBreakdown,
+      aiComputedAt: now,
     },
   });
 

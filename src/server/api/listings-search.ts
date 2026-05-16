@@ -57,6 +57,13 @@ export type ListingRow = {
   valueAddWeightedAvg: number | null;
   locationScore: number | null;
   aduScore: number | null;
+  // AI-scored variants (populated by `runAIScoring`). Null until the
+  // listing has been AI-scored at least once.
+  aiDensityScore: number | null;
+  aiVacancyScore: number | null;
+  aiMotivationScore: number | null;
+  aiValueAddWeightedAvg: number | null;
+  aiComputedAt: Date | null;
   scoreComputedBy: "HEURISTIC" | "AI" | null;
 };
 
@@ -76,6 +83,10 @@ const SORT_COLUMN: Record<SortKey, string> = {
   density: '"densityScore"',
   vacancy: '"vacancyScore"',
   motivation: '"motivationScore"',
+  valueAddAi: '"aiValueAddWeightedAvg"',
+  densityAi: '"aiDensityScore"',
+  vacancyAi: '"aiVacancyScore"',
+  motivationAi: '"aiMotivationScore"',
 };
 
 /**
@@ -282,6 +293,8 @@ export async function searchListings(input: FilterInput): Promise<SearchResult> 
         "densityScore", "vacancyScore", "motivationScore",
         "locationScore", "aduScore",
         ${valueAddSelect},
+        "aiDensityScore", "aiVacancyScore", "aiMotivationScore",
+        "aiValueAddWeightedAvg", "aiComputedAt",
         "scoreComputedBy"
       FROM "mv_listing_search"
       ${whereSql}
@@ -372,5 +385,13 @@ function extractSortValue(row: ListingRow, key: SortKey): number | null {
       return row.vacancyScore;
     case "motivation":
       return row.motivationScore;
+    case "valueAddAi":
+      return row.aiValueAddWeightedAvg;
+    case "densityAi":
+      return row.aiDensityScore;
+    case "vacancyAi":
+      return row.aiVacancyScore;
+    case "motivationAi":
+      return row.aiMotivationScore;
   }
 }

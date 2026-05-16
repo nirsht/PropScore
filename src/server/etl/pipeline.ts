@@ -259,13 +259,8 @@ async function flush(rows: NormalizedListing[]): Promise<{ upserted: number; sco
       },
     });
 
-    // Never overwrite an AI-enriched score during routine ETL.
-    const existing = await db.score.findUnique({
-      where: { listingMlsId: r.mlsId },
-      select: { computedBy: true },
-    });
-    if (existing?.computedBy === "AI") return { upserted: 1, scored: 0 };
-
+    // Heuristic columns are always safe to refresh during routine ETL —
+    // AI scores live in parallel ai* columns and are untouched here.
     const score = computeHeuristicScore(r);
     await db.score.upsert({
       where: { listingMlsId: r.mlsId },

@@ -105,6 +105,13 @@ async function main() {
     );
   }
 
+  if (scored > 0 && !dryRun) {
+    console.log(`[ai-score] refreshing materialized view…`);
+    await db.$executeRawUnsafe(
+      `REFRESH MATERIALIZED VIEW CONCURRENTLY "mv_listing_search"`,
+    );
+  }
+
   console.log(
     `[ai-score] done — scored=${scored} skipped=${skipped} errored=${errored}`,
   );
