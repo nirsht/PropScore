@@ -18,6 +18,7 @@ import {
 import LogoutOutlinedIcon from "@mui/icons-material/LogoutOutlined";
 import TableRowsRoundedIcon from "@mui/icons-material/TableRowsRounded";
 import MapOutlinedIcon from "@mui/icons-material/MapOutlined";
+import MailOutlineRoundedIcon from "@mui/icons-material/MailOutlineRounded";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 import { GlobalChatDrawer } from "./chat/GlobalChatDrawer";
@@ -26,6 +27,7 @@ import { Logo } from "./Logo";
 const NAV = [
   { href: "/listings", label: "Opportunities", icon: TableRowsRoundedIcon },
   { href: "/map", label: "Map", icon: MapOutlinedIcon },
+  { href: "/emails", label: "Emails", icon: MailOutlineRoundedIcon },
   { href: "/admin/sync", label: "Admin", icon: SettingsOutlinedIcon },
 ];
 

@@ -256,6 +256,7 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
                         name={agentName}
                         phone={agentPhone}
                         email={agentEmail}
+                        listingMlsId={listing.mlsId}
                       />
                     )}
                     {(coAgentName || coAgentPhone || coAgentEmail) && (
