@@ -13,9 +13,20 @@ import {
   fmtMoney,
   sumUnitMix,
 } from "./gridFormatters";
-import { DiscrepancyCell, FallbackCell, HeaderTooltip } from "./gridCells";
+import { DiscrepancyCell, FallbackCell, HeaderTooltip, StarCell } from "./gridCells";
 
 export const columns: GridColDef<ListingRow>[] = [
+  {
+    field: "__starred",
+    headerName: "",
+    width: 48,
+    sortable: false,
+    filterable: false,
+    disableColumnMenu: true,
+    renderCell: ({ row }: GridRenderCellParams<ListingRow>) => (
+      <StarCell mlsId={row.mlsId} />
+    ),
+  },
   {
     field: "valueAddWeightedAvg",
     width: 110,

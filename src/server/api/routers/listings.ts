@@ -13,9 +13,13 @@ function round1(n: number) {
 }
 
 export const listingsRouter = router({
-  search: protectedProcedure.input(FilterInput).query(({ input }) => searchListings(input)),
+  search: protectedProcedure
+    .input(FilterInput)
+    .query(({ ctx, input }) => searchListings(input, ctx.user.id)),
 
-  count: protectedProcedure.input(FilterInput).query(({ input }) => countListings(input)),
+  count: protectedProcedure
+    .input(FilterInput)
+    .query(({ ctx, input }) => countListings(input, ctx.user.id)),
 
   getById: protectedProcedure
     .input(z.object({ mlsId: z.string() }))

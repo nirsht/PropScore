@@ -24,11 +24,12 @@ model User {
   role           Role               @default(USER)
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
-  accounts       Account[]
-  sessions       Session[]
-  savedFilters   SavedFilter[]
-  agentTraces    AgentTrace[]
-  conversations  ChatConversation[]
+  accounts        Account[]
+  sessions        Session[]
+  savedFilters    SavedFilter[]
+  agentTraces     AgentTrace[]
+  conversations   ChatConversation[]
+  starredListings StarredListing[]
 }
 
 model Account {
@@ -254,6 +255,7 @@ model Listing {
   enrichments   AIEnrichment[]
   conversations ChatConversation[]
   contact       ListingContact?
+  starredBy     StarredListing[]
   createdAt     DateTime           @default(now())
 
   @@index([price])
@@ -524,6 +526,18 @@ model SavedFilter {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+model StarredListing {
+  userId       String
+  listingMlsId String
+  createdAt    DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing Listing @relation(fields: [listingMlsId], references: [mlsId], onDelete: Cascade)
+
+  @@id([userId, listingMlsId])
   @@index([userId, createdAt(sort: Desc)])
 }
 

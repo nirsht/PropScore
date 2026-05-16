@@ -33,6 +33,7 @@ import DirectionsWalkRoundedIcon from "@mui/icons-material/DirectionsWalkRounded
 import StraightenRoundedIcon from "@mui/icons-material/StraightenRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import ChatBubbleOutlineRoundedIcon from "@mui/icons-material/ChatBubbleOutlineRounded";
+import { StarCell } from "./ListingsGrid/gridCells";
 import HomeWorkOutlinedIcon from "@mui/icons-material/HomeWorkOutlined";
 import { trpc } from "@/lib/trpc/client";
 import { ChatPanel } from "@/components/chat/ChatPanel";
@@ -235,6 +236,7 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
                 {[listing.city, listing.state, listing.postalCode].filter(Boolean).join(", ")}
               </Typography>
             </Box>
+            <StarCell mlsId={listing.mlsId} />
             <IconButton onClick={onClose} size="small">
               <CloseRoundedIcon />
             </IconButton>

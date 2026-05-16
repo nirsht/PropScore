@@ -105,19 +105,24 @@ export function FeasibilityCard({ listing }: { listing: FeasibilityCardListing }
   const radiusAdu = listing.permitsRadiusAduRecentCount ?? 0;
   const noPrecedent = hasPermits && ownParcelAdu === 0 && blockAdu === 0 && radiusAdu === 0;
 
+  const showConstruction =
+    listing.assessorConstructionType != null || listing.assessorYearBuilt != null;
+
+  const sectionDivider = { borderTop: 1, borderColor: "divider", pt: 1.5, mt: 1.5 };
+
   return (
     <Paper variant="outlined" sx={{ p: 2 }}>
-      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
-        <Typography variant="subtitle2">ADU & reconfiguration feasibility</Typography>
-      </Stack>
+      <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+        ADU & reconfiguration feasibility
+      </Typography>
 
       {/* Row 1 — Land Use */}
       {hasLandUse && (
-        <Box sx={{ mb: 1.5 }}>
-          <Typography variant="caption" color="text.secondary">
+        <Box>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.75 }}>
             Land use
           </Typography>
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }} flexWrap="wrap" useFlexGap>
+          <Stack direction="row" spacing={2.5} alignItems="flex-end" flexWrap="wrap" useFlexGap>
             {cat ? (
               <Tooltip title={landUseMeta?.blurb ?? cat} arrow placement="top">
                 <Chip
@@ -151,12 +156,12 @@ export function FeasibilityCard({ listing }: { listing: FeasibilityCardListing }
       )}
 
       {/* Row 2 — Construction & age */}
-      {(listing.assessorConstructionType != null || listing.assessorYearBuilt != null) && (
-        <Box sx={{ mb: 1.5 }}>
-          <Typography variant="caption" color="text.secondary">
+      {showConstruction && (
+        <Box sx={hasLandUse ? sectionDivider : undefined}>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.75 }}>
             Construction
           </Typography>
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }} flexWrap="wrap" useFlexGap>
+          <Stack direction="row" spacing={2.5} alignItems="flex-end" flexWrap="wrap" useFlexGap>
             {listing.assessorConstructionType && (
               <Tooltip
                 arrow
@@ -197,16 +202,16 @@ export function FeasibilityCard({ listing }: { listing: FeasibilityCardListing }
 
       {/* Row 3 — Permit precedent */}
       {hasPermits && (
-        <Box>
-          <Typography variant="caption" color="text.secondary">
+        <Box sx={hasLandUse || showConstruction ? sectionDivider : undefined}>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.75 }}>
             ADU / unit-add permit precedent
           </Typography>
           {noPrecedent ? (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            <Typography variant="body2" color="text.secondary">
               No nearby ADU/unit-legalization precedent in the last 5 years.
             </Typography>
           ) : (
-            <Stack direction="row" spacing={1} sx={{ mt: 0.5 }} flexWrap="wrap" useFlexGap>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
               <Tooltip
                 arrow
                 placement="top"
