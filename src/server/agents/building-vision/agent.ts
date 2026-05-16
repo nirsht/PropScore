@@ -1,4 +1,5 @@
 import { z } from "zod";
+import OpenAI from "openai";
 import { db } from "@/lib/db";
 import { openai } from "@/lib/openai";
 import { BEST_PHOTO_SYSTEM_PROMPT, BUILDING_ANALYSIS_SYSTEM_PROMPT } from "./prompt";
@@ -8,6 +9,37 @@ import type { BridgeMediaItem } from "@/server/etl/bridge-client";
 const MAX_PHOTOS_TO_RANK = 12;
 const SELECTOR_MODEL = "gpt-4o-mini";
 const ANALYSIS_MODEL = "gpt-4o";
+
+/**
+ * OpenAI vision endpoints occasionally return a 400 with
+ * `code: 'invalid_image_url'` and a message like "Timeout while downloading
+ * <mlsmedia url>" — the SFAR media host can be slow and OpenAI's fetcher
+ * gives up before it does. Retry that specific case with a short backoff;
+ * everything else propagates immediately.
+ */
+async function withVisionRetry<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  const TRIES = 3;
+  let lastErr: unknown;
+  for (let i = 0; i < TRIES; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      const isUpstreamTimeout =
+        err instanceof OpenAI.APIError &&
+        err.status === 400 &&
+        // OpenAI surfaces both shapes — top-level `code` and `error.code`.
+        (err.code === "invalid_image_url" ||
+          (typeof err.message === "string" && /Timeout while downloading/i.test(err.message)));
+      if (!isUpstreamTimeout || i === TRIES - 1) throw err;
+      const waitMs = 750 * 2 ** i;
+      // eslint-disable-next-line no-console
+      console.warn(`[building-vision] ${label} upstream image timeout, retrying in ${waitMs}ms (attempt ${i + 2}/${TRIES})`);
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
+  }
+  throw lastErr;
+}
 
 const SelectorOutput = z.object({
   bestIndex: z.number().int(),
@@ -96,11 +128,13 @@ export async function runBuildingVision(
       },
     ];
 
-    const selectorCompletion = await openai.chat.completions.create({
-      model: SELECTOR_MODEL,
-      messages: selectorMessages,
-      response_format: { type: "json_object" },
-    });
+    const selectorCompletion = await withVisionRetry("selector", () =>
+      openai.chat.completions.create({
+        model: SELECTOR_MODEL,
+        messages: selectorMessages,
+        response_format: { type: "json_object" },
+      }),
+    );
     totalTokens += selectorCompletion.usage?.total_tokens ?? 0;
     const selectorRaw = selectorCompletion.choices[0]?.message.content ?? "{}";
     const selectorParsed = SelectorOutput.safeParse(safeJSON(selectorRaw));
@@ -151,11 +185,13 @@ export async function runBuildingVision(
       },
     ];
 
-    const analysisCompletion = await openai.chat.completions.create({
-      model: ANALYSIS_MODEL,
-      messages: analysisMessages,
-      response_format: { type: "json_object" },
-    });
+    const analysisCompletion = await withVisionRetry("analysis", () =>
+      openai.chat.completions.create({
+        model: ANALYSIS_MODEL,
+        messages: analysisMessages,
+        response_format: { type: "json_object" },
+      }),
+    );
     totalTokens += analysisCompletion.usage?.total_tokens ?? 0;
     const analysisRaw = analysisCompletion.choices[0]?.message.content ?? "{}";
     const analysisParsed = AnalysisOutput.safeParse(safeJSON(analysisRaw));
