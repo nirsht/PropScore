@@ -13,95 +13,16 @@ import { trpc } from "@/lib/trpc/client";
 import { fmtMoney, unitTypeLabel } from "./formatters";
 import { Metric } from "./Metric";
 import { MlsRemarksFooter } from "./MlsRemarksFooter";
+import { RentCell } from "./RentCell";
+import { bedsBathsLabel } from "./rentRollEstimators";
+import { enrichRentRoll } from "./enrichRentRoll";
 import type {
   ListingForAI,
-  RentCompBucketUI,
   RentCompsOutputUI,
   RentEstimateEntryUI,
   RentRollEntryUI,
   UnitMixEntryUI,
 } from "./types";
-
-function bedsBathsLabel(beds: number | null, baths: number | null): string {
-  if (beds == null && baths == null) return "—";
-  if (beds === 0) return baths != null ? `Studio · ${baths}BA` : "Studio";
-  const b = beds != null ? `${beds}BR` : "?BR";
-  const ba = baths != null ? `${baths}BA` : "?BA";
-  return `${b} · ${ba}`;
-}
-
-function compEstimateFor(
-  buckets: RentCompBucketUI[],
-  target: { beds: number | null; baths: number | null; sqft?: number | null },
-): { rent: number; rationale: string } | null {
-  const match = buckets.find(
-    (b) => b.beds === target.beds && b.baths === target.baths,
-  );
-  if (!match || match.count === 0) return null;
-  if (target.sqft && match.medianPricePerSqft != null) {
-    const rent = Math.round((match.medianPricePerSqft * target.sqft) / 50) * 50;
-    const ppsf = match.medianPricePerSqft.toFixed(2);
-    return {
-      rent,
-      rationale: `${match.count} closed SFAR lease${match.count === 1 ? "" : "s"} · median $${ppsf}/sf × ${target.sqft.toLocaleString()} sf`,
-    };
-  }
-  if (match.medianRent != null) {
-    return {
-      rent: Math.round(match.medianRent / 50) * 50,
-      rationale: `${match.count} closed SFAR lease${match.count === 1 ? "" : "s"} · median $${Math.round(match.medianRent).toLocaleString()}/mo`,
-    };
-  }
-  return null;
-}
-
-function matchEstimate<
-  T extends {
-    beds: number | null;
-    baths: number | null;
-    sqft?: number | null;
-    unitLabel?: string | null;
-  },
->(
-  estimates: T[] | null | undefined,
-  target: {
-    beds: number | null;
-    baths: number | null;
-    sqft?: number | null;
-    unitLabel?: string | null;
-    index: number;
-  },
-): T | null {
-  if (!estimates?.length) return null;
-  // 1. Same unit label (most specific)
-  if (target.unitLabel) {
-    const m = estimates.find(
-      (e) => !!e.unitLabel && e.unitLabel === target.unitLabel,
-    );
-    if (m) return m;
-  }
-  // 2. Same index (when the agent emitted estimates in lockstep with rent roll)
-  const indexed = estimates[target.index];
-  if (indexed && indexed.beds === target.beds && indexed.baths === target.baths) {
-    return indexed;
-  }
-  // 3. Same (beds, baths) and sqft within ±15%
-  if (target.sqft) {
-    const m = estimates.find(
-      (e) =>
-        e.beds === target.beds &&
-        e.baths === target.baths &&
-        !!e.sqft &&
-        Math.abs(e.sqft - target.sqft!) / target.sqft! < 0.15,
-    );
-    if (m) return m;
-  }
-  // 4. First (beds, baths) match
-  return (
-    estimates.find((e) => e.beds === target.beds && e.baths === target.baths) ??
-    null
-  );
-}
 
 export function RentRollSection({ listing }: { listing: ListingForAI }) {
   const utils = trpc.useUtils();
@@ -163,139 +84,25 @@ export function RentRollSection({ listing }: { listing: ListingForAI }) {
     );
   }
 
-  // Per-apartment rows when rent roll exists; grouped by unit type otherwise.
-  type Row = {
-    weight: number;
-    actualRent: number | null;
-    beds: number | null;
-    baths: number | null;
-    sqft: number | null;
-    unitLabel: string | null;
-    sourceIndex: number;
-    isGrouped: boolean;
-  };
-  const rows: Row[] = rentRoll?.length
-    ? rentRoll.map((r, i) => ({
-        weight: 1,
-        actualRent: r.rent,
-        beds: r.beds,
-        baths: r.baths,
-        sqft: r.sqft ?? null,
-        unitLabel: r.unitLabel ?? null,
-        sourceIndex: i,
-        isGrouped: false,
-      }))
-    : (unitMix ?? []).map((u, i) => ({
-        weight: u.count,
-        actualRent: null,
-        beds: u.beds,
-        baths: u.baths,
-        sqft: null,
-        unitLabel: null,
-        sourceIndex: i,
-        isGrouped: true,
-      }));
-
-  const enriched = rows.map((row) => {
-    let market:
-      | { rent: number; rationale: string; source: "gpt" | "comps" }
-      | null = null;
-    if (compsOutput) {
-      const c = compEstimateFor(compsOutput.buckets, row);
-      if (c) market = { ...c, source: "comps" };
-    }
-    if (!market) {
-      const ai = matchEstimate(aiRentEstimate, {
-        beds: row.beds,
-        baths: row.baths,
-        sqft: row.sqft,
-        unitLabel: row.unitLabel,
-        index: row.sourceIndex,
-      });
-      if (ai) {
-        market = {
-          rent: ai.estimatedRent,
-          rationale: ai.rationale,
-          source: ai.source ?? "gpt",
-        };
-      }
-    }
-    const reno = matchEstimate(postRenoEstimate, {
-      beds: row.beds,
-      baths: row.baths,
-      sqft: row.sqft,
-      unitLabel: row.unitLabel,
-      index: row.sourceIndex,
-    });
-    return {
-      ...row,
-      market,
-      postReno: reno
-        ? { rent: reno.estimatedRent, rationale: reno.rationale }
-        : null,
-    };
+  const {
+    enriched,
+    currentTotal,
+    marketTotal,
+    renoTotal,
+    monthlyUpside,
+    upsidePercent,
+    compsBased,
+    totalUnitCount,
+  } = enrichRentRoll({
+    rentRoll,
+    unitMix,
+    aiRentEstimate,
+    postRenoEstimate,
+    compsOutput,
+    extractedTotalMonthlyRent: listing.extractedTotalMonthlyRent,
   });
 
-  const currentTotal = (() => {
-    if (rentRoll?.length) {
-      const sum = enriched.reduce((s, r) => s + (r.actualRent ?? 0), 0);
-      return sum > 0 ? sum : null;
-    }
-    return listing.extractedTotalMonthlyRent ?? null;
-  })();
-  const marketTotal =
-    enriched.length > 0 && enriched.every((r) => r.market != null)
-      ? enriched.reduce((s, r) => s + r.market!.rent * r.weight, 0)
-      : null;
-  const renoTotal =
-    enriched.length > 0 && enriched.every((r) => r.postReno != null)
-      ? enriched.reduce((s, r) => s + r.postReno!.rent * r.weight, 0)
-      : null;
-
-  const monthlyUpside =
-    currentTotal != null && marketTotal != null
-      ? Math.round(marketTotal - currentTotal)
-      : null;
-  const upsidePercent =
-    monthlyUpside != null && currentTotal != null && currentTotal > 0
-      ? Math.round((monthlyUpside / currentTotal) * 100)
-      : null;
-  const compsBased = enriched.some((r) => r.market?.source === "comps");
-  const totalUnitCount = rows.reduce((s, r) => s + r.weight, 0);
   const hasLatLng = listing.lat != null && listing.lng != null;
-
-  const RentCell = ({
-    value,
-    rationale,
-    italic,
-  }: {
-    value: number | null;
-    rationale?: string;
-    italic: boolean;
-  }) => {
-    const text = value != null ? `$${Math.round(value).toLocaleString()}` : "—";
-    const el = (
-      <Typography
-        variant="body2"
-        sx={{
-          fontWeight: 600,
-          textAlign: "right",
-          fontStyle: italic ? "italic" : "normal",
-          color: italic ? "text.secondary" : "text.primary",
-          cursor: rationale ? "help" : "default",
-        }}
-      >
-        {text}
-      </Typography>
-    );
-    return rationale ? (
-      <Tooltip arrow placement="top" title={rationale}>
-        {el}
-      </Tooltip>
-    ) : (
-      el
-    );
-  };
 
   return (
     <Box sx={{ mb: 1.5 }}>

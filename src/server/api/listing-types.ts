@@ -1,0 +1,70 @@
+import type { RenovationLevel } from "@prisma/client";
+
+export type ListingRow = {
+  mlsId: string;
+  address: string;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
+  lat: number | null;
+  lng: number | null;
+  price: number;
+  daysOnMls: number;
+  postDate: Date;
+  listingUpdatedAt: Date;
+  status: string;
+  propertyType: string;
+  sqft: number | null;
+  units: number | null;
+  beds: number | null;
+  baths: number | null;
+  occupancy: number | null;
+  yearBuilt: number | null;
+  stories: number | null;
+  effectiveSqft: number | null;
+  effectiveLotSizeSqft: number | null;
+  effectiveStories: number | null;
+  effectiveUnits: number | null;
+  assessorBuildingSqft: number | null;
+  assessorLotSqft: number | null;
+  assessorUnits: number | null;
+  assessorBedrooms: number | null;
+  assessorBathrooms: number | null;
+  assessorYearBuilt: number | null;
+  assessorStories: number | null;
+  extractedUnitMix: unknown;
+  assessorBuildingValue: number | null;
+  assessorLandValue: number | null;
+  renovationLevel: RenovationLevel | null;
+  renovationConfidence: number | null;
+  aiStories: number | null;
+  aiHasBasement: boolean | null;
+  aiHasPenthouse: boolean | null;
+  detachedAduScore: number | null;
+  convertedAduScore: number | null;
+  extractedTotalMonthlyRent: number | null;
+  extractedOccupancy: number | null;
+  pricePerSqft: number | null;
+  pricePerUnit: number | null;
+  sqftPerUnit: number | null;
+  hasSizeDiscrepancy: boolean;
+  densityScore: number | null;
+  vacancyScore: number | null;
+  motivationScore: number | null;
+  valueAddWeightedAvg: number | null;
+  locationScore: number | null;
+  aduScore: number | null;
+  // AI-scored variants (populated by `runAIScoring`). Null until the
+  // listing has been AI-scored at least once.
+  aiDensityScore: number | null;
+  aiVacancyScore: number | null;
+  aiMotivationScore: number | null;
+  aiValueAddWeightedAvg: number | null;
+  aiComputedAt: Date | null;
+  scoreComputedBy: "HEURISTIC" | "AI" | null;
+};
+
+export type SearchResult = {
+  rows: ListingRow[];
+  nextCursor: { sortValue: number | null; mlsId: string } | null;
+};
