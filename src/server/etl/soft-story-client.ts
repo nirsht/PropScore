@@ -1,7 +1,11 @@
 /**
  * SF Soft Story Properties — Socrata client.
  *
- * Dataset: jwdp-cqyc (https://data.sfgov.org/Housing-and-Buildings/Map-of-Soft-Story-Properties/jwdp-cqyc)
+ * Dataset: beah-shgi — the tabular "Soft-Story Properties" view that backs
+ * the public map at jwdp-cqyc. Socrata flipped jwdp-cqyc to a map-only
+ * visualization, which rejects column projections; beah-shgi is the same
+ * data with the original SoQL surface.
+ *
  * One row per parcel on SF DBI's mandatory soft-story retrofit program. The
  * dataset is small + finite (~5k rows total across SF), so we fetch the whole
  * thing once per enrichment run and bulk-tag listings — much cheaper than the
@@ -16,7 +20,7 @@
 
 import { canonicalBlockLot } from "./permits-client";
 
-const BASE_URL = "https://data.sfgov.org/resource/jwdp-cqyc.json";
+const BASE_URL = "https://data.sfgov.org/resource/beah-shgi.json";
 const PAGE_SIZE = 10000;
 const THROTTLE_MS = 1100;
 
