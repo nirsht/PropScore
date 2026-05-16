@@ -6,8 +6,9 @@ const nextConfig = {
   },
   // pdf-parse v2 ships as ESM with conditional exports; bundling it through
   // Next's RSC webpack layer trips "Object.defineProperty called on non-object"
-  // during interop. Let Node resolve it natively.
-  serverExternalPackages: ["pdf-parse"],
+  // during interop. Its transitive pdfjs-dist also references DOMMatrix at
+  // module init, which dies under webpack. Let Node resolve both natively.
+  serverExternalPackages: ["pdf-parse", "pdfjs-dist"],
   modularizeImports: {
     "@mui/icons-material": {
       transform: "@mui/icons-material/{{member}}",
