@@ -4,6 +4,10 @@ const nextConfig = {
   experimental: {
     serverActions: { bodySizeLimit: "2mb" },
   },
+  // pdf-parse v2 ships as ESM with conditional exports; bundling it through
+  // Next's RSC webpack layer trips "Object.defineProperty called on non-object"
+  // during interop. Let Node resolve it natively.
+  serverExternalPackages: ["pdf-parse"],
   modularizeImports: {
     "@mui/icons-material": {
       transform: "@mui/icons-material/{{member}}",
