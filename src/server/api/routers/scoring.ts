@@ -18,7 +18,8 @@ export const scoringRouter = router({
         if (!normalized) continue;
         const score = computeHeuristicScore(normalized, {
           locationScore: l.locationScore,
-          aduPotential: l.aduPotential as "LOW" | "MEDIUM" | "HIGH" | null,
+          detachedAduScore: l.detachedAduScore,
+          convertedAduScore: l.convertedAduScore,
           assessorConstructionType: l.assessorConstructionType,
           landUseCategory: l.landUseCategory,
           permitsOwnParcelAduCount: l.permitsOwnParcelAduCount,

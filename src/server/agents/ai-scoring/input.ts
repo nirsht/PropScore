@@ -32,8 +32,9 @@ export type AIScoringSlim = {
   extractedTotalMonthlyRent: number | null;
   extractedOccupancy: number | null;
   recentCapex: unknown;
-  aduPotential: string | null;
-  aduConfidence: number | null;
+  detachedAduScore: number | null;
+  convertedAduScore: number | null;
+  convertedAduSource: string | null;
   renovationLevel: string | null;
   renovationConfidence: number | null;
   occupancy: number | null;
@@ -100,8 +101,9 @@ export function buildAIScoringInput(listing: AIScoringListing): AIScoringSlim {
     extractedTotalMonthlyRent: listing.extractedTotalMonthlyRent,
     extractedOccupancy: listing.extractedOccupancy,
     recentCapex: listing.recentCapex,
-    aduPotential: listing.aduPotential,
-    aduConfidence: listing.aduConfidence,
+    detachedAduScore: listing.detachedAduScore,
+    convertedAduScore: listing.convertedAduScore,
+    convertedAduSource: listing.convertedAduSource,
     renovationLevel: listing.renovationLevel,
     renovationConfidence: listing.renovationConfidence,
     occupancy: listing.occupancy,

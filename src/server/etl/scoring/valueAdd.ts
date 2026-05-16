@@ -75,6 +75,28 @@ export function landRatioScore(
   return 25;
 }
 
+/**
+ * AI ADU base score: max of the two 0–100 reads emitted by the listing-extract
+ * agent. detached = vacant-yard play; converted = repurpose-existing-space.
+ *
+ * The contribution to value-add is the MAX of the two — either path adds a
+ * single unit of cash flow, so we don't double-count and we don't average
+ * them down. Returns null only when both reads are missing.
+ *
+ * The output feeds `applyAduFeasibilityBoosts` below, which layers in parcel-
+ * level structural evidence (construction type / land use / permit precedent).
+ */
+export function aduCombinedScore(
+  detached: number | null | undefined,
+  converted: number | null | undefined,
+): number | null {
+  const candidates = [detached, converted].filter(
+    (v): v is number => v != null,
+  );
+  if (candidates.length === 0) return null;
+  return Math.max(...candidates);
+}
+
 export type AduFeasibilityCtx = {
   /** From assessor (sfpim). Wood frame / type V is reconfiguration-friendly. */
   assessorConstructionType?: string | null;
@@ -87,7 +109,7 @@ export type AduFeasibilityCtx = {
 };
 
 export type AduScoreBreakdown = {
-  aiSignal: "LOW" | "MEDIUM" | "HIGH" | null;
+  aiBase: number | null;
   base: number;
   boosts: {
     construction: number;
@@ -107,23 +129,22 @@ function isWoodFrame(constructionType: string | null | undefined): boolean {
 }
 
 /**
- * Augment the AI ADU signal with parcel-level feasibility evidence:
+ * Augment the AI ADU base read with parcel-level feasibility evidence:
  *   - Construction type (wood frame ⇒ easier reconfiguration)
  *   - Land use category (MIXRES ⇒ flexible / RESIDENT ⇒ baseline)
  *   - Permit precedent on the parcel, the block, and within ~500ft
  *
- * The AI signal stays the anchor; structural data confirms or weakens it.
- * A null AI signal still yields a score (baseline 40) when at least one
- * structural signal is available — structural feasibility alone is
- * informative. When *no* signal is present (no AI, no land use, no
- * construction type, no permits), returns null so the listing drops out
- * of the weighted-avg divisor.
+ * The AI base (`aduCombinedScore(detached, converted)`) is the anchor;
+ * structural data confirms or weakens it. A null AI base still yields a
+ * score (baseline 40) when at least one structural signal is available —
+ * structural feasibility alone is informative. When *no* signal is present
+ * (no AI, no land use, no construction type, no permits), returns null so
+ * the listing drops out of the weighted-avg divisor.
  */
-export function aduPotentialScore(
-  level: "LOW" | "MEDIUM" | "HIGH" | null | undefined,
+export function applyAduFeasibilityBoosts(
+  aiBase: number | null,
   ctx: AduFeasibilityCtx = {},
 ): { score: number | null; breakdown: AduScoreBreakdown } {
-  const aiSignal = level ?? null;
   const hasStructural =
     ctx.assessorConstructionType != null ||
     ctx.landUseCategory != null ||
@@ -131,11 +152,10 @@ export function aduPotentialScore(
     ctx.permitsBlockAduRecentCount != null ||
     ctx.permitsRadiusAduRecentCount != null;
 
-  const base =
-    aiSignal === "HIGH" ? 80
-    : aiSignal === "MEDIUM" ? 50
-    : aiSignal === "LOW" ? 20
-    : 40;
+  // AI base passes through directly when available. The synthetic 40 only
+  // fires when the AI read is null but structural evidence is present —
+  // legacy behaviour preserved from the LOW/MEDIUM/HIGH days.
+  const base = aiBase != null ? aiBase : 40;
 
   const construction = isWoodFrame(ctx.assessorConstructionType) ? 10 : 0;
 
@@ -155,9 +175,9 @@ export function aduPotentialScore(
   );
 
   return {
-    score: aiSignal == null && !hasStructural ? null : final,
+    score: aiBase == null && !hasStructural ? null : final,
     breakdown: {
-      aiSignal,
+      aiBase,
       base,
       boosts: { construction, landUse, ownParcel, blockPrecedent, radius },
       final,

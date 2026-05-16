@@ -64,9 +64,11 @@ export type ListingForAI = {
   extractedTotalMonthlyRent: number | null;
   extractedOccupancy: number | null;
   recentCapex: unknown;
-  aduPotential: string | null;
-  aduConfidence: number | null;
-  aduRationale: string | null;
+  detachedAduScore: number | null;
+  detachedAduRationale: string | null;
+  convertedAduScore: number | null;
+  convertedAduRationale: string | null;
+  convertedAduSource: string | null;
   extractFetchedAt: Date | string | null;
   privateRemarks: string | null;
 };

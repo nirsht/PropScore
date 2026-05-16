@@ -8,7 +8,8 @@ import { vacancyScore } from "./vacancy";
 import {
   RENOVATION_UPSIDE,
   VALUE_ADD_WEIGHTS,
-  aduPotentialScore,
+  aduCombinedScore,
+  applyAduFeasibilityBoosts,
   landRatioScore,
   renovationUpsideScore,
   sizeDiscrepancyScore,
@@ -45,10 +46,13 @@ export type HeuristicContext = {
   assessedValueTotal?: number | null;
   extractedOccupancy?: number | null;
   extractedUnitsTotal?: number | null;
-  aduPotential?: "LOW" | "MEDIUM" | "HIGH" | null;
+  /** AI-extracted detached-ADU score (vacant-yard play, 0–100). */
+  detachedAduScore?: number | null;
+  /** AI-extracted converted-ADU score (basement/garage play, 0–100). */
+  convertedAduScore?: number | null;
   /** 0–100 location rating (walk + safety). Null when unavailable. */
   locationScore?: number | null;
-  /** SF Open Data feasibility signals — feed `aduPotentialScore`. */
+  /** SF Open Data feasibility signals — feed `applyAduFeasibilityBoosts`. */
   assessorConstructionType?: string | null;
   landUseCategory?: string | null;
   permitsOwnParcelAduCount?: number | null;
@@ -95,7 +99,10 @@ export function computeHeuristicScore(
     permitsBlockAduRecentCount: ctx.permitsBlockAduRecentCount,
     permitsRadiusAduRecentCount: ctx.permitsRadiusAduRecentCount,
   };
-  const aduResult = aduPotentialScore(ctx.aduPotential, aduFeasibilityCtx);
+  // AI base = max(detached, converted) (one new unit, whichever path is
+  // cheapest), then layer in parcel-level structural feasibility evidence.
+  const aiAduBase = aduCombinedScore(ctx.detachedAduScore, ctx.convertedAduScore);
+  const aduResult = applyAduFeasibilityBoosts(aiAduBase, aduFeasibilityCtx);
   const adu = aduResult.score;
   const location = ctx.locationScore ?? null;
   const assessmentDelta = assessmentDeltaScore(l, ctx);
@@ -148,8 +155,9 @@ export function computeHeuristicScore(
         renovationLevel: ctx.renovationLevel ?? null,
         landValue: ctx.assessorLandValue,
         buildingValue: ctx.assessorBuildingValue,
+        detachedAduScore: ctx.detachedAduScore ?? null,
+        convertedAduScore: ctx.convertedAduScore ?? null,
         assessedValueTotal: ctx.assessedValueTotal ?? null,
-        aduPotential: ctx.aduPotential ?? null,
         locationScore: location,
         zoningMaxUnits: ctx.zoningMaxUnits ?? null,
         neighborhoodMedianAssessedPerSqft:

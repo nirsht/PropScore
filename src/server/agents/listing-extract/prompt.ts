@@ -66,21 +66,45 @@ Output schema fields:
 
 8. parkingNotes / basementNotes / viewNotes — short string when remarks mention parking, basement, or views. Otherwise null.
 
-9. aduPotential — feasibility of building a new Accessory Dwelling Unit on the lot.
-   ADU rules in San Francisco: 4 ft side setbacks, 4 ft rear setback, 6 ft separation from primary structure.
-   Use the supplied lot/building/units numbers to apply this heuristic:
-     - If propertyType is single family or 2-4 units AND (lotSqft - buildingFootprintEstimate) ≥ 800 sqft of unused lot area → HIGH.
-     - If usable space is 400–800 sqft → MEDIUM.
-     - If lot is too tight (< 400 sqft unused) OR units > 6 with no obvious yard → LOW.
-     - Estimate buildingFootprintEstimate ≈ buildingSqft / max(1, stories), clamping stories to [1,4]. If buildingSqft is null, infer cautiously and lean LOW.
-     - Remarks override the heuristic when explicit ("permitted ADU", "RM-1 zoning", "yard for ADU", "no rear yard") — give a +1 confidence bump.
-   Always set null when you have no signals at all.
+9. detachedAduScore — 0–100 feasibility of building a NEW detached ADU on the vacant yard.
+   SF ADU rules: 4 ft side setbacks, 4 ft rear setback, 6 ft separation from primary structure.
+   Apply this heuristic on the supplied lot/building/units numbers:
+     - Estimate buildingFootprintEstimate ≈ buildingSqft / max(1, min(4, stories)). If buildingSqft is null, lean conservative.
+     - unused = lotSqft - buildingFootprintEstimate.
+     - Map to a continuous score:
+         unused ≤ 200 → 0
+         unused = 400 → 20
+         unused = 700 → 50
+         unused = 1000 → 80
+         unused ≥ 1200 → 100
+     - Floor to 0 when units > 6 and unused < 1200 (dense multifamily with no real yard).
+     - Bump +20 (cap 100) when remarks explicitly affirm a detached ADU is feasible
+       ("permitted ADU", "RM-1 zoning", "yard for ADU", "carriage house plans").
+     - Drop −30 (floor 0) when remarks rule it out ("no rear yard", "lot line to lot line").
+   Set to null only when lotSqft is unknown AND remarks have no signal.
 
-10. aduConfidence — 0..1 reflecting how sure you are about aduPotential. 0.5 when only the lot heuristic is available, 0.8+ when remarks explicitly mention ADU/yard.
+10. detachedAduRationale — one sentence ≤ 30 words anchoring the score
+    (e.g. "~1,100 sqft unused after 4 ft setbacks — fits a 600 sqft detached ADU.").
 
-11. aduRationale — one sentence ≤ 30 words referencing the rule that triggered.
+11. convertedAduScore — 0–100 feasibility of CONVERTING existing interior space
+    (basement, garage, or large unfinished room) into a new unit. Score the
+    strongest single signal you find, taking the max of:
+      - Stated basement size in remarks: ≥ 500 sqft → 80; 300–499 → 55; 1–299 → 25.
+      - Strong basement language without exact size: "huge basement",
+        "ADU-ready basement", "permitted in-law", "legalized garage" → 70.
+      - Generic basement mention ("basement", "lower level") → 35.
+      - "Garage conversion possible" / "convertible garage" / "tandem garage
+        + storage" → 60.
+      - "Exposed walls" / "unfinished room" / "unfinished basement" →  45.
+    Set to null only when you have no signal at all.
 
-12. rationale — one sentence ≤ 30 words summarizing what you extracted.
+12. convertedAduRationale — one sentence ≤ 30 words quoting or paraphrasing
+    the strongest signal ("Remarks: 'huge 800 sqft basement with separate entry'.").
+
+13. convertedAduSource — which existing space drives the score:
+    "basement" | "garage" | "unfinished-space". Null when convertedAduScore is null.
+
+14. rationale — one sentence ≤ 30 words summarizing what you extracted.
 
 Output JSON only matching the schema. Never invent unit mixes, ACTUAL rents, or capex you don't see in the input.
 The exception is aiRentEstimate — that field is explicitly an estimate, grounded in the supplied address/neighborhood and your market knowledge.`;
@@ -97,6 +121,8 @@ export const listingExtractUserMessage = (input: {
   buildingSqft: number | null;
   lotSqft: number | null;
   stories: number | null;
+  basementSqft: number | null;
+  aiHasBasement: boolean | null;
 }) => {
   const lines = [
     `address: ${input.address ?? "unknown"}`,
@@ -108,6 +134,8 @@ export const listingExtractUserMessage = (input: {
     `buildingSqft: ${input.buildingSqft ?? "unknown"}`,
     `lotSqft: ${input.lotSqft ?? "unknown"}`,
     `stories: ${input.stories ?? "unknown"}`,
+    `basementSqft (assessor): ${input.basementSqft ?? "unknown"}`,
+    `aiHasBasement (vision): ${input.aiHasBasement == null ? "unknown" : input.aiHasBasement ? "yes" : "no"}`,
     "",
     "PublicRemarks:",
     input.publicRemarks ?? "(none)",

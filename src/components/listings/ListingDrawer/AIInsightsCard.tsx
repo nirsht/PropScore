@@ -18,11 +18,14 @@ export const RENO_LABEL: Record<RenovationLevel, string> = {
   RENOVATED: "Renovated",
 };
 
-export const ADU_COLOR: Record<"LOW" | "MEDIUM" | "HIGH", "default" | "warning" | "success"> = {
-  LOW: "default",
-  MEDIUM: "warning",
-  HIGH: "success",
-};
+// Two parallel 0–100 ADU reads emitted by the listing-extract agent — see
+// `valueAdd.ts`. The drawer colors each chip by the numeric score: <40
+// muted, 40–69 warning, ≥70 success.
+function aduChipColor(score: number): "default" | "warning" | "success" {
+  if (score >= 70) return "success";
+  if (score >= 40) return "warning";
+  return "default";
+}
 
 // ============================================================================
 // AI Insights — merges photo-vision facts (renovation, stories, basement,
@@ -39,7 +42,9 @@ export function AIInsightsCard({ listing }: { listing: ListingForAI }) {
     | null
     | undefined;
   const capex = listing.recentCapex as string[] | null | undefined;
-  const adu = listing.aduPotential as "LOW" | "MEDIUM" | "HIGH" | null;
+  const detachedScore = listing.detachedAduScore;
+  const convertedScore = listing.convertedAduScore;
+  const hasAdu = detachedScore != null || convertedScore != null;
 
   const hasAnyExtract =
     !!unitMix?.length ||
@@ -47,7 +52,7 @@ export function AIInsightsCard({ listing }: { listing: ListingForAI }) {
     listing.extractedTotalMonthlyRent != null ||
     listing.extractedOccupancy != null ||
     !!capex?.length ||
-    !!adu;
+    hasAdu;
   const hasVision = !!listing.visionFetchedAt;
 
   return (
@@ -61,20 +66,32 @@ export function AIInsightsCard({ listing }: { listing: ListingForAI }) {
             label={RENO_LABEL[listing.renovationLevel]}
           />
         )}
-        {adu && (
+        {detachedScore != null && (
           <Tooltip
-            title={listing.aduRationale ?? ""}
+            title={listing.detachedAduRationale ?? ""}
             arrow
             placement="top"
-            disableHoverListener={!listing.aduRationale}
+            disableHoverListener={!listing.detachedAduRationale}
           >
             <Chip
               size="small"
-              color={ADU_COLOR[adu]}
-              label={`ADU ${adu.toLowerCase()}${
-                listing.aduConfidence != null
-                  ? ` · ${Math.round(listing.aduConfidence * 100)}%`
-                  : ""
+              color={aduChipColor(detachedScore)}
+              label={`Detached ADU ${detachedScore}%`}
+            />
+          </Tooltip>
+        )}
+        {convertedScore != null && (
+          <Tooltip
+            title={listing.convertedAduRationale ?? ""}
+            arrow
+            placement="top"
+            disableHoverListener={!listing.convertedAduRationale}
+          >
+            <Chip
+              size="small"
+              color={aduChipColor(convertedScore)}
+              label={`Converted ADU ${convertedScore}%${
+                listing.convertedAduSource ? ` · ${listing.convertedAduSource}` : ""
               }`}
             />
           </Tooltip>
@@ -155,14 +172,28 @@ export function AIInsightsCard({ listing }: { listing: ListingForAI }) {
         </Box>
       )}
 
-      {adu && (
+      {hasAdu && (
         <Box>
           <Typography variant="caption" color="text.secondary">
             ADU feasibility
           </Typography>
-          <Typography variant="body2" sx={{ mt: 0.25 }}>
-            {listing.aduRationale ?? "—"}
-          </Typography>
+          {detachedScore != null && (
+            <Typography variant="body2" sx={{ mt: 0.25 }}>
+              <Box component="strong" sx={{ fontWeight: 600 }}>
+                Detached {detachedScore}%:
+              </Box>{" "}
+              {listing.detachedAduRationale ?? "—"}
+            </Typography>
+          )}
+          {convertedScore != null && (
+            <Typography variant="body2" sx={{ mt: 0.25 }}>
+              <Box component="strong" sx={{ fontWeight: 600 }}>
+                Converted {convertedScore}%
+                {listing.convertedAduSource ? ` (${listing.convertedAduSource})` : ""}:
+              </Box>{" "}
+              {listing.convertedAduRationale ?? "—"}
+            </Typography>
+          )}
         </Box>
       )}
     </Paper>

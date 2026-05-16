@@ -43,8 +43,8 @@ export type ListingRow = {
   aiStories: number | null;
   aiHasBasement: boolean | null;
   aiHasPenthouse: boolean | null;
-  aduPotential: "LOW" | "MEDIUM" | "HIGH" | null;
-  aduConfidence: number | null;
+  detachedAduScore: number | null;
+  convertedAduScore: number | null;
   extractedTotalMonthlyRent: number | null;
   extractedOccupancy: number | null;
   pricePerSqft: number | null;
@@ -301,7 +301,7 @@ export async function searchListings(input: FilterInput, userId?: string): Promi
         "assessorBuildingValue", "assessorLandValue",
         "renovationLevel", "renovationConfidence",
         "aiStories", "aiHasBasement", "aiHasPenthouse",
-        "aduPotential", "aduConfidence",
+        "detachedAduScore", "convertedAduScore",
         "extractedTotalMonthlyRent", "extractedOccupancy",
         "pricePerSqft", "pricePerUnit", "sqftPerUnit",
         "hasSizeDiscrepancy",

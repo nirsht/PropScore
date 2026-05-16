@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   RENOVATION_UPSIDE,
   VALUE_ADD_WEIGHTS,
-  aduPotentialScore,
+  aduCombinedScore,
+  applyAduFeasibilityBoosts,
   landRatioScore,
   renovationUpsideScore,
   resolveWeights,
@@ -112,30 +113,44 @@ describe("landRatioScore", () => {
   });
 });
 
-describe("aduPotentialScore", () => {
-  it("ranks HIGH > MEDIUM > LOW for the AI signal alone", () => {
-    expect(aduPotentialScore("HIGH").score!).toBeGreaterThan(
-      aduPotentialScore("MEDIUM").score!,
-    );
-    expect(aduPotentialScore("MEDIUM").score!).toBeGreaterThan(
-      aduPotentialScore("LOW").score!,
-    );
+describe("aduCombinedScore", () => {
+  it("returns null when both reads are missing", () => {
+    expect(aduCombinedScore(null, null)).toBeNull();
+    expect(aduCombinedScore(undefined, undefined)).toBeNull();
+  });
+  it("returns the available read when only one is present", () => {
+    expect(aduCombinedScore(60, null)).toBe(60);
+    expect(aduCombinedScore(null, 80)).toBe(80);
+  });
+  it("returns the max of the two reads — one new unit, whichever path is cheapest", () => {
+    expect(aduCombinedScore(40, 80)).toBe(80);
+    expect(aduCombinedScore(95, 50)).toBe(95);
+  });
+});
+
+describe("applyAduFeasibilityBoosts", () => {
+  it("passes the AI base through when no structural data", () => {
+    const r = applyAduFeasibilityBoosts(72);
+    expect(r.score).toBe(72);
+    expect(r.breakdown.aiBase).toBe(72);
+    expect(r.breakdown.base).toBe(72);
   });
 
-  it("returns null when no AI signal AND no structural feasibility data", () => {
-    expect(aduPotentialScore(null).score).toBeNull();
-    expect(aduPotentialScore(undefined).score).toBeNull();
+  it("returns null when no AI base AND no structural feasibility data", () => {
+    expect(applyAduFeasibilityBoosts(null).score).toBeNull();
   });
 
-  it("returns a baseline score on structural data alone (no AI signal)", () => {
-    const r = aduPotentialScore(null, { landUseCategory: "MIXRES" });
+  it("returns a baseline score on structural data alone (no AI base)", () => {
+    const r = applyAduFeasibilityBoosts(null, { landUseCategory: "MIXRES" });
     expect(r.score).not.toBeNull();
+    // Synthetic 40 baseline + 15 MIXRES boost.
+    expect(r.breakdown.base).toBe(40);
     expect(r.breakdown.boosts.landUse).toBe(15);
   });
 
   it("wood-frame construction adds a boost", () => {
-    const without = aduPotentialScore("MEDIUM");
-    const wood = aduPotentialScore("MEDIUM", {
+    const without = applyAduFeasibilityBoosts(50);
+    const wood = applyAduFeasibilityBoosts(50, {
       assessorConstructionType: "Wood Frame",
     });
     expect(wood.score!).toBeGreaterThan(without.score!);
@@ -143,17 +158,17 @@ describe("aduPotentialScore", () => {
   });
 
   it("MIXRES land use adds more than RESIDENT", () => {
-    const mix = aduPotentialScore("MEDIUM", { landUseCategory: "MIXRES" });
-    const res = aduPotentialScore("MEDIUM", { landUseCategory: "RESIDENT" });
+    const mix = applyAduFeasibilityBoosts(50, { landUseCategory: "MIXRES" });
+    const res = applyAduFeasibilityBoosts(50, { landUseCategory: "RESIDENT" });
     expect(mix.breakdown.boosts.landUse).toBeGreaterThan(res.breakdown.boosts.landUse);
   });
 
   it("same-block ADU precedent dominates over radius precedent", () => {
-    const block = aduPotentialScore("MEDIUM", {
+    const block = applyAduFeasibilityBoosts(50, {
       permitsBlockAduRecentCount: 1,
       permitsRadiusAduRecentCount: 1,
     });
-    const radiusOnly = aduPotentialScore("MEDIUM", {
+    const radiusOnly = applyAduFeasibilityBoosts(50, {
       permitsRadiusAduRecentCount: 1,
     });
     // Block precedent +20; radius +10 only when block is 0 (no double-count).
@@ -163,7 +178,7 @@ describe("aduPotentialScore", () => {
   });
 
   it("caps the score at 100", () => {
-    const r = aduPotentialScore("HIGH", {
+    const r = applyAduFeasibilityBoosts(80, {
       assessorConstructionType: "Wood Frame",
       landUseCategory: "MIXRES",
       permitsOwnParcelAduCount: 1,
@@ -240,7 +255,7 @@ describe("weightedValueAdd", () => {
       vacancyScore: 50,
       locationScore: 50,
       densityScore: 50,
-      aduScore: aduPotentialScore("HIGH").score,
+      aduScore: aduCombinedScore(95, 30),
       motivationScore: 50,
     });
     expect(highAdu).toBeGreaterThan(noAdu);
@@ -280,18 +295,31 @@ describe("computeHeuristicScore — new signal flow", () => {
     expect(withAssessor.densityScore).toBeGreaterThan(noContext.densityScore);
   });
 
-  it("HIGH ADU potential lifts value-add", () => {
+  it("strong detached-ADU read lifts value-add", () => {
     const baseline = computeHeuristicScore(baseListing());
-    const lifted = computeHeuristicScore(baseListing(), { aduPotential: "HIGH" });
-    // Without structural boosts the AI signal alone scores 80 (the new base).
+    const lifted = computeHeuristicScore(baseListing(), { detachedAduScore: 95 });
+    expect(lifted.aduScore).toBe(95);
+    expect(lifted.valueAddWeightedAvg).toBeGreaterThan(baseline.valueAddWeightedAvg);
+  });
+
+  it("strong converted-ADU read lifts value-add even without detached", () => {
+    const baseline = computeHeuristicScore(baseListing());
+    const lifted = computeHeuristicScore(baseListing(), {
+      detachedAduScore: 0,
+      convertedAduScore: 80,
+    });
     expect(lifted.aduScore).toBe(80);
     expect(lifted.valueAddWeightedAvg).toBeGreaterThan(baseline.valueAddWeightedAvg);
   });
 
   it("structural feasibility boosts lift the ADU score above the AI base", () => {
-    const aiOnly = computeHeuristicScore(baseListing(), { aduPotential: "MEDIUM" });
+    const aiOnly = computeHeuristicScore(baseListing(), {
+      detachedAduScore: 50,
+      convertedAduScore: 50,
+    });
     const withFeasibility = computeHeuristicScore(baseListing(), {
-      aduPotential: "MEDIUM",
+      detachedAduScore: 50,
+      convertedAduScore: 50,
       assessorConstructionType: "Wood Frame",
       landUseCategory: "MIXRES",
       permitsBlockAduRecentCount: 2,

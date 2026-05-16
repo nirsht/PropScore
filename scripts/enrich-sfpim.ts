@@ -89,6 +89,7 @@ async function main() {
           assessorUseType: record.useType,
           assessorConstructionType: record.constructionType,
           assessorBasement: record.basement,
+          assessorBasementSqft: record.basementSqft,
           assessorBuildingValue: record.buildingValue,
           assessorLandValue: record.landValue,
           assessorFetchedAt: new Date(),

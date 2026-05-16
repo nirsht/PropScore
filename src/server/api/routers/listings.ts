@@ -95,11 +95,8 @@ export const listingsRouter = router({
             assessedValueTotal,
             extractedOccupancy: listing.extractedOccupancy,
             extractedUnitsTotal,
-            aduPotential: listing.aduPotential as
-              | "LOW"
-              | "MEDIUM"
-              | "HIGH"
-              | null,
+            detachedAduScore: listing.detachedAduScore,
+            convertedAduScore: listing.convertedAduScore,
             locationScore: listing.locationScore,
             assessorConstructionType: listing.assessorConstructionType,
             landUseCategory: listing.landUseCategory,
