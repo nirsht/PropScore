@@ -435,6 +435,10 @@ model Score {
   breakdown            Json
   computedBy           ScoreSource
   computedAt           DateTime    @default(now())
+  // Fingerprint of the AI-scoring input payload (sha256 of stable-key JSON).
+  // The nightly delta-AI job uses this to skip listings whose inputs haven't
+  // changed since the last AI run. Null = never AI-scored.
+  aiInputHash          String?
 
   @@index([valueAddWeightedAvg(sort: Desc)])
   @@index([densityScore(sort: Desc)])
