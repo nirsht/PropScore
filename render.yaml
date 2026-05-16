@@ -27,6 +27,12 @@ services:
         value: https://api.bridgedataoutput.com/api/v2/OData
       - key: OPENAI_MODEL
         value: gpt-5-mini
+      # Custom domain — NextAuth uses this to construct the OAuth callback
+      # URL it hands to Google. Must match the host the browser lands on
+      # after consent, and must match an Authorised Redirect URI on the
+      # GCP OAuth client (https://propscore26.com/api/auth/callback/google).
+      - key: NEXTAUTH_URL
+        value: https://propscore26.com
 
   - type: cron
     name: propscore-etl-nightly
