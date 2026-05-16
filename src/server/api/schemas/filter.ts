@@ -75,6 +75,11 @@ export const FilterInput = z.object({
   // false = only listings flagged as exempt.
   rentControlCovered: z.boolean().nullable().optional(),
 
+  // Tri-state for soft-story red flag: undefined/null = all, true = on the
+  // SF soft-story list AND not yet retrofitted, false = not on the list or
+  // retrofit complete.
+  softStoryRedFlag: z.boolean().nullable().optional(),
+
   // Date ranges (ISO YYYY-MM-DD strings — coerced to Date in the SQL builder).
   // `min` and `max` are independent: either alone is a valid one-sided range.
   postDate: z

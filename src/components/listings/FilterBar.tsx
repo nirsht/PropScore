@@ -501,6 +501,25 @@ function QuickChips() {
         set({ rentControlCovered: next });
       },
     },
+    {
+      key: "soft-story",
+      label:
+        state.softStoryRedFlag === true
+          ? "Soft story: yes"
+          : state.softStoryRedFlag === false
+            ? "Soft story: no"
+            : "Soft story: any",
+      active: state.softStoryRedFlag != null,
+      apply: () => {
+        const next =
+          state.softStoryRedFlag == null
+            ? true
+            : state.softStoryRedFlag
+              ? false
+              : undefined;
+        set({ softStoryRedFlag: next });
+      },
+    },
   ];
 
   return (
@@ -556,6 +575,7 @@ function countActive(s: ReturnType<typeof useFilter>["state"]): number {
   if (s.postDate && (s.postDate.min || s.postDate.max)) n++;
   if (s.hasSizeDiscrepancy != null) n++;
   if (s.rentControlCovered != null) n++;
+  if (s.softStoryRedFlag != null) n++;
   if (s.radius) n++;
   if (s.polygon) n++;
   return n;

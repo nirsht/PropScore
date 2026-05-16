@@ -234,6 +234,19 @@ model Listing {
   rentControlCovered          Boolean?
   rentControlComputedAt       DateTime?
 
+  // Soft-story seismic risk (Socrata jwdp-cqyc). Y/N flag is true only when
+  // the parcel is on SF's mandatory soft-story retrofit list AND the retrofit
+  // is not yet complete — i.e. an open red flag for the buyer. Retrofitted
+  // buildings on the list flip back to false but keep their tier+status so
+  // the drawer tooltip can still cite the historical classification.
+  softStoryRedFlag       Boolean?
+  /// 1–4, dataset's retrofit-urgency tier. Null for parcels not on the list.
+  softStoryTier          Int?
+  /// Raw dataset status (e.g. "Work Complete - CFC Issued", "Out of Compliance"),
+  /// surfaced in the RiskComplianceCard tooltip.
+  softStoryStatus        String?
+  softStoryFetchedAt     DateTime?
+
   raw                         Json
   bridgeModificationTimestamp DateTime
 
@@ -258,6 +271,7 @@ model Listing {
   @@index([codeViolationsOpenCount])
   @@index([housingNetUnitChange5y])
   @@index([rentControlCovered])
+  @@index([softStoryRedFlag])
 }
 
 // -------------------- BUILDING PERMITS --------------------

@@ -189,6 +189,10 @@ function buildWhere(
     where.push(Prisma.sql`"rentControlCovered" = ${input.rentControlCovered}`);
   }
 
+  if (input.softStoryRedFlag != null) {
+    where.push(Prisma.sql`"softStoryRedFlag" = ${input.softStoryRedFlag}`);
+  }
+
   if (input.postDate?.min) {
     where.push(Prisma.sql`"postDate" >= ${new Date(input.postDate.min)}`);
   }
