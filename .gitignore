@@ -35,3 +35,6 @@ coverage
 
 # misc
 .cache
+
+# claude
+.claude/worktrees
