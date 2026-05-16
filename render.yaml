@@ -14,7 +14,7 @@ services:
     region: ohio
     branch: main
     autoDeploy: true
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && NODE_OPTIONS=--max-old-space-size=4096 pnpm build
     startCommand: pnpm start
     preDeployCommand: pnpm prisma migrate deploy && pnpm db:seed
     healthCheckPath: /sign-in
