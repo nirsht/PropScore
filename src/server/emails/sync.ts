@@ -55,7 +55,7 @@ export async function syncThread(threadId: string): Promise<SyncResult> {
   const agentEmailLower = thread.toEmail.toLowerCase();
 
   let newMessages = 0;
-  let newInbound: { id: string }[] = [];
+  const newInbound: { id: string }[] = [];
   let latestOutboundSeen = false;
 
   for (const msg of gmailMessages) {
