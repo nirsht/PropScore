@@ -75,12 +75,16 @@ export const ListingExtractOutput = z.object({
   // Detached ADU — building a new unit on the vacant yard. 0–100 score with
   // a one-sentence rationale. Null score = no signal (e.g. lot size unknown).
   detachedAduScore: z.number().int().min(0).max(100).nullable(),
-  detachedAduRationale: z.string(),
+  // Rationales are nullable: when the score is null (no signal in remarks
+  // and no assessor data), the model legitimately has nothing to say. The
+  // empty-remarks heuristic still emits a string, but we accept null from
+  // the LLM rather than failing the whole extract.
+  detachedAduRationale: z.string().nullable(),
   // Converted ADU — repurposing existing space (basement / garage /
   // unfinished space) into a unit. 0–100 score; `convertedAduSource` names
   // the dominant signal; null source when no signal at all.
   convertedAduScore: z.number().int().min(0).max(100).nullable(),
-  convertedAduRationale: z.string(),
+  convertedAduRationale: z.string().nullable(),
   convertedAduSource: ConvertedAduSourceEnum.nullable(),
   rationale: z.string(),
 });

@@ -1,18 +1,22 @@
 -- =========================================================================
--- ADU feasibility split: replace single LOW/MEDIUM/HIGH `aduPotential` with
--- two parallel 0–100 reads — `detachedAduScore` (vacant-yard ADU) and
--- `convertedAduScore` (repurpose basement/garage). Adds `convertedAduSource`
--- and a numeric `assessorBasementSqft` to drive the converted score.
+-- ADU feasibility split (corrective re-issue). The original
+-- 20260508180000_adu_split migration was authored on a feature branch and
+-- merged into main AFTER several later migrations (score_ai_columns,
+-- starred_listings, soft_story) had already been deployed to prod. Applying
+-- it now would recreate `mv_listing_search` in its 2026-05-08 shape and
+-- silently drop `softStoryRedFlag` and the five ai* score columns that
+-- listings-search.ts now depends on.
 --
--- Runs AFTER `20260508170000_risk_compliance`, which last rebuilt the
--- `mv_listing_search` view. We drop the view, drop the legacy columns,
--- add the new columns, then recreate the view with the same v5 projection
--- as risk_compliance but with `aduPotential`/`aduConfidence` swapped for
--- `detachedAduScore`/`convertedAduScore` and the LOW/MEDIUM/HIGH → numeric
--- CASE fallback removed (Score.aduScore is the only path now).
+-- This migration replaces the original adu_split. It performs the same
+-- Listing column changes (drop legacy aduPotential/aduConfidence/aduRationale,
+-- add assessorBasementSqft + detached/converted ADU columns) and recreates
+-- `mv_listing_search` with the FULL union shape: score_ai_columns' projection
+-- + softStoryRedFlag + detached/converted ADU swapped in for aduPotential/
+-- aduConfidence, with the LOW/MEDIUM/HIGH fallback on aduScore removed.
 -- =========================================================================
 
--- Drop the v5 MV first; it references aduPotential / aduConfidence.
+-- The MV currently references aduPotential/aduConfidence (soft_story shape),
+-- so we must drop it before dropping those columns.
 DROP MATERIALIZED VIEW IF EXISTS "mv_listing_search";
 
 -- ---------- Drop legacy LOW/MEDIUM/HIGH columns ----------
@@ -22,19 +26,22 @@ ALTER TABLE "Listing"
   DROP COLUMN IF EXISTS "aduRationale";
 
 -- ---------- New columns ----------
+-- IF NOT EXISTS so the migration is idempotent if the original
+-- 20260508180000_adu_split migration was applied in parallel — the
+-- columns it adds are identical to ours.
 ALTER TABLE "Listing"
-  ADD COLUMN "assessorBasementSqft"   INTEGER,
-  ADD COLUMN "detachedAduScore"       INTEGER,
-  ADD COLUMN "detachedAduRationale"   TEXT,
-  ADD COLUMN "convertedAduScore"      INTEGER,
-  ADD COLUMN "convertedAduRationale"  TEXT,
-  ADD COLUMN "convertedAduSource"     TEXT;
+  ADD COLUMN IF NOT EXISTS "assessorBasementSqft"   INTEGER,
+  ADD COLUMN IF NOT EXISTS "detachedAduScore"       INTEGER,
+  ADD COLUMN IF NOT EXISTS "detachedAduRationale"   TEXT,
+  ADD COLUMN IF NOT EXISTS "convertedAduScore"      INTEGER,
+  ADD COLUMN IF NOT EXISTS "convertedAduRationale"  TEXT,
+  ADD COLUMN IF NOT EXISTS "convertedAduSource"     TEXT;
 
 -- ---------- Recreate the materialized view ----------
--- Mirrors the v5 shape from 20260508170000_risk_compliance, with the
--- ADU columns swapped over to the new split and the LOW/MEDIUM/HIGH
--- fallback removed. `recompute-scores` reseeds `Score.aduScore` from
--- the new detached/converted reads on the next run.
+-- Final shape = score_ai_columns projection + softStoryRedFlag, with
+-- aduPotential/aduConfidence replaced by detachedAduScore/convertedAduScore
+-- and the CASE-based fallback on aduScore removed (Score.aduScore is the
+-- only path now).
 CREATE MATERIALIZED VIEW "mv_listing_search" AS
 SELECT
   l."mlsId",
@@ -90,6 +97,7 @@ SELECT
   l."codeViolationsRecentCount",
   l."housingNetUnitChange5y",
   l."rentControlCovered",
+  l."softStoryRedFlag",
   s."densityScore",
   s."vacancyScore",
   s."motivationScore",
@@ -99,6 +107,11 @@ SELECT
   s."zoningUpsideScore",
   s."marketUpsideScore",
   s."valueAddWeightedAvg",
+  s."aiDensityScore",
+  s."aiVacancyScore",
+  s."aiMotivationScore",
+  s."aiValueAddWeightedAvg",
+  s."aiComputedAt",
   s."computedBy"   AS "scoreComputedBy",
   s."computedAt"   AS "scoreComputedAt"
 FROM "Listing" l
@@ -107,6 +120,10 @@ WHERE l."status" = 'Active';
 
 CREATE UNIQUE INDEX "mv_listing_search_pk"                       ON "mv_listing_search" ("mlsId");
 CREATE INDEX "mv_listing_search_value_add_idx"                   ON "mv_listing_search" ("valueAddWeightedAvg" DESC NULLS LAST);
+CREATE INDEX "mv_listing_search_ai_value_add_idx"                ON "mv_listing_search" ("aiValueAddWeightedAvg" DESC NULLS LAST);
+CREATE INDEX "mv_listing_search_ai_density_idx"                  ON "mv_listing_search" ("aiDensityScore" DESC NULLS LAST);
+CREATE INDEX "mv_listing_search_ai_vacancy_idx"                  ON "mv_listing_search" ("aiVacancyScore" DESC NULLS LAST);
+CREATE INDEX "mv_listing_search_ai_motivation_idx"               ON "mv_listing_search" ("aiMotivationScore" DESC NULLS LAST);
 CREATE INDEX "mv_listing_search_price_idx"                       ON "mv_listing_search" ("price");
 CREATE INDEX "mv_listing_search_pricePerSqft_idx"                ON "mv_listing_search" ("pricePerSqft");
 CREATE INDEX "mv_listing_search_pricePerUnit_idx"                ON "mv_listing_search" ("pricePerUnit");
@@ -123,3 +140,4 @@ CREATE INDEX "mv_listing_search_zoningDistrict_idx"              ON "mv_listing_
 CREATE INDEX "mv_listing_search_codeViolationsOpenCount_idx"     ON "mv_listing_search" ("codeViolationsOpenCount");
 CREATE INDEX "mv_listing_search_housingNetUnitChange5y_idx"      ON "mv_listing_search" ("housingNetUnitChange5y");
 CREATE INDEX "mv_listing_search_rentControlCovered_idx"          ON "mv_listing_search" ("rentControlCovered") WHERE "rentControlCovered" IS NOT NULL;
+CREATE INDEX "mv_listing_search_softStoryRedFlag_idx"            ON "mv_listing_search" ("softStoryRedFlag") WHERE "softStoryRedFlag" IS NOT NULL;
