@@ -1,4 +1,4 @@
-import { PDFParse } from "pdf-parse";
+import type { PDFParse } from "pdf-parse";
 import * as XLSX from "xlsx";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
@@ -70,8 +70,13 @@ async function fetchAttachmentBuffer(
 }
 
 async function pdfToText(buf: Buffer): Promise<string> {
+  // Lazy-load pdf-parse: its transitive pdfjs-dist runs `new DOMMatrix()` at
+  // module init, which crashes any route whose bundle eagerly pulls this file
+  // (e.g. listings tRPC, via the root router). Defer to call time so only the
+  // email-parse path pays the cost.
   let parser: PDFParse | null = null;
   try {
+    const { PDFParse } = await import("pdf-parse");
     parser = new PDFParse({ data: buf });
     const result = await parser.getText();
     return (result.text ?? "").trim();
