@@ -75,6 +75,10 @@ export const FilterInput = z.object({
   // false = only listings flagged as exempt.
   rentControlCovered: z.boolean().nullable().optional(),
 
+  // Per-user favorites filter. When true, restricts to listings the current
+  // user has starred (joined against StarredListing in the SQL builder).
+  starredOnly: z.boolean().optional(),
+
   // Date ranges (ISO YYYY-MM-DD strings — coerced to Date in the SQL builder).
   // `min` and `max` are independent: either alone is a valid one-sided range.
   postDate: z
