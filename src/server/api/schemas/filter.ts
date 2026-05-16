@@ -27,6 +27,13 @@ export const SortKey = z.enum([
   "density",
   "vacancy",
   "motivation",
+  // AI-scored variants — sort by the columns populated by `runAIScoring`
+  // (Score.ai*). Listings never AI-scored show up as nulls and sort to the
+  // bottom under DESC.
+  "valueAddAi",
+  "densityAi",
+  "vacancyAi",
+  "motivationAi",
 ]);
 
 export const FilterInput = z.object({
@@ -74,6 +81,15 @@ export const FilterInput = z.object({
   // listings flagged as covered (multi-unit residential built before 1979),
   // false = only listings flagged as exempt.
   rentControlCovered: z.boolean().nullable().optional(),
+
+  // Tri-state for soft-story red flag: undefined/null = all, true = on the
+  // SF soft-story list AND not yet retrofitted, false = not on the list or
+  // retrofit complete.
+  softStoryRedFlag: z.boolean().nullable().optional(),
+
+  // Per-user favorites filter. When true, restricts to listings the current
+  // user has starred (joined against StarredListing in the SQL builder).
+  starredOnly: z.boolean().optional(),
 
   // Date ranges (ISO YYYY-MM-DD strings — coerced to Date in the SQL builder).
   // `min` and `max` are independent: either alone is a valid one-sided range.

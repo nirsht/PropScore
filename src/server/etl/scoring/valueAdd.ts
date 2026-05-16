@@ -3,11 +3,11 @@ import type { RenovationLevel } from "@prisma/client";
 /**
  * Value-Add weighted average — the default sort key for the grid.
  *
- * Updated 2026-05-08: collapsed to a 5-component scheme aligned with how
- * we actually pitch deals (vacancy is king, location and density tie for
- * second, ADU is a tiebreaker, motivation is a small thumb on the scale).
- * Renovation upside, size discrepancy, and land ratio are still computed
- * for the breakdown but no longer move the weighted average.
+ * Updated 2026-05-16: shifted 5 points from density to ADU. Vacancy still
+ * leads, location is solo second, density and ADU now bracket close
+ * together, and motivation stays a small thumb on the scale. Renovation
+ * upside, size discrepancy, and land ratio are still computed for the
+ * breakdown but no longer move the weighted average.
  *
  * Weights are exposed so the UI can let users re-rank with their own.
  * Null components drop out of the divisor so unscored listings aren't
@@ -16,8 +16,8 @@ import type { RenovationLevel } from "@prisma/client";
 export const VALUE_ADD_WEIGHTS = {
   vacancy: 0.35,
   location: 0.25,
-  density: 0.25,
-  adu: 0.10,
+  density: 0.20,
+  adu: 0.15,
   motivation: 0.05,
 } as const;
 

@@ -13,25 +13,58 @@ import {
   fmtMoney,
   sumUnitMix,
 } from "./gridFormatters";
-import { DiscrepancyCell, FallbackCell, HeaderTooltip } from "./gridCells";
+import { DiscrepancyCell, FallbackCell, HeaderTooltip, StarCell } from "./gridCells";
 
 export const columns: GridColDef<ListingRow>[] = [
+  {
+    field: "__starred",
+    headerName: "",
+    width: 48,
+    sortable: false,
+    filterable: false,
+    disableColumnMenu: true,
+    renderCell: ({ row }: GridRenderCellParams<ListingRow>) => (
+      <StarCell mlsId={row.mlsId} />
+    ),
+  },
   {
     field: "valueAddWeightedAvg",
     width: 110,
     renderHeader: () => (
       <HeaderTooltip
         label="Value-Add"
-        hint="Weighted average of Density (25%), Vacancy (35%), Motivation (40%). 0–100. Default sort key. AI badge means the score came from the GPT scorer."
+        hint="Heuristic weighted average: Vacancy 35%, Location 25%, Density 20%, ADU 15%, Motivation 5%. 0–100. Always populated, refreshed every nightly."
       />
     ),
     valueFormatter: (v) => fmtDecimal(v as number | null, 1),
-    renderCell: ({ value, row }: GridRenderCellParams<ListingRow>) => (
-      <Stack direction="row" spacing={0.5} alignItems="center">
-        <Box sx={{ fontWeight: 600 }}>{fmtDecimal(value as number | null, 1)}</Box>
-        {row.scoreComputedBy === "AI" && <Chip size="small" color="primary" label="AI" />}
-      </Stack>
+    renderCell: ({ value }: GridRenderCellParams<ListingRow>) => (
+      <Box sx={{ fontWeight: 600 }}>{fmtDecimal(value as number | null, 1)}</Box>
     ),
+  },
+  {
+    field: "aiValueAddWeightedAvg",
+    width: 130,
+    renderHeader: () => (
+      <HeaderTooltip
+        label="AI Value-Add"
+        hint="GPT-5-mini's holistic 0–100 value-add score. Reasons over the same payload the heuristic uses plus the public remarks. Null until the listing has been AI-scored at least once (delta-only nightly)."
+      />
+    ),
+    valueFormatter: (v) => fmtDecimal(v as number | null, 1),
+    renderCell: ({ value, row }: GridRenderCellParams<ListingRow>) => {
+      const v = value as number | null;
+      if (v == null) {
+        return (
+          <Typography variant="caption" color="text.secondary">—</Typography>
+        );
+      }
+      return (
+        <Stack direction="row" spacing={0.5} alignItems="center">
+          <Box sx={{ fontWeight: 600 }}>{fmtDecimal(v, 1)}</Box>
+          {row.aiComputedAt && <Chip size="small" color="primary" label="AI" />}
+        </Stack>
+      );
+    },
   },
   {
     field: "mlsId",
@@ -104,6 +137,54 @@ export const columns: GridColDef<ListingRow>[] = [
       />
     ),
     valueFormatter: (v) => fmtDecimal(v as number | null, 0),
+  },
+  {
+    field: "aiDensityScore",
+    width: 95,
+    renderHeader: () => (
+      <HeaderTooltip
+        label="AI Density"
+        hint="GPT-5-mini's 0–100 density read. Null until AI-scored."
+      />
+    ),
+    valueFormatter: (v) => fmtDecimal(v as number | null, 0),
+    renderCell: ({ value }: GridRenderCellParams<ListingRow>) => {
+      const v = value as number | null;
+      if (v == null) return <Typography variant="caption" color="text.secondary">—</Typography>;
+      return <span>{fmtDecimal(v, 0)}</span>;
+    },
+  },
+  {
+    field: "aiVacancyScore",
+    width: 95,
+    renderHeader: () => (
+      <HeaderTooltip
+        label="AI Vacancy"
+        hint="GPT-5-mini's 0–100 vacancy read. Null until AI-scored."
+      />
+    ),
+    valueFormatter: (v) => fmtDecimal(v as number | null, 0),
+    renderCell: ({ value }: GridRenderCellParams<ListingRow>) => {
+      const v = value as number | null;
+      if (v == null) return <Typography variant="caption" color="text.secondary">—</Typography>;
+      return <span>{fmtDecimal(v, 0)}</span>;
+    },
+  },
+  {
+    field: "aiMotivationScore",
+    width: 110,
+    renderHeader: () => (
+      <HeaderTooltip
+        label="AI Motivation"
+        hint="GPT-5-mini's 0–100 seller-motivation read. Null until AI-scored."
+      />
+    ),
+    valueFormatter: (v) => fmtDecimal(v as number | null, 0),
+    renderCell: ({ value }: GridRenderCellParams<ListingRow>) => {
+      const v = value as number | null;
+      if (v == null) return <Typography variant="caption" color="text.secondary">—</Typography>;
+      return <span>{fmtDecimal(v, 0)}</span>;
+    },
   },
   { field: "propertyType", headerName: "Type", width: 130 },
   {
@@ -345,6 +426,10 @@ export const SORT_KEY_TO_FIELD: Record<SortKey, string> = {
   density: "densityScore",
   vacancy: "vacancyScore",
   motivation: "motivationScore",
+  valueAddAi: "aiValueAddWeightedAvg",
+  densityAi: "aiDensityScore",
+  vacancyAi: "aiVacancyScore",
+  motivationAi: "aiMotivationScore",
 };
 
 export const FIELD_TO_SORT_KEY: Record<string, SortKey> = Object.entries(SORT_KEY_TO_FIELD).reduce(

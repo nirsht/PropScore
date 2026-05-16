@@ -5,6 +5,7 @@ import { etlRouter } from "./routers/etl";
 import { scoringRouter } from "./routers/scoring";
 import { agentsRouter } from "./routers/agents";
 import { chatRouter } from "./routers/chat";
+import { starredListingsRouter } from "./routers/starredListings";
 
 export const appRouter = router({
   listings: listingsRouter,
@@ -13,6 +14,7 @@ export const appRouter = router({
   scoring: scoringRouter,
   agents: agentsRouter,
   chat: chatRouter,
+  starredListings: starredListingsRouter,
 });
 
 export type AppRouter = typeof appRouter;

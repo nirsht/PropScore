@@ -24,11 +24,12 @@ model User {
   role           Role               @default(USER)
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
-  accounts       Account[]
-  sessions       Session[]
-  savedFilters   SavedFilter[]
-  agentTraces    AgentTrace[]
-  conversations  ChatConversation[]
+  accounts        Account[]
+  sessions        Session[]
+  savedFilters    SavedFilter[]
+  agentTraces     AgentTrace[]
+  conversations   ChatConversation[]
+  starredListings StarredListing[]
 }
 
 model Account {
@@ -247,6 +248,19 @@ model Listing {
   rentControlCovered          Boolean?
   rentControlComputedAt       DateTime?
 
+  // Soft-story seismic risk (Socrata jwdp-cqyc). Y/N flag is true only when
+  // the parcel is on SF's mandatory soft-story retrofit list AND the retrofit
+  // is not yet complete — i.e. an open red flag for the buyer. Retrofitted
+  // buildings on the list flip back to false but keep their tier+status so
+  // the drawer tooltip can still cite the historical classification.
+  softStoryRedFlag       Boolean?
+  /// 1–4, dataset's retrofit-urgency tier. Null for parcels not on the list.
+  softStoryTier          Int?
+  /// Raw dataset status (e.g. "Work Complete - CFC Issued", "Out of Compliance"),
+  /// surfaced in the RiskComplianceCard tooltip.
+  softStoryStatus        String?
+  softStoryFetchedAt     DateTime?
+
   raw                         Json
   bridgeModificationTimestamp DateTime
 
@@ -254,6 +268,7 @@ model Listing {
   enrichments   AIEnrichment[]
   conversations ChatConversation[]
   contact       ListingContact?
+  starredBy     StarredListing[]
   createdAt     DateTime           @default(now())
 
   @@index([price])
@@ -271,6 +286,7 @@ model Listing {
   @@index([codeViolationsOpenCount])
   @@index([housingNetUnitChange5y])
   @@index([rentControlCovered])
+  @@index([softStoryRedFlag])
 }
 
 // -------------------- BUILDING PERMITS --------------------
@@ -448,6 +464,23 @@ model Score {
   breakdown            Json
   computedBy           ScoreSource
   computedAt           DateTime    @default(now())
+  // Fingerprint of the AI-scoring input payload (sha256 of stable-key JSON).
+  // The nightly delta-AI job uses this to skip listings whose inputs haven't
+  // changed since the last AI run. Null = never AI-scored.
+  aiInputHash          String?
+
+  // Parallel AI-scored variants. The columns above (densityScore,
+  // vacancyScore, motivationScore, valueAddWeightedAvg, breakdown) are
+  // always heuristic and refreshed by `recompute:scores` every nightly.
+  // AI scoring writes only to the columns below, so the UI can sort by
+  // either source independently. Null until the listing has been
+  // AI-scored at least once.
+  aiDensityScore         Float?
+  aiVacancyScore         Float?
+  aiMotivationScore      Float?
+  aiValueAddWeightedAvg  Float?
+  aiBreakdown            Json?
+  aiComputedAt           DateTime?
 
   @@index([valueAddWeightedAvg(sort: Desc)])
   @@index([densityScore(sort: Desc)])
@@ -456,6 +489,10 @@ model Score {
   @@index([locationScore(sort: Desc)])
   @@index([aduScore(sort: Desc)])
   @@index([marketUpsideScore(sort: Desc)])
+  @@index([aiValueAddWeightedAvg(sort: Desc)])
+  @@index([aiDensityScore(sort: Desc)])
+  @@index([aiVacancyScore(sort: Desc)])
+  @@index([aiMotivationScore(sort: Desc)])
 }
 
 model AIEnrichment {
@@ -523,6 +560,18 @@ model SavedFilter {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+model StarredListing {
+  userId       String
+  listingMlsId String
+  createdAt    DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing Listing @relation(fields: [listingMlsId], references: [mlsId], onDelete: Cascade)
+
+  @@id([userId, listingMlsId])
   @@index([userId, createdAt(sort: Desc)])
 }
 

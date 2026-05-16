@@ -10,7 +10,8 @@
  *        - refresh:walkscore              (Listing.walkScore only)
  *        - refresh:crime                  (Neighborhood table only)
  *   3. refresh:neighborhood-comps         (reads listings/assessor + writes Neighborhood medians)
- *   4. recompute:scores                                      (must be last)
+ *   4. recompute:scores                   (heuristic; skips AI rows)
+ *   5. ai-score:changed                   (delta: re-score only listings whose AI inputs changed)
  *
  * Each stage is a child process so it gets a fresh Prisma client / cursor;
  * we stream each one's stdout/stderr line-tagged into the parent log so
@@ -70,6 +71,10 @@ const PARALLEL_LANES: Stage[][] = [
 // the medians.
 const NEIGHBORHOOD_COMPS: Stage = stage("nb-comps", "refresh:neighborhood-comps");
 const POST: Stage = stage("recompute", "recompute:scores");
+// Delta AI scoring runs last so it sees the freshest heuristic baseline
+// (used as `previousScore` in the prompt) and only re-scores listings
+// whose AI input payload hash changed since the last AI run.
+const AI_SCORE: Stage = stage("ai-score", "ai-score:changed");
 
 function runStage(s: Stage): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -123,6 +128,9 @@ async function main() {
 
   console.log(`[nightly] phase 4: ${POST.name}`);
   await runStage(POST);
+
+  console.log(`[nightly] phase 5: ${AI_SCORE.name}`);
+  await runStage(AI_SCORE);
 
   const total = ((Date.now() - overallStart) / 1000).toFixed(1);
   console.log(`[nightly] all stages succeeded in ${total}s`);
