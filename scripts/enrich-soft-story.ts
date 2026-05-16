@@ -69,7 +69,7 @@ async function main() {
     const notListedIds: string[] = [];
     const listedGroups = new Map<
       string,
-      { flag: boolean; tier: string | null; status: string | null; ids: string[] }
+      { flag: boolean; tier: number | null; status: string | null; ids: string[] }
     >();
 
     for (const l of batch) {

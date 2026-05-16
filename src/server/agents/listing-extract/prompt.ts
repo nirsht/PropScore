@@ -85,6 +85,7 @@ Output schema fields:
 
 10. detachedAduRationale — one sentence ≤ 30 words anchoring the score
     (e.g. "~1,100 sqft unused after 4 ft setbacks — fits a 600 sqft detached ADU.").
+    Null when detachedAduScore is null.
 
 11. convertedAduScore — 0–100 feasibility of CONVERTING existing interior space
     (basement, garage, or large unfinished room) into a new unit. Score the
@@ -100,6 +101,7 @@ Output schema fields:
 
 12. convertedAduRationale — one sentence ≤ 30 words quoting or paraphrasing
     the strongest signal ("Remarks: 'huge 800 sqft basement with separate entry'.").
+    Null when convertedAduScore is null.
 
 13. convertedAduSource — which existing space drives the score:
     "basement" | "garage" | "unfinished-space". Null when convertedAduScore is null.
