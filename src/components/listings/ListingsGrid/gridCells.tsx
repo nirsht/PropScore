@@ -1,5 +1,10 @@
-import { Box, Stack, Tooltip, Typography } from "@mui/material";
+"use client";
+
+import { Box, IconButton, Stack, Tooltip, Typography } from "@mui/material";
 import HelpOutlineRoundedIcon from "@mui/icons-material/HelpOutlineRounded";
+import StarRounded from "@mui/icons-material/StarRounded";
+import StarBorderRounded from "@mui/icons-material/StarBorderRounded";
+import { trpc } from "@/lib/trpc/client";
 import { getDiscrepancyTone } from "@/lib/diff";
 
 export function HeaderTooltip({ label, hint }: { label: string; hint: string }) {
@@ -85,6 +90,59 @@ export function DiscrepancyCell({
   return (
     <Tooltip title={tip} arrow placement="top">
       {node}
+    </Tooltip>
+  );
+}
+
+/**
+ * Star icon for marking a listing as a favorite. Reads the user's starred
+ * mlsIds from a single cached query and toggles via optimistic mutation.
+ * Stops click propagation so the surrounding row-click handler doesn't
+ * also open the drawer.
+ */
+export function StarCell({ mlsId }: { mlsId: string }) {
+  const utils = trpc.useUtils();
+  const starredQuery = trpc.starredListings.list.useQuery(undefined, {
+    staleTime: 60_000,
+  });
+  const starred = starredQuery.data ?? [];
+  const isStarred = starred.includes(mlsId);
+  const toggle = trpc.starredListings.toggle.useMutation({
+    onMutate: async () => {
+      await utils.starredListings.list.cancel();
+      const prev = utils.starredListings.list.getData() ?? [];
+      utils.starredListings.list.setData(
+        undefined,
+        isStarred ? prev.filter((id) => id !== mlsId) : [mlsId, ...prev],
+      );
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx) utils.starredListings.list.setData(undefined, ctx.prev);
+    },
+    onSettled: () => {
+      utils.starredListings.list.invalidate();
+      utils.listings.search.invalidate();
+      utils.listings.count.invalidate();
+    },
+  });
+  return (
+    <Tooltip title={isStarred ? "Unstar" : "Star"} arrow placement="top">
+      <IconButton
+        size="small"
+        aria-label={isStarred ? "Unstar listing" : "Star listing"}
+        onClick={(e) => {
+          e.stopPropagation();
+          toggle.mutate({ mlsId });
+        }}
+        sx={{ color: isStarred ? "warning.main" : "text.disabled" }}
+      >
+        {isStarred ? (
+          <StarRounded fontSize="small" />
+        ) : (
+          <StarBorderRounded fontSize="small" />
+        )}
+      </IconButton>
     </Tooltip>
   );
 }

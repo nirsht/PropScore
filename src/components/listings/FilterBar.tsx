@@ -501,6 +501,12 @@ function QuickChips() {
         set({ rentControlCovered: next });
       },
     },
+    {
+      key: "starred-only",
+      label: state.starredOnly ? "★ Saved" : "☆ Saved",
+      active: !!state.starredOnly,
+      apply: () => set({ starredOnly: state.starredOnly ? undefined : true }),
+    },
   ];
 
   return (
@@ -556,6 +562,7 @@ function countActive(s: ReturnType<typeof useFilter>["state"]): number {
   if (s.postDate && (s.postDate.min || s.postDate.max)) n++;
   if (s.hasSizeDiscrepancy != null) n++;
   if (s.rentControlCovered != null) n++;
+  if (s.starredOnly) n++;
   if (s.radius) n++;
   if (s.polygon) n++;
   return n;

@@ -130,7 +130,7 @@ function weightsDifferFromDefault(
  */
 function buildWhere(
   input: FilterInput,
-  opts: { includeCursor: boolean; sortExpr?: Prisma.Sql },
+  opts: { includeCursor: boolean; sortExpr?: Prisma.Sql; userId?: string },
 ): { sql: Prisma.Sql } {
   const where: Prisma.Sql[] = [];
 
@@ -189,6 +189,16 @@ function buildWhere(
     where.push(Prisma.sql`"rentControlCovered" = ${input.rentControlCovered}`);
   }
 
+  if (input.starredOnly) {
+    if (opts.userId) {
+      where.push(
+        Prisma.sql`"mlsId" IN (SELECT "listingMlsId" FROM "StarredListing" WHERE "userId" = ${opts.userId})`,
+      );
+    } else {
+      where.push(Prisma.sql`FALSE`);
+    }
+  }
+
   if (input.postDate?.min) {
     where.push(Prisma.sql`"postDate" >= ${new Date(input.postDate.min)}`);
   }
@@ -232,7 +242,7 @@ function buildWhere(
   };
 }
 
-export async function searchListings(input: FilterInput): Promise<SearchResult> {
+export async function searchListings(input: FilterInput, userId?: string): Promise<SearchResult> {
   const sortBy = input.sortBy ?? FILTER_DEFAULTS.sortBy;
   const sortDir = input.sortDir ?? FILTER_DEFAULTS.sortDir;
   const pageSize = input.limit ?? FILTER_DEFAULTS.limit;
@@ -252,6 +262,7 @@ export async function searchListings(input: FilterInput): Promise<SearchResult> 
   const { sql: whereSql } = buildWhere(input, {
     includeCursor: true,
     sortExpr: useDynamic ? dynamicExpr! : undefined,
+    userId,
   });
   const dir = Prisma.raw(sortDir === "asc" ? "ASC" : "DESC");
   const limit = pageSize + 1;
@@ -331,8 +342,8 @@ export async function searchListings(input: FilterInput): Promise<SearchResult> 
  * Count the rows matching `input` ignoring cursor / sort / limit. Used to
  * power the "1–50 of N" footer in the grid.
  */
-export async function countListings(input: FilterInput): Promise<number> {
-  const { sql: whereSql } = buildWhere(input, { includeCursor: false });
+export async function countListings(input: FilterInput, userId?: string): Promise<number> {
+  const { sql: whereSql } = buildWhere(input, { includeCursor: false, userId });
   const rows = await db.$queryRaw<Array<{ count: bigint }>>(
     Prisma.sql`SELECT COUNT(*)::bigint AS count FROM "mv_listing_search" ${whereSql}`,
   );
