@@ -12,10 +12,7 @@ import {
   yearBuiltColumn,
 } from "./columns/coreColumns";
 import {
-  aiDensityColumn,
-  aiMotivationColumn,
   aiValueAddColumn,
-  aiVacancyColumn,
   densityColumn,
   motivationColumn,
   renovationLevelColumn,
@@ -45,9 +42,6 @@ export const columns: GridColDef<ListingRow>[] = [
   densityColumn,
   vacancyColumn,
   motivationColumn,
-  aiDensityColumn,
-  aiVacancyColumn,
-  aiMotivationColumn,
   propertyTypeColumn,
   renovationLevelColumn,
   effectiveSqftColumn,

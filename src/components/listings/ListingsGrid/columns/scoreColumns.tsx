@@ -8,11 +8,26 @@ import type { ListingRow } from "@/server/api/listings-search";
 import { RENO_COLOR, RENO_LABEL, fmtDecimal } from "../gridFormatters";
 import { HeaderTooltip } from "../gridCells";
 
-const aiScoreRenderCell = ({ value }: GridRenderCellParams<ListingRow>) => {
-  const v = value as number | null;
-  if (v == null)
+const renderHeuristicWithAi = (
+  aiValue: number | null,
+  heuristicValue: number | null,
+) => {
+  if (aiValue == null && heuristicValue == null) {
     return <Typography variant="caption" color="text.secondary">—</Typography>;
-  return <span>{fmtDecimal(v, 0)}</span>;
+  }
+  if (aiValue == null) {
+    return <span>{fmtDecimal(heuristicValue, 0)}</span>;
+  }
+  return (
+    <Stack direction="row" spacing={0.5} alignItems="baseline">
+      <Box sx={{ fontWeight: 600 }}>{fmtDecimal(aiValue, 0)}</Box>
+      {heuristicValue != null && (
+        <Typography variant="caption" color="text.secondary">
+          ({fmtDecimal(heuristicValue, 0)})
+        </Typography>
+      )}
+    </Stack>
+  );
 };
 
 export const valueAddColumn: GridColDef<ListingRow> = {
@@ -56,77 +71,44 @@ export const aiValueAddColumn: GridColDef<ListingRow> = {
 
 export const densityColumn: GridColDef<ListingRow> = {
   field: "densityScore",
-  width: 90,
+  width: 110,
   renderHeader: () => (
     <HeaderTooltip
       label="Density"
-      hint="0–100. Heuristic combining propertyType (multifamily +20), unit count, stories, beds. AI scoring overrides this with reasoned 0–100."
+      hint="0–100. AI score (bold) when available, heuristic in parens. Heuristic combines propertyType (multifamily +20), unit count, stories, beds; AI reasons over the same payload plus public remarks."
     />
   ),
   valueFormatter: (v) => fmtDecimal(v as number | null, 0),
+  renderCell: ({ row }: GridRenderCellParams<ListingRow>) =>
+    renderHeuristicWithAi(row.aiDensityScore, row.densityScore),
 };
 
 export const vacancyColumn: GridColDef<ListingRow> = {
   field: "vacancyScore",
-  width: 90,
+  width: 110,
   renderHeader: () => (
     <HeaderTooltip
       label="Vacancy"
-      hint="0–100, higher = likely vacant / under-occupied. Uses explicit occupancy if present, otherwise remark keywords (vacant, fully leased, etc.) and DOM."
+      hint="0–100, higher = likely vacant / under-occupied. AI score (bold) when available, heuristic in parens. Heuristic uses explicit occupancy if present, otherwise remark keywords (vacant, fully leased, etc.) and DOM."
     />
   ),
   valueFormatter: (v) => fmtDecimal(v as number | null, 0),
+  renderCell: ({ row }: GridRenderCellParams<ListingRow>) =>
+    renderHeuristicWithAi(row.aiVacancyScore, row.vacancyScore),
 };
 
 export const motivationColumn: GridColDef<ListingRow> = {
   field: "motivationScore",
-  width: 100,
+  width: 120,
   renderHeader: () => (
     <HeaderTooltip
       label="Motivation"
-      hint="0–100, higher = more motivated seller. Uses DOM bands, price drops (PreviousListPrice), and remark phrases like 'must sell', 'as-is', 'estate sale', short sale / REO."
+      hint="0–100, higher = more motivated seller. AI score (bold) when available, heuristic in parens. Heuristic uses DOM bands, price drops, and remark phrases like 'must sell', 'as-is', 'estate sale', short sale / REO."
     />
   ),
   valueFormatter: (v) => fmtDecimal(v as number | null, 0),
-};
-
-export const aiDensityColumn: GridColDef<ListingRow> = {
-  field: "aiDensityScore",
-  width: 95,
-  renderHeader: () => (
-    <HeaderTooltip
-      label="AI Density"
-      hint="GPT-5-mini's 0–100 density read. Null until AI-scored."
-    />
-  ),
-  valueFormatter: (v) => fmtDecimal(v as number | null, 0),
-  renderCell: aiScoreRenderCell,
-};
-
-export const aiVacancyColumn: GridColDef<ListingRow> = {
-  field: "aiVacancyScore",
-  width: 95,
-  renderHeader: () => (
-    <HeaderTooltip
-      label="AI Vacancy"
-      hint="GPT-5-mini's 0–100 vacancy read. Null until AI-scored."
-    />
-  ),
-  valueFormatter: (v) => fmtDecimal(v as number | null, 0),
-  renderCell: aiScoreRenderCell,
-};
-
-export const aiMotivationColumn: GridColDef<ListingRow> = {
-  field: "aiMotivationScore",
-  width: 110,
-  renderHeader: () => (
-    <HeaderTooltip
-      label="AI Motivation"
-      hint="GPT-5-mini's 0–100 seller-motivation read. Null until AI-scored."
-    />
-  ),
-  valueFormatter: (v) => fmtDecimal(v as number | null, 0),
-  renderCell: aiScoreRenderCell,
+  renderCell: ({ row }: GridRenderCellParams<ListingRow>) =>
+    renderHeuristicWithAi(row.aiMotivationScore, row.motivationScore),
 };
 
 export const renovationLevelColumn: GridColDef<ListingRow> = {
