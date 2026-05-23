@@ -54,8 +54,9 @@ function envOptional(name: string): string | undefined {
 function toInternalDatabaseUrl(externalUrl: string): string {
   const u = new URL(externalUrl);
   const internalHostMatch = u.hostname.match(/^(dpg-[a-z0-9]+-a)\.[a-z]+-postgres\.render\.com$/);
-  if (!internalHostMatch) return externalUrl;
-  u.hostname = internalHostMatch[1];
+  const internalHost = internalHostMatch?.[1];
+  if (!internalHost) return externalUrl;
+  u.hostname = internalHost;
   u.port = "";
   u.searchParams.delete("sslmode");
   return u.toString();
