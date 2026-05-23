@@ -55,17 +55,12 @@ export const aiValueAddColumn: GridColDef<ListingRow> = {
     />
   ),
   valueFormatter: (v) => fmtDecimal(v as number | null, 1),
-  renderCell: ({ value, row }: GridRenderCellParams<ListingRow>) => {
+  renderCell: ({ value }: GridRenderCellParams<ListingRow>) => {
     const v = value as number | null;
     if (v == null) {
       return <Typography variant="caption" color="text.secondary">—</Typography>;
     }
-    return (
-      <Stack direction="row" spacing={0.5} alignItems="center">
-        <Box sx={{ fontWeight: 600 }}>{fmtDecimal(v, 1)}</Box>
-        {row.aiComputedAt && <Chip size="small" color="primary" label="AI" />}
-      </Stack>
-    );
+    return <Box sx={{ fontWeight: 600 }}>{fmtDecimal(v, 1)}</Box>;
   },
 };
 
