@@ -63,13 +63,6 @@ export const propertyTypeColumn: GridColDef<ListingRow> = {
   width: 130,
 };
 
-export const occupancyColumn: GridColDef<ListingRow> = {
-  field: "occupancy",
-  headerName: "Occupancy",
-  width: 100,
-  valueFormatter: (v) => (v == null ? "—" : `${(Number(v) * 100).toFixed(0)}%`),
-};
-
 export const yearBuiltColumn: GridColDef<ListingRow> = {
   field: "yearBuilt",
   headerName: "Year Built",
