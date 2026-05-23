@@ -38,22 +38,57 @@ describe("vacancyScore heuristic", () => {
     expect(vacancyScore(baseListing(), { extractedOccupancy: 0.5 })).toBe(50);
   });
 
-  it("stays neutral when remarks describe an occupied value-add deal (449 9th St regression)", () => {
-    // Real-world remarks from 449 9th St. The building is occupied with
-    // below-market rents — must NOT be flagged as high vacancy.
+  it("treats value-add language as occupied signal (449 9th St regression)", () => {
+    // Real-world remarks from 449 9th St. "Rental upside" + "below market" implies
+    // tenants are in place at under-market rents — must not be flagged high.
     const remarks =
       "This asset represents a strong value-add investment opportunity with approximately 42% rental upside. Current rents are notably below market, and the building offers a 7.11% cap rate with a projected pro forma cap rate of 10.83% and an impressive 7.03% cash-on-cash return.";
     const score = vacancyScore(
       baseListing({ raw: { PublicRemarks: remarks }, daysOnMls: 30 }),
     );
-    // Neutral baseline is 40. Without the bug, no keywords on lines 24-25
-    // match, DOM is under 60, so score should stay at 40.
-    expect(score).toBe(40);
+    // 40 baseline − 15 (value-add) = 25.
+    expect(score).toBeLessThanOrEqual(25);
+  });
+
+  it("does not flag past-tense vacant in photo context (1855 California regression)", () => {
+    const remarks =
+      "Don't Miss! NOTE: photos shown are when units were vacant. Currently fully occupied with strong cash flow.";
+    const score = vacancyScore(baseListing({ raw: { PublicRemarks: remarks } }));
+    // OCCUPIED_RE fires (-25), VACANT_RE does not (bare "vacant" no longer triggers).
+    expect(score).toBeLessThanOrEqual(20);
+  });
+
+  it("treats rental upside as occupied signal (421 Cornwall regression)", () => {
+    const remarks =
+      "Incredible opportunity with 125% rental upside. Bring this asset to market and unlock substantial value.";
+    const score = vacancyScore(baseListing({ raw: { PublicRemarks: remarks } }));
+    expect(score).toBeLessThanOrEqual(30);
+  });
+
+  it("ignores casual 'vacant' mention when tenants are in place (3660 20th regression)", () => {
+    const remarks =
+      "Charming building. Photos were taken when one unit was vacant. Tenant occupied with long-term renters.";
+    const score = vacancyScore(baseListing({ raw: { PublicRemarks: remarks } }));
+    expect(score).toBeLessThanOrEqual(20);
+  });
+
+  it("treats below-market rents as occupied signal", () => {
+    const remarks =
+      "Rents are well below market — significant value-add play for the next operator.";
+    const score = vacancyScore(baseListing({ raw: { PublicRemarks: remarks } }));
+    expect(score).toBeLessThanOrEqual(30);
   });
 
   it("flags explicitly vacant remarks", () => {
     const score = vacancyScore(
       baseListing({ raw: { PublicRemarks: "Delivered vacant, no tenants in place" } }),
+    );
+    expect(score).toBeGreaterThanOrEqual(60);
+  });
+
+  it("flags 'will be delivered vacant'", () => {
+    const score = vacancyScore(
+      baseListing({ raw: { PublicRemarks: "Property will be delivered vacant at close of escrow" } }),
     );
     expect(score).toBeGreaterThanOrEqual(60);
   });
