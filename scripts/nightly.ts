@@ -78,8 +78,11 @@ const NEIGHBORHOOD_COMPS: Stage = stage("nb-comps", "refresh:neighborhood-comps"
 const POST: Stage = stage("recompute", "recompute:scores");
 // Delta AI scoring runs last so it sees the freshest heuristic baseline
 // (used as `previousScore` in the prompt) and only re-scores listings
-// whose AI input payload hash changed since the last AI run.
-const AI_SCORE: Stage = stage("ai-score", "ai-score:changed");
+// whose AI input payload hash changed since the last AI run. Concurrency
+// 10 keeps wall-clock under the cron timeout on a full re-score (~2.3k
+// listings × 3-5s/call ÷ 10 ≈ 12-15 min) — gpt-5-mini stays cheap at this
+// fan-out.
+const AI_SCORE: Stage = stage("ai-score", "ai-score:changed", ["--concurrency=10"]);
 // Reply polling — independent of scoring, runs last. The parser writes back
 // into Listing.extractedRentRoll, but the next nightly will pick up the new
 // rent roll via the normal extract → scoring chain.
