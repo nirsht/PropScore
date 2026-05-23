@@ -42,6 +42,10 @@ const PARALLEL_LANES: Stage[][] = [
   [
     stage("sfpim", "enrich:sfpim", ["--concurrency=5"]),
     stage("vision", "enrich:vision", ["--concurrency=5"]),
+    // Interior-photo Reno pass — supplements (not replaces) the exterior
+    // verdict. Overwrites Listing.renovationLevel only when its confidence
+    // beats the exterior verdict by > 0.1, or when the exterior one is null.
+    stage("vision-interior", "enrich:vision-interior", ["--concurrency=5"]),
     // landuse + permits join on Listing.blockLot (populated by sfpim);
     // zoning needs assessor lot size for RM-* density-by-area rules, so
     // they all chain after sfpim in the same lane.

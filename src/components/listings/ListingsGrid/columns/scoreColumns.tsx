@@ -112,7 +112,7 @@ export const renovationLevelColumn: GridColDef<ListingRow> = {
   renderHeader: () => (
     <HeaderTooltip
       label="Reno"
-      hint="Renovation level from AI vision: Distressed → Original → Updated → Renovated. A 4th input to the value-add weighted average."
+      hint="Renovation level from AI vision (interior photos: kitchen + bath finishes, fixtures, appliances; falls back to exterior signal). Distressed → Original → Updated → Renovated. A 4th input to the value-add weighted average."
     />
   ),
   renderCell: ({ value }: GridRenderCellParams<ListingRow>) => {

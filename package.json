@@ -27,6 +27,7 @@
     "ai-score:changed": "tsx --env-file=.env scripts/ai-score-changed.ts",
     "enrich:sfpim": "tsx --env-file=.env scripts/enrich-sfpim.ts",
     "enrich:vision": "tsx --env-file=.env scripts/enrich-vision.ts",
+    "enrich:vision-interior": "tsx --env-file=.env scripts/enrich-vision-interior.ts",
     "enrich:listings": "tsx --env-file=.env scripts/enrich-listings-extract.ts",
     "enrich:rent-comps": "tsx --env-file=.env scripts/enrich-rent-comps.ts",
     "enrich:contacts": "tsx --env-file=.env scripts/enrich-contacts.ts",
