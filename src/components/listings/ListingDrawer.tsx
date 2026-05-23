@@ -184,7 +184,6 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
           <RiskComplianceCard listing={listing} />
 
           <OpportunityScoresCard
-            mlsId={listing.mlsId}
             score={score}
             heuristic={listing.heuristicSnapshot ?? null}
           />

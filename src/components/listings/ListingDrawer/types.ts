@@ -11,6 +11,11 @@ export type ScoreLike = {
   zoningUpsideScore?: number | null;
   valueAddWeightedAvg: number;
   computedBy?: "HEURISTIC" | "AI";
+  aiDensityScore?: number | null;
+  aiVacancyScore?: number | null;
+  aiMotivationScore?: number | null;
+  aiValueAddWeightedAvg?: number | null;
+  aiBreakdown?: unknown;
 };
 
 export type ListingForDetails = {
