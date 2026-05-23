@@ -54,10 +54,24 @@ Output schema fields:
 
 5. totalMonthlyRent — sum of rentRoll rents, OR an explicit total stated in the remarks (e.g. "gross monthly rent $14,200"). Otherwise null.
 
-6. occupancy — float 0..1 only when remarks state the number of occupied/vacant units.
-   "fully occupied" / "fully leased" / "stabilized" → 1.0
-   "delivered vacant" / "all vacant" → 0.0
-   "5 of 6 units occupied" → 0.833
+6. occupancy — float 0..1 describing how leased the property is RIGHT NOW.
+   Set 1.0 when remarks say so directly:
+     "fully occupied" / "fully leased" / "stabilized" / "currently fully occupied"
+     / "tenant occupied" / "all units rented".
+   Set 1.0 when remarks use value-add / below-market language:
+     "rental upside" / "X% rental upside" / "below-market rents" / "under-market rents"
+     / "value-add" / "rent-controlled tenants" / "assumable rents"
+     — these IMPLY units are occupied at below-market rents (a vacant unit would
+       lease at market, so no "upside" would exist). Use 1.0 unless the remarks
+       ALSO explicitly state specific vacant units.
+   Set 0.0 ONLY when remarks state the property is or will be vacant NOW:
+     "delivered vacant" / "all vacant" / "will be delivered vacant" /
+     "vacant at COE" / "no tenants in place".
+   "5 of 6 units occupied" → 0.833 (compute the fraction).
+   IMPORTANT: do NOT set occupancy to 0 based on backward-looking mentions of
+   vacancy ("photos shown when units were vacant", "previously vacant", "was
+   vacant during renovation"). Photo-context or historical "vacant" is NOT a
+   current-state signal — emit null, or use a positive signal if one is present.
    Otherwise null.
 
 7. recentCapex — array of short strings naming concrete recent capital improvements only.
