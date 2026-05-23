@@ -20,12 +20,14 @@ export const RENO_LABEL: Record<RenovationLevel, string> = {
 };
 
 // Two parallel 0–100 ADU reads emitted by the listing-extract agent — see
-// `valueAdd.ts`. The drawer colors each chip by the numeric score: <40
-// muted, 40–69 warning, ≥70 success.
-function aduChipColor(score: number): "default" | "warning" | "success" {
-  if (score >= 70) return "success";
-  if (score >= 40) return "warning";
-  return "default";
+// `valueAdd.ts`. Bucketed into High/Medium/Low (≥70 / 40–69 / <40) for the
+// chip label; the rationale shows on hover.
+type AduLevel = { label: "High" | "Medium" | "Low"; color: "success" | "warning" | "default" };
+
+function aduLevel(score: number): AduLevel {
+  if (score >= 70) return { label: "High", color: "success" };
+  if (score >= 40) return { label: "Medium", color: "warning" };
+  return { label: "Low", color: "default" };
 }
 
 // ============================================================================
@@ -76,8 +78,8 @@ export function AIInsightsCard({ listing }: { listing: ListingForAI }) {
           >
             <Chip
               size="small"
-              color={aduChipColor(detachedScore)}
-              label={`Detached ADU ${detachedScore}%`}
+              color={aduLevel(detachedScore).color}
+              label={`Detached ADU · ${aduLevel(detachedScore).label}`}
             />
           </Tooltip>
         )}
@@ -90,8 +92,8 @@ export function AIInsightsCard({ listing }: { listing: ListingForAI }) {
           >
             <Chip
               size="small"
-              color={aduChipColor(convertedScore)}
-              label={`Converted ADU ${convertedScore}%${
+              color={aduLevel(convertedScore).color}
+              label={`Converted ADU · ${aduLevel(convertedScore).label}${
                 listing.convertedAduSource ? ` · ${listing.convertedAduSource}` : ""
               }`}
             />
@@ -177,30 +179,6 @@ export function AIInsightsCard({ listing }: { listing: ListingForAI }) {
         </Box>
       )}
 
-      {hasAdu && (
-        <Box>
-          <Typography variant="caption" color="text.secondary">
-            ADU feasibility
-          </Typography>
-          {detachedScore != null && (
-            <Typography variant="body2" sx={{ mt: 0.25 }}>
-              <Box component="strong" sx={{ fontWeight: 600 }}>
-                Detached {detachedScore}%:
-              </Box>{" "}
-              {listing.detachedAduRationale ?? "—"}
-            </Typography>
-          )}
-          {convertedScore != null && (
-            <Typography variant="body2" sx={{ mt: 0.25 }}>
-              <Box component="strong" sx={{ fontWeight: 600 }}>
-                Converted {convertedScore}%
-                {listing.convertedAduSource ? ` (${listing.convertedAduSource})` : ""}:
-              </Box>{" "}
-              {listing.convertedAduRationale ?? "—"}
-            </Typography>
-          )}
-        </Box>
-      )}
     </Paper>
   );
 }
