@@ -22,7 +22,6 @@ import { PhotoLightbox } from "./PhotoLightbox";
 import { MeasureLotModal } from "./MeasureLotModal";
 import { AIInsightsCard } from "./ListingDrawer/AIInsightsCard";
 import { BuildingDetailsCard } from "./ListingDrawer/BuildingDetailsCard";
-import { FeasibilityCard } from "./ListingDrawer/FeasibilityCard";
 import { GisToolsSection } from "./ListingDrawer/GisToolsSection";
 import { HeaderAndContacts } from "./ListingDrawer/HeaderAndContacts";
 import { LotAndExtrasCard } from "./ListingDrawer/LotAndExtrasCard";
@@ -174,9 +173,6 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
               privateRemarks: (raw.PrivateRemarks as string | undefined) ?? null,
             }}
           />
-
-          {/* ADU & reconfiguration feasibility — SF Open Data signals. */}
-          <FeasibilityCard listing={listing} />
 
           {/* Risk & compliance — code enforcement (NOVs), unit-change history,
               rent-control exposure. Filter+display only — does NOT enter the

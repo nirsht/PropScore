@@ -69,36 +69,6 @@ export function AIInsightsCard({ listing }: { listing: ListingForAI }) {
             label={RENO_LABEL[listing.renovationLevel]}
           />
         )}
-        {detachedScore != null && (
-          <Tooltip
-            title={listing.detachedAduRationale ?? ""}
-            arrow
-            placement="top"
-            disableHoverListener={!listing.detachedAduRationale}
-          >
-            <Chip
-              size="small"
-              color={aduLevel(detachedScore).color}
-              label={`Detached ADU · ${aduLevel(detachedScore).label}`}
-            />
-          </Tooltip>
-        )}
-        {convertedScore != null && (
-          <Tooltip
-            title={listing.convertedAduRationale ?? ""}
-            arrow
-            placement="top"
-            disableHoverListener={!listing.convertedAduRationale}
-          >
-            <Chip
-              size="small"
-              color={aduLevel(convertedScore).color}
-              label={`Converted ADU · ${aduLevel(convertedScore).label}${
-                listing.convertedAduSource ? ` · ${listing.convertedAduSource}` : ""
-              }`}
-            />
-          </Tooltip>
-        )}
       </Stack>
 
       {!hasVision && !hasAnyExtract && (
@@ -159,6 +129,52 @@ export function AIInsightsCard({ listing }: { listing: ListingForAI }) {
           </Stack>
         )}
       </Stack>
+
+      <Box sx={{ mb: 1.5 }}>
+        <Typography variant="caption" color="text.secondary">
+          ADU potential
+        </Typography>
+        <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mt: 0.5 }}>
+          {detachedScore == null && convertedScore == null ? (
+            <Typography variant="body2" color="text.secondary">
+              Not yet analyzed — click Enrich to populate.
+            </Typography>
+          ) : (
+            <>
+              {detachedScore != null && (
+                <Tooltip
+                  title={listing.detachedAduRationale ?? ""}
+                  arrow
+                  placement="top"
+                  disableHoverListener={!listing.detachedAduRationale}
+                >
+                  <Chip
+                    size="small"
+                    color={aduLevel(detachedScore).color}
+                    label={`Detached ADU · ${aduLevel(detachedScore).label}`}
+                  />
+                </Tooltip>
+              )}
+              {convertedScore != null && (
+                <Tooltip
+                  title={listing.convertedAduRationale ?? ""}
+                  arrow
+                  placement="top"
+                  disableHoverListener={!listing.convertedAduRationale}
+                >
+                  <Chip
+                    size="small"
+                    color={aduLevel(convertedScore).color}
+                    label={`Converted ADU · ${aduLevel(convertedScore).label}${
+                      listing.convertedAduSource ? ` · ${listing.convertedAduSource}` : ""
+                    }`}
+                  />
+                </Tooltip>
+              )}
+            </>
+          )}
+        </Stack>
+      </Box>
 
       <RentRollSection listing={listing} />
 
