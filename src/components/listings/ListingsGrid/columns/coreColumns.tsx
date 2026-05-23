@@ -13,12 +13,6 @@ export const starredColumn: GridColDef<ListingRow> = {
   renderCell: ({ row }) => <StarCell mlsId={row.mlsId} />,
 };
 
-export const mlsIdColumn: GridColDef<ListingRow> = {
-  field: "mlsId",
-  headerName: "MLS ID",
-  width: 130,
-};
-
 export const addressColumn: GridColDef<ListingRow> = {
   field: "address",
   headerName: "Address",

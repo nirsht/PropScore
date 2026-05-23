@@ -104,9 +104,9 @@ export function FilterBar() {
         >
           {/* Address spans 2 columns when there's space */}
           <Box sx={{ gridColumn: { xs: "auto", sm: "span 2" } }}>
-            <Field label="Address / city">
+            <Field label="Address / city / MLS ID">
               <TextField
-                placeholder="Mission, 24th St…"
+                placeholder="Mission, 24th St, 424012345…"
                 value={state.q ?? ""}
                 onChange={(e) => set({ q: e.target.value || undefined })}
                 fullWidth

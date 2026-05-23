@@ -23,6 +23,7 @@ export function buildWhere(
       Prisma.sql`(
         "address" ILIKE ${ilike}
         OR "city" ILIKE ${ilike}
+        OR "mlsId" ILIKE ${ilike}
         OR "address" <% ${input.q}
         OR "city" <% ${input.q}
       )`,
