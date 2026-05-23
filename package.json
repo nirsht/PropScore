@@ -41,7 +41,6 @@
     "seed:zoning-rules": "tsx --env-file=.env scripts/seed-zoning-rules.ts",
     "refresh:neighborhood-comps": "tsx --env-file=.env scripts/refresh-neighborhood-comps.ts",
     "backfill:rent-estimates": "tsx --env-file=.env scripts/backfill-rent-estimates.ts",
-    "emails:auto": "tsx --env-file=.env scripts/auto-email-rent-roll.ts",
     "emails:poll": "tsx --env-file=.env scripts/poll-gmail-replies.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",

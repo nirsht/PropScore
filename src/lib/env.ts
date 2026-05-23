@@ -56,14 +56,10 @@ const schema = z.object({
   // environment if needed.
   OPENAI_RENT_ROLL_MODEL: z.string().min(1).default("gpt-5"),
 
-  // Auto-trigger: nightly draft creation for active listings with
-  // price/sqft below this threshold. Dedup is enforced at the DB layer.
+  // Bulk-draft button threshold: drafts are created for active listings
+  // with price/sqft below this value. Dedup is enforced at the DB layer
+  // via the EmailThread (userId, listingMlsId) unique constraint.
   EMAIL_AUTO_PRICE_PER_SQFT: z.coerce.number().positive().default(450),
-  // Safety switch — false until manual smoke test passes in prod.
-  EMAIL_AUTO_ENABLED: z
-    .string()
-    .optional()
-    .transform((v) => v === "true" || v === "1"),
 });
 
 const parsed = schema.safeParse(process.env);
