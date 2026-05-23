@@ -101,6 +101,7 @@ const DEFAULT_SELECT = [
   "NumberOfUnitsTotal",
   "BedroomsTotal",
   "BathroomsTotalInteger",
+  "BathroomsTotalDecimal",
   "YearBuilt",
   "StoriesTotal",
   "Stories",
