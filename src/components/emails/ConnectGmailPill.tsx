@@ -29,6 +29,14 @@ export function ConnectGmailPill() {
     return <CircularProgress size={18} />;
   }
 
+  if (status.error) {
+    return (
+      <Alert severity="error" sx={{ py: 0.5 }}>
+        Failed to load Gmail status: {status.error.message}
+      </Alert>
+    );
+  }
+
   if (!status.data?.configured) {
     return (
       <Alert severity="info" sx={{ py: 0.5 }}>
