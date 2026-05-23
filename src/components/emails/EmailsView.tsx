@@ -15,6 +15,7 @@ import {
   Typography,
 } from "@mui/material";
 import SyncRoundedIcon from "@mui/icons-material/SyncRounded";
+import MailOutlineRoundedIcon from "@mui/icons-material/MailOutlineRounded";
 import { trpc } from "@/lib/trpc/client";
 import { ConnectGmailPill } from "./ConnectGmailPill";
 import { ThreadDetail } from "./ThreadDetail";
@@ -69,6 +70,18 @@ export function EmailsView() {
         void utils.emails.getThread.invalidate({ threadId: selectedThreadId });
     },
   });
+  const [bulkResult, setBulkResult] = React.useState<string | null>(null);
+  const bulkDraft = trpc.emails.bulkDraftUnderThreshold.useMutation({
+    onSuccess: (res) => {
+      void utils.emails.listThreads.invalidate();
+      setBulkResult(
+        res.total === 0
+          ? `No new listings under $${res.threshold}/sqft to draft.`
+          : `Drafted ${res.drafted} · skipped ${res.skipped} · ${res.total} candidate${res.total === 1 ? "" : "s"}.`,
+      );
+    },
+    onError: (err) => setBulkResult(err.message),
+  });
 
   const rows = threads.data ?? [];
 
@@ -115,6 +128,27 @@ export function EmailsView() {
           ))}
         </Select>
         <Box sx={{ flex: 1 }} />
+        {bulkResult && (
+          <Typography variant="caption" color="text.secondary">
+            {bulkResult}
+          </Typography>
+        )}
+        <Tooltip title="Create Gmail drafts for every Active listing under the price/sqft threshold that doesn't already have a thread">
+          <span>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<MailOutlineRoundedIcon />}
+              disabled={bulkDraft.isPending}
+              onClick={() => {
+                setBulkResult(null);
+                bulkDraft.mutate();
+              }}
+            >
+              {bulkDraft.isPending ? "Drafting…" : "Draft rent-roll requests"}
+            </Button>
+          </span>
+        </Tooltip>
         <Tooltip title="Poll Gmail for new replies on every thread">
           <span>
             <Button

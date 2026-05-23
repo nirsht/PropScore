@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { Prisma } from "@prisma/client";
 import { protectedProcedure, router } from "../trpc";
 import { googleAuthEnabled } from "@/lib/auth";
+import { env } from "@/lib/env";
 import {
   createDraft,
   getConnectedEmail,
@@ -148,6 +149,98 @@ export const emailsRouter = router({
         throw err;
       }
     }),
+
+  // Bulk-draft button on /emails — creates Gmail drafts for every Active SF
+  // listing whose price/sqft is below EMAIL_AUTO_PRICE_PER_SQFT and that
+  // doesn't already have a thread for this user. The EmailThread unique
+  // constraint on (userId, listingMlsId) is the source of truth for dedup,
+  // so listings the user has already drafted/sent/replied to are skipped.
+  bulkDraftUnderThreshold: protectedProcedure.mutation(async ({ ctx }) => {
+    const user = await ctx.db.user.findUnique({ where: { id: ctx.user.id } });
+    if (!user) throw new TRPCError({ code: "UNAUTHORIZED" });
+
+    const candidates = await ctx.db.$queryRaw<
+      Array<{ mlsId: string; address: string; pricePerSqft: number }>
+    >(Prisma.sql`
+      SELECT l."mlsId" as "mlsId",
+             l."address" as "address",
+             l."pricePerSqft" as "pricePerSqft"
+      FROM "Listing" l
+      JOIN "ListingContact" c ON c."listingMlsId" = l."mlsId"
+      LEFT JOIN "EmailThread" t
+             ON t."listingMlsId" = l."mlsId" AND t."userId" = ${ctx.user.id}
+      WHERE l."status" = 'Active'
+        AND c."agentEmail" IS NOT NULL
+        AND c."agentEmail" != ''
+        AND l."pricePerSqft" IS NOT NULL
+        AND l."pricePerSqft" < ${env.EMAIL_AUTO_PRICE_PER_SQFT}
+        AND t."id" IS NULL
+      ORDER BY l."pricePerSqft" ASC
+    `);
+
+    let drafted = 0;
+    let skipped = 0;
+    for (const c of candidates) {
+      const listing = await ctx.db.listing.findUnique({
+        where: { mlsId: c.mlsId },
+        include: { contact: true },
+      });
+      const agentEmail = listing?.contact?.agentEmail?.trim();
+      if (!listing || !agentEmail) {
+        skipped += 1;
+        continue;
+      }
+      const { subject, body } = rentRollRequestEmail({
+        listingAddress: listing.address,
+        agentName: listing.contact?.agentName ?? null,
+        userName: user.name ?? null,
+      });
+
+      try {
+        const draft = await createDraft({
+          userId: ctx.user.id,
+          to: agentEmail,
+          subject,
+          body,
+        });
+        await ctx.db.emailThread.create({
+          data: {
+            userId: ctx.user.id,
+            listingMlsId: listing.mlsId,
+            gmailDraftId: draft.gmailDraftId,
+            gmailThreadId: draft.gmailThreadId,
+            status: "DRAFT",
+            toEmail: agentEmail,
+            subject,
+            trigger: "auto_under_450",
+          },
+        });
+        drafted += 1;
+      } catch (err) {
+        if (err instanceof GmailNotConnectedError) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "Connect Gmail before drafting rent-roll requests.",
+          });
+        }
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === "P2002"
+        ) {
+          skipped += 1;
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    return {
+      drafted,
+      skipped,
+      total: candidates.length,
+      threshold: env.EMAIL_AUTO_PRICE_PER_SQFT,
+    };
+  }),
 
   // Per-listing lookup for the EmailHistorySection in the drawer.
   forListing: protectedProcedure

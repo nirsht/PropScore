@@ -65,15 +65,7 @@ const PARALLEL_LANES: Stage[][] = [
   [stage("rent-comps", "enrich:rent-comps", ["--concurrency=3"])],
   [stage("walkscore", "refresh:walkscore")],
   [stage("crime", "refresh:crime")],
-  // Contacts only write to ListingContact (disjoint from every other lane)
-  // and the upstream RentCast API caps us per-second, so they're cheap to
-  // run in parallel. Auto-email-rent-roll chains after contacts in the same
-  // lane because it needs ListingContact.agentEmail to be populated, and it
-  // gates itself on env.EMAIL_AUTO_ENABLED.
-  [
-    stage("contacts", "enrich:contacts", ["--concurrency=3"]),
-    stage("emails-auto", "emails:auto"),
-  ],
+  [stage("contacts", "enrich:contacts", ["--concurrency=3"])],
 ];
 // Neighborhood comp medians depend on assessor data being populated, so
 // run after the parallel phase finishes but before recompute:scores reads
