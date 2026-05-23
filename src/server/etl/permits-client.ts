@@ -3,8 +3,8 @@
  *
  * Dataset: i98e-djp9 (https://data.sfgov.org/Housing-and-Buildings/Building-Permits/i98e-djp9)
  * One row per permit. Used by `scripts/enrich-permits.ts` to hydrate the
- * BuildingPermit table block-by-block, plus to surface ADU/reconfiguration
- * precedent in the listing drawer's FeasibilityCard.
+ * BuildingPermit table block-by-block. The permit precedent counts feed
+ * into the ADU heuristic score boosts in `valueAdd.ts`.
  *
  * Anonymous Socrata access, throttled to ~1 req/sec to stay within the
  * unauthenticated-access guidance (matches sfpim-client.ts/datasf-client.ts).
