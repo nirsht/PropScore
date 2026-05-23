@@ -77,13 +77,25 @@ export async function getGmailClient(userId: string): Promise<gmail_v1.Gmail> {
   return google.gmail({ version: "v1", auth });
 }
 
+function isGoogleAuthError(err: unknown): boolean {
+  if (err instanceof GmailNotConnectedError) return true;
+  if (err instanceof GmailAuthError) return true;
+  // googleapis errors expose `code`/`status`; refresh failures from
+  // gtoken expose `response.status`. Treat 401/403 as "not connected"
+  // so a stale/revoked token surfaces as a Connect-Gmail prompt
+  // instead of a 500.
+  const candidate = err as { code?: unknown; status?: unknown; response?: { status?: unknown } };
+  const code = candidate?.code ?? candidate?.status ?? candidate?.response?.status;
+  return code === 401 || code === 403;
+}
+
 export async function getConnectedEmail(userId: string): Promise<string | null> {
   try {
     const gmail = await getGmailClient(userId);
     const profile = await gmail.users.getProfile({ userId: "me" });
     return profile.data.emailAddress ?? null;
   } catch (err) {
-    if (err instanceof GmailNotConnectedError) return null;
+    if (isGoogleAuthError(err)) return null;
     throw err;
   }
 }
