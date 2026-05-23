@@ -134,7 +134,16 @@ export function EmailsView() {
         <Paper variant="outlined" sx={{ flex: 1, minWidth: 0, p: 0 }}>
           <Stack divider={<Divider flexItem />}>
             {rows.length === 0 && (
-              <Box sx={{ p: 3, textAlign: "center" }}>
+              <Box
+                sx={{
+                  p: 3,
+                  textAlign: "center",
+                  minHeight: 320,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
                 <Typography variant="body2" color="text.secondary">
                   No threads yet. Open a listing and click the rent-roll button
                   on the listing agent row to start.
