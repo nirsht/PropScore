@@ -42,8 +42,6 @@ export const columns: GridColDef<ListingRow>[] = [
   addressColumn,
   priceColumn,
   daysOnMlsColumn,
-  postDateColumn,
-  listingUpdatedAtColumn,
   densityColumn,
   vacancyColumn,
   motivationColumn,
@@ -62,4 +60,6 @@ export const columns: GridColDef<ListingRow>[] = [
   occupancyColumn,
   yearBuiltColumn,
   effectiveStoriesColumn,
+  postDateColumn,
+  listingUpdatedAtColumn,
 ];
