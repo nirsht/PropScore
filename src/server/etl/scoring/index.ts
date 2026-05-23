@@ -190,7 +190,7 @@ export function computeHeuristicScore(
           rentControlCovered: ctx.rentControlCovered ?? null,
         },
       },
-      version: 6,
+      version: 7,
     },
   };
 }

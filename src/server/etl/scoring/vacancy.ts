@@ -23,7 +23,6 @@ export function vacancyScore(
 
   if (/vacant|delivered vacant|no tenants|owner occupied|will be vacant/.test(remarks)) s += 30;
   if (/fully (rented|occupied)|fully leased|stabilized/.test(remarks)) s -= 25;
-  if (/below market rents|under-market|value-add/.test(remarks)) s += 15;
 
   if (l.daysOnMls > 60) s += 5;
   if (l.daysOnMls > 120) s += 5;
