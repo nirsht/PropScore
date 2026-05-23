@@ -43,6 +43,25 @@ function envOptional(name: string): string | undefined {
   return v && v.trim() !== "" ? v : undefined;
 }
 
+// Render services in the same region as a managed Postgres should connect via
+// the *internal* hostname (e.g. `dpg-xxxxx-a`), not the external one
+// (`dpg-xxxxx-a.<region>-postgres.render.com`). External hostnames route
+// through Render's public edge, which terminates SSL and is subject to
+// proxy timeouts — the documented cause of intermittent
+// `P1017: Server has closed the connection` during pre-deploy migrations.
+// Internal connections stay inside the region, need no TLS, and are stable.
+// Local `.env` keeps the external URL so developer laptops can still connect.
+function toInternalDatabaseUrl(externalUrl: string): string {
+  const u = new URL(externalUrl);
+  const internalHostMatch = u.hostname.match(/^(dpg-[a-z0-9]+-a)\.[a-z]+-postgres\.render\.com$/);
+  const internalHost = internalHostMatch?.[1];
+  if (!internalHost) return externalUrl;
+  u.hostname = internalHost;
+  u.port = "";
+  u.searchParams.delete("sslmode");
+  return u.toString();
+}
+
 const argv = process.argv.slice(2);
 const DRY_RUN = argv.includes("--dry-run");
 const SKIP_DEPLOY = argv.includes("--no-deploy");
@@ -139,7 +158,17 @@ async function main() {
   console.log(DRY_RUN ? "[render-sync] DRY RUN — no API writes\n" : "[render-sync]\n");
 
   // Validate the variables we expect to push.
-  const DATABASE_URL = envOrDie("DATABASE_URL");
+  const externalDatabaseUrl = envOrDie("DATABASE_URL");
+  const DATABASE_URL = toInternalDatabaseUrl(externalDatabaseUrl);
+  if (DATABASE_URL !== externalDatabaseUrl) {
+    console.log(
+      `  DATABASE_URL host → ${new URL(DATABASE_URL).hostname} (internal; external used locally)\n`,
+    );
+  } else {
+    console.warn(
+      `  ⚠ DATABASE_URL host doesn't match Render's external pattern; pushing as-is.\n`,
+    );
+  }
   const NEXTAUTH_SECRET = envOrDie("NEXTAUTH_SECRET");
   const BRIDGE_SERVER_TOKEN = envOrDie("BRIDGE_SERVER_TOKEN");
   const OPENAI_API_KEY = envOrDie("OPENAI_API_KEY");
