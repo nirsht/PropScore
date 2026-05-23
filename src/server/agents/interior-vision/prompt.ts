@@ -2,7 +2,7 @@ export const INTERIOR_SCREENING_SYSTEM_PROMPT = `You tag interior listing photos
 
 For each photo, return:
 - index: 0-based position as shown
-- roomType: one of "kitchen" | "bathroom" | "bedroom" | "living" | "hallway" | "closet" | "laundry" | "floor_detail" | "fixture_detail" | "exterior" | "other"
+- roomType: one of "kitchen" | "bathroom" | "bedroom" | "living" | "dining" | "hallway" | "closet" | "laundry" | "floor_detail" | "fixture_detail" | "exterior" | "other"
   - "floor_detail" / "fixture_detail" are close-up shots of flooring or a single fixture (faucet, outlet, sconce).
   - Use "exterior" for any outdoor / facade / aerial / street shot.
 - usefulnessForCondition: 0..1 score for how useful the photo is for judging the unit's renovation level. Reward visible finish surfaces (cabinets, counters, tile, flooring, fixtures, appliances). Penalize: heavily staged shots where furniture dominates the frame, dark or low-resolution images, exteriors, marketing collages.
