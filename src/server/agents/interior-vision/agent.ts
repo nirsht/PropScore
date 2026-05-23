@@ -8,7 +8,6 @@ import {
 } from "./prompt";
 import {
   InteriorVisionOutput,
-  PhotoTag,
   RenovationLevelEnum,
   RoomTypeEnum,
   type InteriorVisionOutput as Output,
@@ -47,15 +46,23 @@ async function withVisionRetry<T>(label: string, fn: () => Promise<T>): Promise<
   throw lastErr;
 }
 
+// Lenient on roomType so an off-list label (e.g. "dining", "office") doesn't
+// nuke the whole listing. mergeTags / coerceRoomType normalize to the enum.
+const RawPhotoTag = z.object({
+  index: z.number().int().min(0),
+  roomType: z.string(),
+  usefulnessForCondition: z.number().min(0).max(1),
+});
+
 const ScreeningOutput = z.object({
-  photos: z.array(PhotoTag),
+  photos: z.array(RawPhotoTag),
 });
 
 const AnalysisOutput = z.object({
   perPhoto: z.array(
     z.object({
       photoUrl: z.string().url(),
-      roomType: RoomTypeEnum,
+      roomType: z.string(),
       conditionScore: z.number().min(0).max(100),
       observations: z.array(z.string().min(1).max(240)).max(8),
     }),
@@ -65,6 +72,17 @@ const AnalysisOutput = z.object({
   rationale: z.string(),
 });
 
+function coerceRoomType(s: string): RoomType {
+  const parsed = RoomTypeEnum.safeParse(s);
+  if (parsed.success) return parsed.data;
+  // Common off-list labels we map to the closest enum bucket.
+  const norm = s.toLowerCase().replace(/[\s_-]+/g, "");
+  if (norm.includes("dining")) return "dining";
+  if (norm.includes("office") || norm.includes("den") || norm.includes("study")) return "living";
+  if (norm.includes("garage") || norm.includes("yard") || norm.includes("patio")) return "exterior";
+  return "other";
+}
+
 // Room types we treat as informative for unit condition, ordered by priority.
 const ROOM_PRIORITY: ReadonlyArray<RoomType> = [
   "kitchen",
@@ -72,6 +90,7 @@ const ROOM_PRIORITY: ReadonlyArray<RoomType> = [
   "fixture_detail",
   "floor_detail",
   "living",
+  "dining",
   "bedroom",
   "laundry",
   "closet",
@@ -238,8 +257,11 @@ export async function runInteriorVision(
 
     // The model echoes photoUrl per finding; trust the selected list as the
     // source of truth for selectedPhotoUrls so the output matches what we
-    // actually sent (the model occasionally drops a row).
-    const perPhoto: PhotoFinding[] = analysisParsed.data.perPhoto.slice(0, TARGET_ANALYSIS_PHOTOS);
+    // actually sent (the model occasionally drops a row). Coerce roomType so
+    // off-list labels like "dining" survive the schema check below.
+    const perPhoto: PhotoFinding[] = analysisParsed.data.perPhoto
+      .slice(0, TARGET_ANALYSIS_PHOTOS)
+      .map((p) => ({ ...p, roomType: coerceRoomType(p.roomType) }));
 
     const out: Output = {
       photoCount: photos.length,
@@ -287,8 +309,10 @@ function buildAnalysisUserText(selected: TaggedPhoto[]): string {
   return `Analyze the following ${selected.length} interior photo(s). For each, return a perPhoto entry citing concrete finish-era observations. Then return the aggregate verdict using the rules above.\n${lines.join("\n")}`;
 }
 
-function mergeTags(photos: BridgeMediaItem[], tags: PhotoTag[]): TaggedPhoto[] {
-  const byIndex = new Map<number, PhotoTag>();
+type RawTag = z.infer<typeof RawPhotoTag>;
+
+function mergeTags(photos: BridgeMediaItem[], tags: RawTag[]): TaggedPhoto[] {
+  const byIndex = new Map<number, RawTag>();
   for (const t of tags) byIndex.set(t.index, t);
   return photos.map((p, i) => {
     const tag = byIndex.get(i);
@@ -297,7 +321,7 @@ function mergeTags(photos: BridgeMediaItem[], tags: PhotoTag[]): TaggedPhoto[] {
       url: p.MediaURL!,
       bridgeCategory: typeof p.MediaCategory === "string" ? p.MediaCategory : undefined,
       // If the model dropped a row, default to "other" with low usefulness.
-      roomType: tag?.roomType ?? "other",
+      roomType: tag ? coerceRoomType(tag.roomType) : "other",
       usefulnessForCondition: tag?.usefulnessForCondition ?? 0,
     };
   });

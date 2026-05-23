@@ -8,6 +8,7 @@ export const RoomTypeEnum = z.enum([
   "bathroom",
   "bedroom",
   "living",
+  "dining",
   "hallway",
   "closet",
   "laundry",
