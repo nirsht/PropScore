@@ -11,7 +11,10 @@
  *        - refresh:crime                  (Neighborhood table only)
  *   3. refresh:neighborhood-comps         (reads listings/assessor + writes Neighborhood medians)
  *   4. recompute:scores                   (heuristic; skips AI rows)
- *   5. ai-score:changed                   (delta: re-score only listings whose AI inputs changed)
+ *
+ * AI opportunity scoring (`ai-score:changed`) runs in its own Render cron
+ * (`propscore-ai-score`, +1h after this one) so it gets its own timeout
+ * budget and can't be starved by upstream enrichment stages.
  *
  * Each stage is a child process so it gets a fresh Prisma client / cursor;
  * we stream each one's stdout/stderr line-tagged into the parent log so
@@ -76,10 +79,6 @@ const PARALLEL_LANES: Stage[][] = [
 // the medians.
 const NEIGHBORHOOD_COMPS: Stage = stage("nb-comps", "refresh:neighborhood-comps");
 const POST: Stage = stage("recompute", "recompute:scores");
-// Delta AI scoring runs last so it sees the freshest heuristic baseline
-// (used as `previousScore` in the prompt) and only re-scores listings
-// whose AI input payload hash changed since the last AI run.
-const AI_SCORE: Stage = stage("ai-score", "ai-score:changed");
 // Reply polling — independent of scoring, runs last. The parser writes back
 // into Listing.extractedRentRoll, but the next nightly will pick up the new
 // rent roll via the normal extract → scoring chain.
@@ -138,10 +137,7 @@ async function main() {
   console.log(`[nightly] phase 4: ${POST.name}`);
   await runStage(POST);
 
-  console.log(`[nightly] phase 5: ${AI_SCORE.name}`);
-  await runStage(AI_SCORE);
-
-  console.log(`[nightly] phase 6: ${EMAILS_POLL.name}`);
+  console.log(`[nightly] phase 5: ${EMAILS_POLL.name}`);
   await runStage(EMAILS_POLL);
 
   const total = ((Date.now() - overallStart) / 1000).toFixed(1);

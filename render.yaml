@@ -35,8 +35,9 @@ services:
     branch: main
     schedule: "0 3 * * 2,6"
     buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm prisma generate
-    # Single nightly orchestrator. Each step is delta-only (skips listings
-    # already enriched) so AI tokens are spent on new listings only:
+    # ETL + enrichment + heuristic recompute. AI opportunity scoring is
+    # split into its own cron (`propscore-ai-score`) so it gets its own
+    # timeout budget and can't be starved by upstream enrichment stages:
     #   etl:sync          — incremental Bridge pull (cursor-based)
     #   enrich:sfpim      — assessor (free Socrata API)
     #   enrich:vision     — gpt-5-mini vision (NEW listings only)
@@ -46,8 +47,6 @@ services:
     #                        LLM cost; refreshes every 7 days per listing.
     #   recompute:scores  — re-run heuristic so new enrichment data feeds the
     #                        value-add score (no AI calls, free).
-    #   ai-score:changed  — gpt-5-mini opportunity score, delta-only via
-    #                        Score.aiInputHash (~$0.001/listing scored).
     startCommand: pnpm nightly
     envVars:
       - key: NODE_ENV
@@ -56,5 +55,27 @@ services:
         value: sfar
       - key: BRIDGE_BASE_URL
         value: https://api.bridgedataoutput.com/api/v2/OData
+      - key: OPENAI_MODEL
+        value: gpt-5-mini
+
+  - type: cron
+    name: propscore-ai-score
+    runtime: node
+    region: ohio
+    branch: main
+    # Runs 1h after the main ETL nightly on the same days (Tue + Sat UTC),
+    # so enrichment + heuristic recompute have a chance to land their
+    # latest inputs before we hash + re-score. Dedicated cron so AI
+    # scoring gets its own timeout budget and can't be starved by
+    # upstream enrichment.
+    schedule: "0 4 * * 2,6"
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm prisma generate
+    # Delta-only: skips listings whose AI input payload hash is unchanged
+    # since the last AI run. concurrency=10 keeps wall-clock under the
+    # cron timeout (~3-5s/call × N listings ÷ 10).
+    startCommand: pnpm ai-score:changed -- --concurrency=10
+    envVars:
+      - key: NODE_ENV
+        value: production
       - key: OPENAI_MODEL
         value: gpt-5-mini
