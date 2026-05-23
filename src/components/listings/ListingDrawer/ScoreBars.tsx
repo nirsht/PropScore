@@ -32,33 +32,37 @@ export function ScoreBars({
     );
   }
 
-  const showCompare = score.computedBy === "AI" && !!heuristic;
+  const hasAI =
+    score.aiDensityScore != null ||
+    score.aiVacancyScore != null ||
+    score.aiMotivationScore != null ||
+    score.aiValueAddWeightedAvg != null;
 
   const data = [
     {
       name: "Density",
-      current: score.densityScore,
-      heuristic: heuristic?.densityScore ?? null,
+      ai: score.aiDensityScore ?? null,
+      heuristic: heuristic?.densityScore ?? score.densityScore,
     },
     {
       name: "Vacancy",
-      current: score.vacancyScore,
-      heuristic: heuristic?.vacancyScore ?? null,
+      ai: score.aiVacancyScore ?? null,
+      heuristic: heuristic?.vacancyScore ?? score.vacancyScore,
     },
     {
       name: "Motivation",
-      current: score.motivationScore,
-      heuristic: heuristic?.motivationScore ?? null,
+      ai: score.aiMotivationScore ?? null,
+      heuristic: heuristic?.motivationScore ?? score.motivationScore,
     },
     {
       name: "Upside",
-      current: score.marketUpsideScore ?? null,
-      heuristic: heuristic?.marketUpsideScore ?? null,
+      ai: null,
+      heuristic: heuristic?.marketUpsideScore ?? score.marketUpsideScore ?? null,
     },
     {
       name: "Value-Add",
-      current: score.valueAddWeightedAvg,
-      heuristic: heuristic?.valueAddWeightedAvg ?? null,
+      ai: score.aiValueAddWeightedAvg ?? null,
+      heuristic: heuristic?.valueAddWeightedAvg ?? score.valueAddWeightedAvg,
     },
   ];
 
@@ -77,24 +81,24 @@ export function ScoreBars({
         />
         <RechartsTooltip
           cursor={{ fill: "rgba(255,255,255,0.04)" }}
-          content={<ScoreTooltip showCompare={showCompare} />}
+          content={<ScoreTooltip hasAI={hasAI} />}
         />
-        <Bar dataKey="current" name="Current" radius={[6, 6, 0, 0]}>
-          {data.map((d) => (
-            <Cell key={`current-${d.name}`} fill={METRIC_COLORS[d.name]} />
-          ))}
-        </Bar>
-        {showCompare && (
-          <Bar dataKey="heuristic" name="Heuristic" radius={[6, 6, 0, 0]}>
+        {hasAI && (
+          <Bar dataKey="ai" name="AI" radius={[6, 6, 0, 0]}>
             {data.map((d) => (
-              <Cell
-                key={`heur-${d.name}`}
-                fill={METRIC_COLORS[d.name]}
-                fillOpacity={0.28}
-              />
+              <Cell key={`ai-${d.name}`} fill={METRIC_COLORS[d.name]} />
             ))}
           </Bar>
         )}
+        <Bar dataKey="heuristic" name="Heuristic" radius={[6, 6, 0, 0]}>
+          {data.map((d) => (
+            <Cell
+              key={`heur-${d.name}`}
+              fill={METRIC_COLORS[d.name]}
+              fillOpacity={hasAI ? 0.28 : 1}
+            />
+          ))}
+        </Bar>
       </BarChart>
     </ResponsiveContainer>
   );
@@ -104,19 +108,19 @@ function ScoreTooltip({
   active,
   payload,
   label,
-  showCompare,
+  hasAI,
 }: {
   active?: boolean;
   payload?: Array<{ dataKey: string; value: number }>;
   label?: string;
-  showCompare: boolean;
+  hasAI: boolean;
 }) {
   if (!active || !payload?.length) return null;
-  const current = payload.find((p) => p.dataKey === "current")?.value;
+  const ai = payload.find((p) => p.dataKey === "ai")?.value;
   const heur = payload.find((p) => p.dataKey === "heuristic")?.value;
   const diff =
-    typeof current === "number" && typeof heur === "number"
-      ? Math.round((current - heur) * 10) / 10
+    typeof ai === "number" && typeof heur === "number"
+      ? Math.round((ai - heur) * 10) / 10
       : null;
 
   return (
@@ -136,25 +140,27 @@ function ScoreTooltip({
         {label}
       </Typography>
       <Stack spacing={0.25}>
-        {typeof current === "number" && (
+        {hasAI && typeof ai === "number" && (
           <Stack direction="row" justifyContent="space-between" spacing={2}>
             <Typography variant="caption" color="text.secondary">
-              {showCompare ? "AI" : "Score"}
+              AI
             </Typography>
             <Typography variant="caption" sx={{ fontWeight: 600 }}>
-              {current.toFixed(1)}
+              {ai.toFixed(1)}
             </Typography>
           </Stack>
         )}
-        {showCompare && typeof heur === "number" && (
+        {typeof heur === "number" && (
           <Stack direction="row" justifyContent="space-between" spacing={2}>
             <Typography variant="caption" color="text.secondary">
-              Heuristic
+              {hasAI ? "Heuristic" : "Score"}
             </Typography>
-            <Typography variant="caption">{heur.toFixed(1)}</Typography>
+            <Typography variant="caption" sx={{ fontWeight: hasAI ? 400 : 600 }}>
+              {heur.toFixed(1)}
+            </Typography>
           </Stack>
         )}
-        {showCompare && diff !== null && (
+        {diff !== null && (
           <Stack
             direction="row"
             justifyContent="space-between"
