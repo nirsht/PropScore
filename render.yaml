@@ -33,7 +33,7 @@ services:
     runtime: node
     region: ohio
     branch: main
-    schedule: "0 3 * * *"
+    schedule: "0 3 * * 2,6"
     buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm prisma generate
     # Single nightly orchestrator. Each step is delta-only (skips listings
     # already enriched) so AI tokens are spent on new listings only:
