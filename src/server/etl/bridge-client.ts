@@ -60,6 +60,12 @@ export type BridgeProperty = Record<string, unknown> & {
   ListAgentMlsId?: string;
   ListOfficeName?: string;
   CoListAgentFullName?: string;
+  // RESO auction fields. SpecialListingConditions and ListingTerms are
+  // multi-valued enums; Bridge may serialize them as a JSON array or a
+  // comma-delimited string depending on the dataset/version.
+  SpecialListingConditions?: string[] | string;
+  ListingTerms?: string[] | string;
+  AuctionDate?: string;
 };
 
 export type SearchOptions = {
@@ -124,6 +130,10 @@ const DEFAULT_SELECT = [
   "ListAgentMlsId",
   "ListOfficeName",
   "CoListAgentFullName",
+  // Auction signals — Bridge `sfar` exposes these on auction listings.
+  "SpecialListingConditions",
+  "ListingTerms",
+  "AuctionDate",
 ];
 
 let lastRequestAt = 0;

@@ -38,6 +38,8 @@ const baseListing = (
   yearBuilt: 1925,
   stories: 3,
   bridgeModificationTimestamp: new Date("2026-01-15"),
+  isAuction: false,
+  auctionDate: null,
   raw: {},
   ...overrides,
 });

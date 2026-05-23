@@ -231,6 +231,8 @@ async function flush(rows: NormalizedListing[]): Promise<{ upserted: number; sco
         yearBuilt: r.yearBuilt,
         stories: r.stories,
         bridgeModificationTimestamp: r.bridgeModificationTimestamp,
+        isAuction: r.isAuction,
+        auctionDate: r.auctionDate,
         raw: r.raw as Prisma.InputJsonValue,
       },
       update: {
@@ -255,6 +257,8 @@ async function flush(rows: NormalizedListing[]): Promise<{ upserted: number; sco
         yearBuilt: r.yearBuilt,
         stories: r.stories,
         bridgeModificationTimestamp: r.bridgeModificationTimestamp,
+        isAuction: r.isAuction,
+        auctionDate: r.auctionDate,
         raw: r.raw as Prisma.InputJsonValue,
       },
     });

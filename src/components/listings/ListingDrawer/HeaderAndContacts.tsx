@@ -31,6 +31,8 @@ type ListingLike = {
   units: number | null;
   assessorBuildingSqft: number | null;
   assessorUnits: number | null;
+  isAuction?: boolean | null;
+  auctionDate?: Date | string | null;
 };
 
 export function HeaderAndContacts({
@@ -77,6 +79,9 @@ export function HeaderAndContacts({
               color={listing.status === "Active" ? "success" : "default"}
               label={listing.status}
             />
+            {listing.isAuction && (
+              <Chip size="small" color="warning" label="Auction" />
+            )}
             <Chip size="small" variant="outlined" label={listing.propertyType} />
           </Stack>
           <Typography variant="h5" sx={{ lineHeight: 1.2 }}>
@@ -141,6 +146,13 @@ export function HeaderAndContacts({
               value={fmtDate(listing.bridgeModificationTimestamp ?? null)}
               small
             />
+            {listing.auctionDate && (
+              <Metric
+                label="Auction date"
+                value={fmtDate(listing.auctionDate)}
+                small
+              />
+            )}
           </Stack>
         </Stack>
       </Paper>
