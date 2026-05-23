@@ -87,6 +87,12 @@ model Listing {
   listingUpdatedAt DateTime
   status           String
 
+  // Auction signals from RESO (Bridge `sfar`). isAuction is true when any of
+  // SpecialListingConditions/ListingTerms/AuctionDate flag the listing as an
+  // auction; auctionDate captures the scheduled auction time when present.
+  isAuction   Boolean   @default(false)
+  auctionDate DateTime?
+
   propertyType String
   sqft         Int?
   lotSizeSqft  Int?

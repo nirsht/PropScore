@@ -23,6 +23,8 @@ export type NormalizedListing = {
   yearBuilt: number | null;
   stories: number | null;
   bridgeModificationTimestamp: Date;
+  isAuction: boolean;
+  auctionDate: Date | null;
   raw: BridgeProperty;
 };
 
@@ -64,6 +66,24 @@ const date = (v: unknown): Date | null => {
 };
 
 const SQFT_PER_ACRE = 43_560;
+
+// RESO multi-valued enums (SpecialListingConditions, ListingTerms) may arrive
+// from Bridge as an array of strings or as a single comma-delimited string.
+// `containsToken` answers "does this field carry <needle>" without caring
+// which shape we got.
+const containsToken = (v: unknown, needle: string): boolean => {
+  const re = new RegExp(`\\b${needle}\\b`, "i");
+  if (Array.isArray(v)) return v.some((x) => re.test(String(x)));
+  if (v == null) return false;
+  return re.test(String(v));
+};
+
+function detectAuction(p: BridgeProperty): boolean {
+  if (containsToken(p.SpecialListingConditions, "auction")) return true;
+  if (containsToken(p.ListingTerms, "auction")) return true;
+  if (date(p.AuctionDate) != null) return true;
+  return false;
+}
 
 function computeLotSizeSqft(p: BridgeProperty): number | null {
   const direct = positiveNum(p.LotSizeSquareFeet);
@@ -159,6 +179,8 @@ export function normalizeListing(p: BridgeProperty): NormalizedListing | null {
     yearBuilt,
     stories,
     bridgeModificationTimestamp,
+    isAuction: detectAuction(p),
+    auctionDate: date(p.AuctionDate),
     raw: p,
   };
 }
