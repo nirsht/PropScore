@@ -6,6 +6,12 @@ import type {
   UnitMixEntryUI,
 } from "./types";
 
+const round50 = (n: number) => Math.round(n / 50) * 50;
+// Minimum uplift a moderate cosmetic remodel should add over market rent.
+// Used as a floor when we can't derive the LLM's per-unit uplift ratio
+// (e.g. no aiRentEstimate match, or the model emitted postReno <= aiRent).
+const MIN_RENO_UPLIFT = 1.05;
+
 type Row = {
   weight: number;
   actualRent: number | null;
@@ -74,41 +80,52 @@ export function enrichRentRoll(args: {
       }));
 
   const enriched: EnrichedRow[] = rows.map((row) => {
-    let market: EnrichedRow["market"] = null;
-    if (compsOutput) {
-      const c = compEstimateFor(compsOutput.buckets, row);
-      if (c) market = { ...c, source: "comps" };
-    }
-    if (!market) {
-      const ai = matchEstimate(aiRentEstimate, {
-        beds: row.beds,
-        baths: row.baths,
-        sqft: row.sqft,
-        unitLabel: row.unitLabel,
-        index: row.sourceIndex,
-      });
-      if (ai) {
-        market = {
-          rent: ai.estimatedRent,
-          rationale: ai.rationale,
-          source: ai.source ?? "gpt",
-        };
-      }
-    }
-    const reno = matchEstimate(postRenoEstimate, {
+    const matchKey = {
       beds: row.beds,
       baths: row.baths,
       sqft: row.sqft,
       unitLabel: row.unitLabel,
       index: row.sourceIndex,
-    });
-    return {
-      ...row,
-      market,
-      postReno: reno
-        ? { rent: reno.estimatedRent, rationale: reno.rationale }
-        : null,
     };
+    const ai = matchEstimate(aiRentEstimate, matchKey);
+    let market: EnrichedRow["market"] = null;
+    if (compsOutput) {
+      const c = compEstimateFor(compsOutput.buckets, row);
+      if (c) market = { ...c, source: "comps" };
+    }
+    if (!market && ai) {
+      market = {
+        rent: ai.estimatedRent,
+        rationale: ai.rationale,
+        source: ai.source ?? "gpt",
+      };
+    }
+    const reno = matchEstimate(postRenoEstimate, matchKey);
+
+    // Anchor post-remodel rent to the actually-displayed market rent.
+    // The LLM keeps postReno > aiRentEstimate, but when comps replace
+    // the market column with a higher number, the raw postReno can fall
+    // below it. Preserve the LLM's per-unit uplift ratio when available,
+    // otherwise apply a flat MIN_RENO_UPLIFT floor.
+    let postReno: EnrichedRow["postReno"] = reno
+      ? { rent: reno.estimatedRent, rationale: reno.rationale }
+      : null;
+    if (market && postReno) {
+      const upliftRatio =
+        ai && reno && ai.estimatedRent > 0 && reno.estimatedRent > ai.estimatedRent
+          ? reno.estimatedRent / ai.estimatedRent
+          : MIN_RENO_UPLIFT;
+      const floor = round50(market.rent * upliftRatio);
+      if (floor > postReno.rent) {
+        const bumpPct = Math.round((upliftRatio - 1) * 100);
+        postReno = {
+          rent: floor,
+          rationale: `${reno!.rationale} · lifted +${bumpPct}% over ${market.source === "comps" ? "comps" : "market"}`,
+        };
+      }
+    }
+
+    return { ...row, market, postReno };
   });
 
   const currentTotal = (() => {

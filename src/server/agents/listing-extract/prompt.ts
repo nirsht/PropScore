@@ -48,7 +48,7 @@ Output schema fields:
    rationale: one short clause ≤ 25 words anchoring the estimate (e.g. "SF/Mission 2BR ~$3,800 base; +$300 for 1,100 sf vs neighborhood median 750 sf").
    Set to null only when both rentRoll and unitMix are null.
 
-4. postRenovationRentEstimate — same shape and rules as aiRentEstimate, but estimating market rent AFTER a moderate cosmetic renovation: kitchen/bath refresh, fresh paint, modernized fixtures (not a gut remodel). MUST be strictly higher than the matching aiRentEstimate entry for the same unit. Use top-of-market comps for renovated units in the same neighborhood. Round to the nearest $50. Mirror sqft/unitLabel from the matching aiRentEstimate entry.
+4. postRenovationRentEstimate — same shape and rules as aiRentEstimate, but estimating market rent AFTER a moderate cosmetic renovation: kitchen/bath refresh, fresh paint, modernized fixtures (not a gut remodel). MUST be strictly higher than the matching aiRentEstimate entry by at least 5% — a moderate cosmetic remodel realistically lifts rent 5–20% in SF/Bay Area markets. Use top-of-market comps for renovated units in the same neighborhood. Round to the nearest $50. Mirror sqft/unitLabel from the matching aiRentEstimate entry.
    rationale: one short clause anchoring the post-reno number (e.g. "renovated SF/Mission 2BR pulls $5,000–$5,400 in 2026").
    Set to null only when both rentRoll and unitMix are null.
 
