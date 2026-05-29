@@ -130,10 +130,10 @@ const DEFAULT_SELECT = [
   "ListAgentMlsId",
   "ListOfficeName",
   "CoListAgentFullName",
-  // Auction signals — Bridge `sfar` exposes these on auction listings.
+  // Auction signals — Bridge `sfar` no longer permits selecting ListingTerms
+  // or AuctionDate under IDX policy (rejected with 400 as of 2026-05). The
+  // normalize layer falls back to SpecialListingConditions alone.
   "SpecialListingConditions",
-  "ListingTerms",
-  "AuctionDate",
 ];
 
 let lastRequestAt = 0;
