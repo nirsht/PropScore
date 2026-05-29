@@ -109,6 +109,7 @@ export function HeaderAndContacts({
                     phone={agentPhone}
                     email={agentEmail}
                     listingMlsId={listing.mlsId}
+                    listingAddress={listing.address}
                   />
                 )}
                 {(coAgentName || coAgentPhone || coAgentEmail) && (
