@@ -14,6 +14,7 @@ import EmailRoundedIcon from "@mui/icons-material/EmailRounded";
 import MailOutlineRoundedIcon from "@mui/icons-material/MailOutlineRounded";
 import DraftsRoundedIcon from "@mui/icons-material/DraftsRounded";
 import { trpc } from "@/lib/trpc/client";
+import { rentRollRequestEmail } from "@/lib/emails/templates";
 
 export function ContactCard({
   role,
@@ -21,6 +22,7 @@ export function ContactCard({
   phone,
   email,
   listingMlsId,
+  listingAddress,
 }: {
   role: string;
   name: string | null;
@@ -29,9 +31,27 @@ export function ContactCard({
   /** When set, renders the "Request rent roll" button for this row.
    *  Only the primary "Listed by" row should pass this. */
   listingMlsId?: string;
+  /** When set alongside listingMlsId, the mailto button pre-fills the
+   *  rent-roll request template. */
+  listingAddress?: string;
 }) {
+  const connection = trpc.emails.connectionStatus.useQuery(undefined, {
+    staleTime: 60 * 1000,
+    enabled: Boolean(email && listingAddress),
+  });
   const telHref = phone ? `tel:${phone.replace(/[^\d+]/g, "")}` : null;
-  const mailHref = email ? `mailto:${email}` : null;
+  const mailHref = email
+    ? listingAddress
+      ? (() => {
+          const { subject, body } = rentRollRequestEmail({
+            listingAddress,
+            agentName: name,
+            userName: connection.data?.name ?? null,
+          });
+          return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        })()
+      : `mailto:${email}`
+    : null;
 
   return (
     <Stack

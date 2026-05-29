@@ -11,7 +11,7 @@ import {
   gmailDraftUrl,
   gmailThreadUrl,
 } from "@/lib/google/gmail";
-import { rentRollRequestEmail } from "@/server/emails/templates";
+import { rentRollRequestEmail } from "@/lib/emails/templates";
 import { syncThread } from "@/server/emails/sync";
 import { parseEmailRentRoll } from "@/server/agents/email-rent-roll/agent";
 
@@ -34,14 +34,24 @@ export const emailsRouter = router({
   // account with valid scopes? Drives the Connect-Gmail pill + ContactCard
   // button visibility.
   connectionStatus: protectedProcedure.query(async ({ ctx }) => {
+    const user = await ctx.db.user.findUnique({
+      where: { id: ctx.user.id },
+      select: { name: true },
+    });
     if (!googleAuthEnabled) {
-      return { configured: false as const, connected: false as const, email: null };
+      return {
+        configured: false as const,
+        connected: false as const,
+        email: null,
+        name: user?.name ?? null,
+      };
     }
     const email = await getConnectedEmail(ctx.user.id);
     return {
       configured: true as const,
       connected: Boolean(email),
       email,
+      name: user?.name ?? null,
     };
   }),
 
