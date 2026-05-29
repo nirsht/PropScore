@@ -33,6 +33,10 @@ const LABELS: Record<WeightKey, { name: string; hint: string }> = {
     name: "Density",
     hint: "Units per parcel — more units, more cash flow.",
   },
+  rehab: {
+    name: "Rehab potential",
+    hint: "Vision-agent renovation level + condition signals (open violations, unpermitted space). Worse condition = more upside.",
+  },
   adu: {
     name: "ADU potential",
     hint: "AI-extracted feasibility for a backyard ADU.",

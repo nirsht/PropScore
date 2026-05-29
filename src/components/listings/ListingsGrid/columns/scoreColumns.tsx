@@ -36,7 +36,7 @@ export const valueAddColumn: GridColDef<ListingRow> = {
   renderHeader: () => (
     <HeaderTooltip
       label="Value-Add"
-      hint="Heuristic weighted average: Vacancy 35%, Location 25%, Density 20%, ADU 15%, Motivation 5%. 0–100. Always populated, refreshed every nightly."
+      hint="Heuristic weighted average: Vacancy 30%, Location 20%, Density 15%, Rehab 15%, ADU 15%, Motivation 5%. 0–100. Always populated, refreshed every nightly."
     />
   ),
   valueFormatter: (v) => fmtDecimal(v as number | null, 1),
@@ -112,7 +112,7 @@ export const renovationLevelColumn: GridColDef<ListingRow> = {
   renderHeader: () => (
     <HeaderTooltip
       label="Reno"
-      hint="Renovation level from AI vision (interior photos: kitchen + bath finishes, fixtures, appliances; falls back to exterior signal). Distressed → Original → Updated → Renovated. A 4th input to the value-add weighted average."
+      hint="Renovation level from AI vision (interior photos: kitchen + bath finishes, fixtures, appliances; falls back to exterior signal). Distressed → Original → Updated → Renovated. Anchors the Rehab Potential driver (15%) in the value-add weighted average."
     />
   ),
   renderCell: ({ value }: GridRenderCellParams<ListingRow>) => {

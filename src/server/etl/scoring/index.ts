@@ -11,7 +11,7 @@ import {
   aduCombinedScore,
   applyAduFeasibilityBoosts,
   landRatioScore,
-  renovationUpsideScore,
+  rehabScore,
   sizeDiscrepancyScore,
   weightedValueAdd,
   type AduFeasibilityCtx,
@@ -24,6 +24,7 @@ export type ComputedScore = {
   vacancyScore: number;
   motivationScore: number;
   locationScore: number | null;
+  rehabScore: number | null;
   aduScore: number | null;
   assessmentDeltaScore: number | null;
   zoningUpsideScore: number | null;
@@ -37,6 +38,8 @@ export type HeuristicContext = {
   effectiveUnits?: number | null;
   effectiveStories?: number | null;
   renovationLevel?: RenovationLevel | null;
+  /** 0–1 vision-agent confidence in the renovationLevel read. */
+  renovationConfidence?: number | null;
   mlsSqft?: number | null;
   assessorSqft?: number | null;
   assessorBuildingValue?: number | null;
@@ -89,9 +92,15 @@ export function computeHeuristicScore(
   const density = densityScore(l, ctx);
   const vacancy = vacancyScore(l, ctx);
   const motivation = motivationScore(l);
-  const renovation = renovationUpsideScore(ctx.renovationLevel ?? null);
   const sizeDiff = sizeDiscrepancyScore(ctx.mlsSqft ?? l.sqft, ctx.assessorSqft);
   const landRatio = landRatioScore(ctx.assessorLandValue, ctx.assessorBuildingValue);
+  const rehab = rehabScore({
+    renovationLevel: ctx.renovationLevel ?? null,
+    renovationConfidence: ctx.renovationConfidence ?? null,
+    codeViolationsOpenCount: ctx.codeViolationsOpenCount ?? null,
+    sizeDiscrepancyScore: sizeDiff,
+    landRatioScore: landRatio,
+  });
   const aduFeasibilityCtx: AduFeasibilityCtx = {
     assessorConstructionType: ctx.assessorConstructionType,
     landUseCategory: ctx.landUseCategory,
@@ -123,6 +132,7 @@ export function computeHeuristicScore(
       vacancyScore: vacancy,
       locationScore: location,
       densityScore: density,
+      rehabScore: rehab.score,
       aduScore: adu,
       motivationScore: motivation,
     },
@@ -134,6 +144,7 @@ export function computeHeuristicScore(
     vacancyScore: vacancy,
     motivationScore: motivation,
     locationScore: location,
+    rehabScore: rehab.score,
     aduScore: adu,
     assessmentDeltaScore: assessmentDelta,
     zoningUpsideScore: zoningUpside,
@@ -157,6 +168,7 @@ export function computeHeuristicScore(
         buildingValue: ctx.assessorBuildingValue,
         detachedAduScore: ctx.detachedAduScore ?? null,
         convertedAduScore: ctx.convertedAduScore ?? null,
+        renovationConfidence: ctx.renovationConfidence ?? null,
         assessedValueTotal: ctx.assessedValueTotal ?? null,
         locationScore: location,
         zoningMaxUnits: ctx.zoningMaxUnits ?? null,
@@ -171,14 +183,14 @@ export function computeHeuristicScore(
         vacancy,
         motivation,
         location,
+        rehab: rehab.score,
+        rehabBreakdown: rehab.breakdown,
         adu,
         aduFeasibility: aduResult.breakdown,
         assessmentDelta,
         zoningUpside,
         marketUpside,
-        // legacy components — still surfaced for transparency, no longer
-        // weighted into the value-add average.
-        renovation,
+        // Raw signals that feed into `rehab`. Surfaced for transparency.
         sizeDiscrepancy: sizeDiff,
         landRatio,
         // Risk & Compliance — display-only block. Surfaced for transparency
@@ -190,7 +202,7 @@ export function computeHeuristicScore(
           rentControlCovered: ctx.rentControlCovered ?? null,
         },
       },
-      version: 7,
+      version: 8,
     },
   };
 }

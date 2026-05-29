@@ -57,9 +57,9 @@ describe("computeHeuristicScore", () => {
     expect(occ.vacancyScore).toBeLessThanOrEqual(5);
   });
 
-  it("emits breakdown version 7", () => {
+  it("emits breakdown version 8", () => {
     const score = computeHeuristicScore(baseListing());
-    expect((score.breakdown as { version: number }).version).toBe(7);
+    expect((score.breakdown as { version: number }).version).toBe(8);
   });
 
   it("market upside is null when neither sub-score fires", () => {

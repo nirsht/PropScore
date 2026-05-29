@@ -3,20 +3,23 @@ import type { RenovationLevel } from "@prisma/client";
 /**
  * Value-Add weighted average — the default sort key for the grid.
  *
- * Updated 2026-05-16: shifted 5 points from density to ADU. Vacancy still
- * leads, location is solo second, density and ADU now bracket close
- * together, and motivation stays a small thumb on the scale. Renovation
- * upside, size discrepancy, and land ratio are still computed for the
- * breakdown but no longer move the weighted average.
+ * Updated 2026-05-29 (v8): introduced a `rehab` driver fed by the vision
+ * agent's renovationLevel plus condition signals (open violations, size
+ * discrepancy, land ratio). Vacancy still leads, ADU / Rehab / Density
+ * sit shoulder-to-shoulder behind Location, and motivation stays a small
+ * thumb on the scale. Size discrepancy and land ratio remain in the
+ * breakdown as raw signals — they feed into rehab now, not directly into
+ * the weighted average.
  *
  * Weights are exposed so the UI can let users re-rank with their own.
  * Null components drop out of the divisor so unscored listings aren't
  * penalized.
  */
 export const VALUE_ADD_WEIGHTS = {
-  vacancy: 0.35,
-  location: 0.25,
-  density: 0.20,
+  vacancy: 0.30,
+  location: 0.20,
+  density: 0.15,
+  rehab: 0.15,
   adu: 0.15,
   motivation: 0.05,
 } as const;
@@ -27,6 +30,7 @@ export const WEIGHT_KEYS: ReadonlyArray<WeightKey> = [
   "vacancy",
   "location",
   "density",
+  "rehab",
   "adu",
   "motivation",
 ];
@@ -45,6 +49,113 @@ export const RENOVATION_UPSIDE: Record<RenovationLevel, number> = {
 export function renovationUpsideScore(level: RenovationLevel | null | undefined): number | null {
   if (level == null) return null;
   return RENOVATION_UPSIDE[level];
+}
+
+export type RehabScoreCtx = {
+  renovationLevel?: RenovationLevel | null;
+  /** 0–1 vision-agent confidence. When low, the level read is dampened toward 50. */
+  renovationConfidence?: number | null;
+  /** SF DBI open code violations. Each open case = work the next owner needs to do. */
+  codeViolationsOpenCount?: number | null;
+  /** sizeDiscrepancyScore(mlsSqft, assessorSqft) — unpermitted / unfinished space. */
+  sizeDiscrepancyScore?: number | null;
+  /** landRatioScore(land, building) — building tiny vs. land = teardown candidate. */
+  landRatioScore?: number | null;
+};
+
+export type RehabScoreBreakdown = {
+  base: number | null;
+  dampened: number | null;
+  confidence: number | null;
+  boosts: {
+    violations: number;
+    sizeDiscrepancy: number;
+    landRatio: number;
+  };
+  final: number | null;
+};
+
+/**
+ * Rehab Potential — higher means more value-add work the next owner can do.
+ *
+ *   1. Anchor on the vision-agent renovationLevel via `RENOVATION_UPSIDE`
+ *      (DISTRESSED=100 … RENOVATED=10).
+ *   2. Dampen by `renovationConfidence`: a low-confidence vision read is
+ *      pulled toward the neutral 50, so we don't over-commit on a shaky
+ *      kitchen photo. `final = 50 + (base − 50) × confidence`.
+ *   3. Layer additive condition signals (capped at +15 total):
+ *        +5  if any open code violations (+10 if 3 or more)
+ *        +5  if assessor sqft materially exceeds MLS (unpermitted / unfinished)
+ *        +5  if land dominates the assessment (teardown candidate)
+ *
+ * When `renovationLevel` is missing, anchors at a neutral 50 and still
+ * applies the boosts — matches the "assume 50" default for unknown rehab
+ * data. Returns null only when level is missing AND no condition boost
+ * actually fires, so a listing with no relevant signal at all (the common
+ * case for newly-synced listings before any enrichment lands) doesn't
+ * artificially anchor every weighted average at 50.
+ */
+export function rehabScore(ctx: RehabScoreCtx = {}): {
+  score: number | null;
+  breakdown: RehabScoreBreakdown;
+} {
+  const baseRaw = ctx.renovationLevel != null ? RENOVATION_UPSIDE[ctx.renovationLevel] : null;
+
+  // Confidence dampening — `final = 50 + (base − 50) × confidence`.
+  const confidence =
+    typeof ctx.renovationConfidence === "number" &&
+    Number.isFinite(ctx.renovationConfidence)
+      ? Math.max(0, Math.min(1, ctx.renovationConfidence))
+      : null;
+  let dampened: number | null;
+  if (baseRaw == null) {
+    dampened = null;
+  } else if (confidence == null) {
+    dampened = baseRaw;
+  } else {
+    dampened = 50 + (baseRaw - 50) * confidence;
+  }
+
+  const openViolations = ctx.codeViolationsOpenCount ?? 0;
+  const violationsBoost = openViolations >= 3 ? 10 : openViolations >= 1 ? 5 : 0;
+  const sizeBoost = (ctx.sizeDiscrepancyScore ?? 0) >= 50 ? 5 : 0;
+  const landBoost = (ctx.landRatioScore ?? 0) >= 75 ? 5 : 0;
+  const totalBoost = Math.min(15, violationsBoost + sizeBoost + landBoost);
+
+  // Drop out of the weighted avg when we genuinely have nothing to say:
+  // no renovation read AND no condition signal actually triggered a boost.
+  if (baseRaw == null && totalBoost === 0) {
+    return {
+      score: null,
+      breakdown: {
+        base: null,
+        dampened: null,
+        confidence,
+        boosts: { violations: 0, sizeDiscrepancy: 0, landRatio: 0 },
+        final: null,
+      },
+    };
+  }
+
+  // Neutral 50 baseline when we have no renovationLevel but do have a real
+  // boost firing.
+  const anchor = dampened ?? 50;
+  const final = Math.max(0, Math.min(100, anchor + totalBoost));
+
+  return {
+    score: final,
+    breakdown: {
+      base: baseRaw,
+      dampened,
+      confidence,
+      boosts: {
+        violations: violationsBoost,
+        sizeDiscrepancy: sizeBoost,
+        landRatio: landBoost,
+      },
+      final,
+    },
+  };
 }
 
 export function sizeDiscrepancyScore(
@@ -189,6 +300,7 @@ export type WeightedComponents = {
   vacancyScore: number | null;
   locationScore: number | null;
   densityScore: number | null;
+  rehabScore: number | null;
   aduScore: number | null;
   motivationScore: number | null;
 };
@@ -224,6 +336,7 @@ export function weightedValueAdd(
   if (scores.vacancyScore != null) components.push({ value: scores.vacancyScore, weight: w.vacancy });
   if (scores.locationScore != null) components.push({ value: scores.locationScore, weight: w.location });
   if (scores.densityScore != null) components.push({ value: scores.densityScore, weight: w.density });
+  if (scores.rehabScore != null) components.push({ value: scores.rehabScore, weight: w.rehab });
   if (scores.aduScore != null) components.push({ value: scores.aduScore, weight: w.adu });
   if (scores.motivationScore != null) components.push({ value: scores.motivationScore, weight: w.motivation });
 

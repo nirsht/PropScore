@@ -14,6 +14,9 @@ export const SORT_COLUMN: Record<SortKey, string> = {
   density: '"densityScore"',
   vacancy: '"vacancyScore"',
   motivation: '"motivationScore"',
+  location: '"locationScore"',
+  rehab: '"rehabScore"',
+  adu: '"aduScore"',
   valueAddAi: '"aiValueAddWeightedAvg"',
   densityAi: '"aiDensityScore"',
   vacancyAi: '"aiVacancyScore"',
@@ -22,7 +25,7 @@ export const SORT_COLUMN: Record<SortKey, string> = {
 
 /**
  * SQL mirror of `weightedValueAdd` from scoring/valueAdd.ts: weighted blend
- * of 5 component scores with null components dropped from the divisor.
+ * of 6 component scores with null components dropped from the divisor.
  * Returns NULL when no components are present.
  *
  * Returned as a Prisma.Sql so callers can splice it into ORDER BY *and*
@@ -35,18 +38,21 @@ export function weightedValueAddExpr(
   const wV = weights.vacancy;
   const wL = weights.location;
   const wD = weights.density;
+  const wR = weights.rehab;
   const wA = weights.adu;
   const wM = weights.motivation;
   const expr = Prisma.sql`(
     COALESCE(${wV}::float * "vacancyScore", 0) +
     COALESCE(${wL}::float * "locationScore", 0) +
     COALESCE(${wD}::float * "densityScore", 0) +
+    COALESCE(${wR}::float * "rehabScore", 0) +
     COALESCE(${wA}::float * "aduScore", 0) +
     COALESCE(${wM}::float * "motivationScore", 0)
   ) / NULLIF(
     (CASE WHEN "vacancyScore"    IS NOT NULL THEN ${wV}::float ELSE 0 END) +
     (CASE WHEN "locationScore"   IS NOT NULL THEN ${wL}::float ELSE 0 END) +
     (CASE WHEN "densityScore"    IS NOT NULL THEN ${wD}::float ELSE 0 END) +
+    (CASE WHEN "rehabScore"      IS NOT NULL THEN ${wR}::float ELSE 0 END) +
     (CASE WHEN "aduScore"        IS NOT NULL THEN ${wA}::float ELSE 0 END) +
     (CASE WHEN "motivationScore" IS NOT NULL THEN ${wM}::float ELSE 0 END),
     0
@@ -58,7 +64,7 @@ export function weightedValueAddExpr(
 export function weightsDifferFromDefault(
   weights: ReturnType<typeof resolveWeights>,
 ): boolean {
-  const keys = ["vacancy", "location", "density", "adu", "motivation"] as const;
+  const keys = ["vacancy", "location", "density", "rehab", "adu", "motivation"] as const;
   for (const k of keys) {
     if (Math.abs(weights[k] - VALUE_ADD_WEIGHTS[k]) > 1e-9) return true;
   }
@@ -87,6 +93,12 @@ export function extractSortValue(row: ListingRow, key: SortKey): number | null {
       return row.vacancyScore;
     case "motivation":
       return row.motivationScore;
+    case "location":
+      return row.locationScore;
+    case "rehab":
+      return row.rehabScore;
+    case "adu":
+      return row.aduScore;
     case "valueAddAi":
       return row.aiValueAddWeightedAvg;
     case "densityAi":

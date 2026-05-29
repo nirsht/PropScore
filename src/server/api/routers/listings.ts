@@ -88,6 +88,7 @@ export const listingsRouter = router({
             effectiveStories:
               listing.assessorStories ?? listing.stories ?? listing.aiStories,
             renovationLevel: listing.renovationLevel,
+            renovationConfidence: listing.renovationConfidence,
             mlsSqft: listing.sqft,
             assessorSqft: listing.assessorBuildingSqft,
             assessorBuildingValue: listing.assessorBuildingValue,
@@ -121,6 +122,9 @@ export const listingsRouter = router({
             densityScore: round1(h.densityScore),
             vacancyScore: round1(h.vacancyScore),
             motivationScore: round1(h.motivationScore),
+            locationScore: h.locationScore != null ? round1(h.locationScore) : null,
+            rehabScore: h.rehabScore != null ? round1(h.rehabScore) : null,
+            aduScore: h.aduScore != null ? round1(h.aduScore) : null,
             valueAddWeightedAvg: round1(h.valueAddWeightedAvg),
             marketUpsideScore:
               h.marketUpsideScore != null ? round1(h.marketUpsideScore) : null,

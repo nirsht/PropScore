@@ -54,6 +54,7 @@ export type ListingRow = {
   valueAddWeightedAvg: number | null;
   locationScore: number | null;
   aduScore: number | null;
+  rehabScore: number | null;
   // AI-scored variants (populated by `runAIScoring`). Null until the
   // listing has been AI-scored at least once.
   aiDensityScore: number | null;
