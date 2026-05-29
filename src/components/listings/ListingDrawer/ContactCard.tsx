@@ -10,6 +10,8 @@ import {
   Typography,
 } from "@mui/material";
 import PhoneRoundedIcon from "@mui/icons-material/PhoneRounded";
+import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
+import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import EmailRoundedIcon from "@mui/icons-material/EmailRounded";
 import MailOutlineRoundedIcon from "@mui/icons-material/MailOutlineRounded";
 import DraftsRoundedIcon from "@mui/icons-material/DraftsRounded";
@@ -71,6 +73,7 @@ export function ContactCard({
           </IconButton>
         </Tooltip>
       )}
+      {phone && <CopyPhoneButton phone={phone} />}
       {mailHref && (
         <Tooltip title={`Email ${email}`}>
           <IconButton
@@ -87,6 +90,36 @@ export function ContactCard({
         <RequestRentRollButton listingMlsId={listingMlsId} agentEmail={email} />
       )}
     </Stack>
+  );
+}
+
+function CopyPhoneButton({ phone }: { phone: string }) {
+  const [copied, setCopied] = React.useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(phone);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard API can fail in non-secure contexts; silently ignore.
+    }
+  };
+
+  return (
+    <Tooltip title={copied ? "Copied!" : `Copy ${phone}`}>
+      <IconButton
+        size="small"
+        onClick={handleCopy}
+        sx={{ p: 0.25, color: copied ? "success.main" : "text.secondary" }}
+      >
+        {copied ? (
+          <CheckRoundedIcon sx={{ fontSize: 16 }} />
+        ) : (
+          <ContentCopyRoundedIcon sx={{ fontSize: 16 }} />
+        )}
+      </IconButton>
+    </Tooltip>
   );
 }
 
