@@ -9,12 +9,15 @@ import {
 } from "recharts";
 import type { ScoreLike } from "./types";
 
+// Ordered by weight in VALUE_ADD_WEIGHTS (30/20/15/15/15/5). The same
+// driver order in valueAdd.ts:WEIGHT_KEYS.
 const METRIC_COLORS: Record<string, string> = {
-  Density: "#7c5cff",
   Vacancy: "#23d29a",
+  Location: "#5cd0ff",
+  Density: "#7c5cff",
+  Rehab: "#d894ff",
+  ADU: "#ff6b8a",
   Motivation: "#ffb86b",
-  Upside: "#5cd0ff",
-  "Value-Add": "#ff6b8a",
 };
 
 export function ScoreBars({
@@ -38,31 +41,38 @@ export function ScoreBars({
     score.aiMotivationScore != null ||
     score.aiValueAddWeightedAvg != null;
 
+  // 6 bars in weight order (30/20/15/15/15/5). Vacancy / Density / Motivation
+  // have AI counterparts; Location / Rehab / ADU are heuristic-only today.
   const data = [
-    {
-      name: "Density",
-      ai: score.aiDensityScore ?? null,
-      heuristic: heuristic?.densityScore ?? score.densityScore,
-    },
     {
       name: "Vacancy",
       ai: score.aiVacancyScore ?? null,
       heuristic: heuristic?.vacancyScore ?? score.vacancyScore,
     },
     {
+      name: "Location",
+      ai: null,
+      heuristic: heuristic?.locationScore ?? score.locationScore ?? null,
+    },
+    {
+      name: "Density",
+      ai: score.aiDensityScore ?? null,
+      heuristic: heuristic?.densityScore ?? score.densityScore,
+    },
+    {
+      name: "Rehab",
+      ai: null,
+      heuristic: heuristic?.rehabScore ?? score.rehabScore ?? null,
+    },
+    {
+      name: "ADU",
+      ai: null,
+      heuristic: heuristic?.aduScore ?? score.aduScore ?? null,
+    },
+    {
       name: "Motivation",
       ai: score.aiMotivationScore ?? null,
       heuristic: heuristic?.motivationScore ?? score.motivationScore,
-    },
-    {
-      name: "Upside",
-      ai: null,
-      heuristic: heuristic?.marketUpsideScore ?? score.marketUpsideScore ?? null,
-    },
-    {
-      name: "Value-Add",
-      ai: score.aiValueAddWeightedAvg ?? null,
-      heuristic: heuristic?.valueAddWeightedAvg ?? score.valueAddWeightedAvg,
     },
   ];
 

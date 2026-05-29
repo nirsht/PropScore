@@ -5,6 +5,7 @@ export type ScoreLike = {
   vacancyScore: number;
   motivationScore: number;
   locationScore?: number | null;
+  rehabScore?: number | null;
   aduScore?: number | null;
   marketUpsideScore?: number | null;
   assessmentDeltaScore?: number | null;

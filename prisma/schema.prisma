@@ -463,6 +463,11 @@ model Score {
   // valueAddWeightedAvg under the new 5-component scheme.
   locationScore        Float?
   aduScore             Float?
+  // Added 2026-05-29 (v8): renovation-level-driven rehab potential with
+  // confidence dampening and additive condition boosts (open violations,
+  // unpermitted-space discrepancy, land-dominant assessment). Feeds into
+  // valueAddWeightedAvg at 15%.
+  rehabScore           Float?
   // Market Upside (added 2026-05-08). Two sub-signals plus a combined
   // top-line score. Computed and surfaced but NOT folded into
   // valueAddWeightedAvg in v1 — we want to validate the signal in the UI
@@ -501,6 +506,7 @@ model Score {
   @@index([motivationScore(sort: Desc)])
   @@index([locationScore(sort: Desc)])
   @@index([aduScore(sort: Desc)])
+  @@index([rehabScore(sort: Desc)])
   @@index([marketUpsideScore(sort: Desc)])
   @@index([aiValueAddWeightedAvg(sort: Desc)])
   @@index([aiDensityScore(sort: Desc)])

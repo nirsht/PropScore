@@ -62,7 +62,7 @@ export async function searchListings(input: FilterInput, userId?: string): Promi
         "pricePerSqft", "pricePerUnit", "sqftPerUnit",
         "hasSizeDiscrepancy",
         "densityScore", "vacancyScore", "motivationScore",
-        "locationScore", "aduScore",
+        "locationScore", "aduScore", "rehabScore",
         ${valueAddSelect},
         "aiDensityScore", "aiVacancyScore", "aiMotivationScore",
         "aiValueAddWeightedAvg", "aiComputedAt",
