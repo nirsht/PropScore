@@ -13,10 +13,7 @@ import PhoneRoundedIcon from "@mui/icons-material/PhoneRounded";
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import EmailRoundedIcon from "@mui/icons-material/EmailRounded";
-import MailOutlineRoundedIcon from "@mui/icons-material/MailOutlineRounded";
-import DraftsRoundedIcon from "@mui/icons-material/DraftsRounded";
 import { trpc } from "@/lib/trpc/client";
-import { rentRollRequestEmail } from "@/lib/emails/templates";
 
 export function ContactCard({
   role,
@@ -24,36 +21,15 @@ export function ContactCard({
   phone,
   email,
   listingMlsId,
-  listingAddress,
 }: {
   role: string;
   name: string | null;
   phone?: string | null;
   email?: string | null;
-  /** When set, renders the "Request rent roll" button for this row.
-   *  Only the primary "Listed by" row should pass this. */
+  /** When set, renders the "Request rent roll" draft button for this row. */
   listingMlsId?: string;
-  /** When set alongside listingMlsId, the mailto button pre-fills the
-   *  rent-roll request template. */
-  listingAddress?: string;
 }) {
-  const connection = trpc.emails.connectionStatus.useQuery(undefined, {
-    staleTime: 60 * 1000,
-    enabled: Boolean(email && listingAddress),
-  });
   const telHref = phone ? `tel:${phone.replace(/[^\d+]/g, "")}` : null;
-  const mailHref = email
-    ? listingAddress
-      ? (() => {
-          const { subject, body } = rentRollRequestEmail({
-            listingAddress,
-            agentName: name,
-            userName: connection.data?.name ?? null,
-          });
-          return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-        })()
-      : `mailto:${email}`
-    : null;
 
   return (
     <Stack
@@ -94,18 +70,6 @@ export function ContactCard({
         </Tooltip>
       )}
       {phone && <CopyPhoneButton phone={phone} />}
-      {mailHref && (
-        <Tooltip title={`Email ${email}`}>
-          <IconButton
-            size="small"
-            component={MuiLink}
-            href={mailHref}
-            sx={{ p: 0.25, color: "text.secondary" }}
-          >
-            <EmailRoundedIcon sx={{ fontSize: 16 }} />
-          </IconButton>
-        </Tooltip>
-      )}
       {listingMlsId && email && (
         <RequestRentRollButton listingMlsId={listingMlsId} agentEmail={email} />
       )}
@@ -182,7 +146,7 @@ function RequestRentRollButton({
             disabled
             sx={{ p: 0.25, color: "text.disabled" }}
           >
-            <MailOutlineRoundedIcon sx={{ fontSize: 16 }} />
+            <EmailRoundedIcon sx={{ fontSize: 16 }} />
           </IconButton>
         </span>
       </Tooltip>
@@ -209,7 +173,7 @@ function RequestRentRollButton({
           rel={href ? "noopener" : undefined}
           sx={{ p: 0.25, color: "success.main" }}
         >
-          <DraftsRoundedIcon sx={{ fontSize: 16 }} />
+          <EmailRoundedIcon sx={{ fontSize: 16 }} />
         </IconButton>
       </Tooltip>
     );
@@ -227,7 +191,7 @@ function RequestRentRollButton({
           {request.isPending ? (
             <CircularProgress size={14} />
           ) : (
-            <MailOutlineRoundedIcon sx={{ fontSize: 16 }} />
+            <EmailRoundedIcon sx={{ fontSize: 16 }} />
           )}
         </IconButton>
       </span>

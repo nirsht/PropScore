@@ -109,7 +109,6 @@ export function HeaderAndContacts({
                     phone={agentPhone}
                     email={agentEmail}
                     listingMlsId={listing.mlsId}
-                    listingAddress={listing.address}
                   />
                 )}
                 {(coAgentName || coAgentPhone || coAgentEmail) && (
@@ -118,6 +117,7 @@ export function HeaderAndContacts({
                     name={coAgentName}
                     phone={coAgentPhone}
                     email={coAgentEmail}
+                    listingMlsId={listing.mlsId}
                   />
                 )}
                 {(officeName || officePhone || officeEmail) && (
@@ -126,6 +126,7 @@ export function HeaderAndContacts({
                     name={officeName}
                     phone={officePhone}
                     email={officeEmail}
+                    listingMlsId={listing.mlsId}
                   />
                 )}
               </Stack>
