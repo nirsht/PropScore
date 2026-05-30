@@ -14,6 +14,7 @@ import {
   Typography,
 } from "@mui/material";
 import ChatBubbleOutlineRoundedIcon from "@mui/icons-material/ChatBubbleOutlineRounded";
+import FolderOpenOutlinedIcon from "@mui/icons-material/FolderOpenOutlined";
 import HomeWorkOutlinedIcon from "@mui/icons-material/HomeWorkOutlined";
 import { trpc } from "@/lib/trpc/client";
 import { ChatPanel } from "@/components/chat/ChatPanel";
@@ -21,6 +22,7 @@ import { LocationRatingCard } from "./LocationRatingCard";
 import { PhotoLightbox } from "./PhotoLightbox";
 import { MeasureLotModal } from "./MeasureLotModal";
 import { AIInsightsCard } from "./ListingDrawer/AIInsightsCard";
+import { DocumentsSection } from "./ListingDrawer/DocumentsSection";
 import { BuildingDetailsCard } from "./ListingDrawer/BuildingDetailsCard";
 import { GisToolsSection } from "./ListingDrawer/GisToolsSection";
 import { HeaderAndContacts } from "./ListingDrawer/HeaderAndContacts";
@@ -59,7 +61,7 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
   const closeLightbox = React.useCallback(() => setLightboxIndex(null), []);
 
   const [measureOpen, setMeasureOpen] = React.useState(false);
-  const [tab, setTab] = React.useState<"details" | "chat">("details");
+  const [tab, setTab] = React.useState<"details" | "documents" | "chat">("details");
   // Reset to Details when the user switches listings.
   React.useEffect(() => {
     setTab("details");
@@ -117,7 +119,7 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
       {listing && (
         <Tabs
           value={tab}
-          onChange={(_, v) => setTab(v as "details" | "chat")}
+          onChange={(_, v) => setTab(v as "details" | "documents" | "chat")}
           sx={{
             px: 2,
             borderBottom: 1,
@@ -131,6 +133,12 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
             icon={<HomeWorkOutlinedIcon fontSize="small" />}
             iconPosition="start"
             label="Details"
+          />
+          <Tab
+            value="documents"
+            icon={<FolderOpenOutlinedIcon fontSize="small" />}
+            iconPosition="start"
+            label="Documents"
           />
           <Tab
             value="chat"
@@ -149,6 +157,12 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
             mode="panel"
             emptyHint="Ask anything about this listing — rent comps, parcel info, value-add ideas, ADU potential, photos."
           />
+        </Box>
+      )}
+
+      {listing && tab === "documents" && (
+        <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+          <DocumentsSection listingMlsId={listing.mlsId} />
         </Box>
       )}
 
