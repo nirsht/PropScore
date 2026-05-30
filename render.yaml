@@ -14,9 +14,9 @@ services:
     region: ohio
     branch: main
     autoDeploy: true
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && NODE_OPTIONS=--max-old-space-size=4096 pnpm build
+    buildCommand: npm install -g corepack@latest && corepack enable && pnpm install --frozen-lockfile && NODE_OPTIONS=--max-old-space-size=4096 pnpm build
     startCommand: pnpm start
-    preDeployCommand: pnpm prisma migrate deploy && pnpm db:seed
+    preDeployCommand: npm install -g corepack@latest && corepack enable && pnpm prisma migrate deploy && pnpm db:seed
     healthCheckPath: /sign-in
     envVars:
       - key: NODE_ENV
@@ -34,7 +34,7 @@ services:
     region: ohio
     branch: main
     schedule: "0 3 * * 2,6"
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm prisma generate
+    buildCommand: npm install -g corepack@latest && corepack enable && pnpm install --frozen-lockfile && pnpm prisma generate
     # Single nightly orchestrator. Each step is delta-only (skips listings
     # already enriched) so AI tokens are spent on new listings only:
     #   etl:sync          — incremental Bridge pull (cursor-based)
