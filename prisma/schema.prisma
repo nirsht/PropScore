@@ -31,6 +31,7 @@ model User {
   conversations   ChatConversation[]
   starredListings StarredListing[]
   emailThreads    EmailThread[]
+  listingDocuments ListingDocument[]
 }
 
 model Account {
@@ -282,6 +283,7 @@ model Listing {
   contact       ListingContact?
   starredBy     StarredListing[]
   emailThreads  EmailThread[]
+  documents     ListingDocument[]
   createdAt     DateTime           @default(now())
 
   @@index([price])
@@ -729,4 +731,30 @@ model EmailMessage {
   thread EmailThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
   @@index([threadId, receivedAt])
+}
+
+/// User-uploaded documents (OM, rent roll, etc.) attached directly to a
+/// listing — the manual counterpart to email attachments. File bytes live in
+/// `content` (BYTEA); for the typical OM/rent roll PDF/spreadsheet under a
+/// few MB this is simpler than provisioning object storage. `parsedRentRoll`
+/// mirrors EmailMessage.parsedRentRoll so the same downstream surfaces
+/// (RentRollSection, scoring) can read either source.
+model ListingDocument {
+  id            String   @id @default(cuid())
+  userId        String
+  listingMlsId  String
+  filename      String
+  mimeType      String
+  size          Int
+  content       Bytes
+  parsedRentRoll Json?
+  parseError    String?
+  parsedAt      DateTime?
+  createdAt     DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing Listing @relation(fields: [listingMlsId], references: [mlsId], onDelete: Cascade)
+
+  @@index([listingMlsId, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
 }

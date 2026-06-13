@@ -145,6 +145,25 @@ export function RentRollSection({ listing }: { listing: ListingForAI }) {
             />
           </Tooltip>
         )}
+        {listing.extractedRentRollSource === "manual_upload" && (
+          <Tooltip
+            arrow
+            placement="top"
+            title={
+              listing.extractFetchedAt
+                ? `Parsed from a file you uploaded on ${new Date(listing.extractFetchedAt).toLocaleDateString()}`
+                : "Parsed from a file you uploaded"
+            }
+          >
+            <Chip
+              size="small"
+              color="success"
+              variant="outlined"
+              label="From upload"
+              sx={{ height: 20, cursor: "help" }}
+            />
+          </Tooltip>
+        )}
         {monthlyUpside != null && monthlyUpside > 0 && (
           <Tooltip
             arrow
