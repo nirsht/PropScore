@@ -646,7 +646,10 @@ model ChatMessage {
   // message so we can rebuild the OpenAI messages array on resume.
   toolCallId     String?
   // MLS IDs the assistant cited in this message; used for citation chips.
-  citedMlsIds    String[]
+  // @default([]) — without it Prisma 6 sends explicit NULL on INSERT, which
+  // violates the column's NOT NULL constraint for USER/TOOL rows that don't
+  // set citedMlsIds.
+  citedMlsIds    String[] @default([])
   tokensIn       Int?
   tokensOut      Int?
   errored        Boolean  @default(false)
