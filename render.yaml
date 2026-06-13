@@ -33,7 +33,9 @@ services:
     runtime: node
     region: ohio
     branch: main
-    schedule: "0 3 * * 2,6"
+    # Mon + Fri at 20:00 UTC = 12:00 PST (literal UTC-8, year-round; fires at
+    # 1pm Pacific during DST). Render cron is UTC and does not observe DST.
+    schedule: "0 20 * * 1,5"
     buildCommand: npm install -g corepack@latest && corepack enable && pnpm install --frozen-lockfile && pnpm prisma generate
     # Single nightly orchestrator. Each step is delta-only (skips listings
     # already enriched) so AI tokens are spent on new listings only:
@@ -48,6 +50,9 @@ services:
     #                        value-add score (no AI calls, free).
     #   ai-score:changed  — gpt-5-mini opportunity score, delta-only via
     #                        Score.aiInputHash (~$0.001/listing scored).
+    # Note: enrich:contacts (RentCast) is paused — too expensive. Run
+    # manually via `pnpm enrich:contacts` if the key is restored, or
+    # swap in a free source (CalDRE / Tavily) — see scripts/enrich-contacts.ts.
     startCommand: pnpm nightly
     envVars:
       - key: NODE_ENV

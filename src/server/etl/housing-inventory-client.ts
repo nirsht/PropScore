@@ -1,11 +1,15 @@
 /**
  * SF Housing Inventory — Socrata client.
  *
- * Dataset: 6v9b-p59r (https://data.sfgov.org/Housing-and-Buildings/Housing-Inventory/6v9b-p59r)
- * One row per completed building event with a `net_units` count (positive =
- * gain from new construction or unit-add; negative = loss from demolition,
- * mergers, conversion, or removal). Joined to `Listing.blockLot` via the
- * dataset's `mapblklot` (or `blklot`) parcel ID.
+ * Dataset: xdht-4php — "Housing Production - 2005-present"
+ * (https://data.sfgov.org/Housing-and-Buildings/Housing-Production/xdht-4php).
+ * Replaces the retired `6v9b-p59r` dataset, which DataSF now returns
+ * `404 dataset.missing` for. One row per completed building event with a
+ * `net_units` count (positive = gain from new construction or unit-add;
+ * negative = loss from demolition, mergers, conversion, or removal).
+ * Joined to `Listing.blockLot` via the dataset's `blocklot` parcel ID
+ * (note: single field now, where the old dataset had both `mapblklot`
+ * and `blklot`).
  *
  * We sum `net_units` over the last N reporting years and surface that as a
  * single risk signal: net unit *loss* on a parcel is a constraint on rental
@@ -14,7 +18,7 @@
  * Anonymous Socrata access, ~1 req/sec throttle.
  */
 
-const BASE_URL = "https://data.sfgov.org/resource/6v9b-p59r.json";
+const BASE_URL = "https://data.sfgov.org/resource/xdht-4php.json";
 const THROTTLE_MS = 1100;
 const RECENT_WINDOW_YEARS = 5;
 
@@ -28,13 +32,12 @@ async function throttle() {
 }
 
 export type HousingInventoryRow = {
-  mapblklot?: string;
-  blklot?: string;
+  blocklot?: string;
   net_units?: string;
-  units?: string;
-  units_net?: string;
-  year?: string;
-  date_issued?: string;
+  net_units_completed?: string;
+  bmr_reporting_year?: string;
+  first_completion_date?: string;
+  latest_completion_date?: string;
   [k: string]: unknown;
 };
 
@@ -51,17 +54,24 @@ function int(v: unknown): number | null {
 }
 
 function rowYear(row: HousingInventoryRow): number | null {
-  const y = int(row.year);
+  // Prefer the BMR reporting year (annual reporting bucket). Fall back to
+  // the latest completion date, then the first completion date.
+  const y = int(row.bmr_reporting_year);
   if (y != null) return y;
-  const d = typeof row.date_issued === "string" ? new Date(row.date_issued) : null;
-  return d && Number.isFinite(d.getTime()) ? d.getUTCFullYear() : null;
+  for (const k of ["latest_completion_date", "first_completion_date"] as const) {
+    const v = row[k];
+    if (typeof v !== "string") continue;
+    const d = new Date(v);
+    if (Number.isFinite(d.getTime())) return d.getUTCFullYear();
+  }
+  return null;
 }
 
 function rowNetUnits(row: HousingInventoryRow): number | null {
-  // The dataset has used a few column names for the net change across
-  // publishing years (`net_units`, `units_net`, plain `units` in some
-  // historical years). Try them in order — first non-null wins.
-  return int(row.net_units) ?? int(row.units_net) ?? int(row.units);
+  // Prefer `net_units_completed` (the count actually delivered as of the
+  // reporting year); fall back to `net_units` (proposed). The old dataset
+  // exposed only `net_units`/`units_net`/`units`.
+  return int(row.net_units_completed) ?? int(row.net_units);
 }
 
 async function fetchJson(url: string): Promise<HousingInventoryRow[]> {
@@ -81,11 +91,11 @@ async function fetchJson(url: string): Promise<HousingInventoryRow[]> {
  * state so the script is idempotent.
  */
 export async function fetchByBlockLot(blockLot: string): Promise<HousingInventorySummary> {
-  // The dataset mostly uses `mapblklot`; older rows use `blklot`. OR-filter
-  // both so we don't miss either.
+  // The current dataset uses a single `blocklot` field.
   const params = new URLSearchParams({
-    $where: `mapblklot='${blockLot}' OR blklot='${blockLot}'`,
-    $select: "mapblklot,blklot,net_units,units,units_net,year,date_issued",
+    $where: `blocklot='${blockLot}'`,
+    $select:
+      "blocklot,net_units,net_units_completed,bmr_reporting_year,first_completion_date,latest_completion_date",
     $limit: "200",
   });
   const rows = await fetchJson(`${BASE_URL}?${params.toString()}`);
