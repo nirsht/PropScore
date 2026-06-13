@@ -255,6 +255,18 @@ model Listing {
   codeViolationsLatest        Json?
   codeViolationsFetchedAt     DateTime?
 
+  // DBI Inspection Complaints (Socrata 9c7e-yn3d). Joined on the canonical
+  // block||lot. Superset of NOVs — most complaints never escalate to a
+  // Notice of Violation, so this captures complaint pressure (habitability,
+  // work-without-permit reports, etc.) the NOV feed misses. Open count uses
+  // `date_abated IS NULL`; recent count is a 5y window on `last_inspection_date`.
+  dbiComplaintsOpenCount      Int?
+  dbiComplaintsRecentCount    Int?
+  /// `{ complaintNumber, dateOpened, status, description, address }` for the
+  /// most recent complaint on this parcel — surfaces in the RiskComplianceCard.
+  dbiComplaintsLatest         Json?
+  dbiComplaintsFetchedAt      DateTime?
+
   housingNetUnitChange5y      Int?
   housingInventoryFetchedAt   DateTime?
 

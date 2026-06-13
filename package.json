@@ -34,6 +34,7 @@
     "enrich:landuse": "tsx --env-file-if-exists=.env scripts/enrich-landuse.ts",
     "enrich:permits": "tsx --env-file-if-exists=.env scripts/enrich-permits.ts",
     "enrich:code-enforcement": "tsx --env-file-if-exists=.env scripts/enrich-code-enforcement.ts",
+    "enrich:dbi-complaints": "tsx --env-file-if-exists=.env scripts/enrich-dbi-complaints.ts",
     "enrich:housing-inventory": "tsx --env-file-if-exists=.env scripts/enrich-housing-inventory.ts",
     "enrich:soft-story": "tsx --env-file-if-exists=.env scripts/enrich-soft-story.ts",
     "compute:rent-control": "tsx --env-file-if-exists=.env scripts/compute-rent-control.ts",
