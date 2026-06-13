@@ -6,6 +6,11 @@ export type RiskComplianceCardListing = {
   codeViolationsRecentCount: number | null;
   codeViolationsLatest: unknown;
   codeViolationsFetchedAt: Date | string | null;
+  // DBI Inspection Complaints (Socrata 9c7e-yn3d) — superset of NOVs
+  dbiComplaintsOpenCount: number | null;
+  dbiComplaintsRecentCount: number | null;
+  dbiComplaintsLatest: unknown;
+  dbiComplaintsFetchedAt: Date | string | null;
   // Housing Inventory (Socrata 6v9b-p59r)
   housingNetUnitChange5y: number | null;
   housingInventoryFetchedAt: Date | string | null;
@@ -28,9 +33,22 @@ type LatestNov = {
   address?: string | null;
 };
 
+type LatestComplaint = {
+  complaintNumber?: string | null;
+  dateOpened?: string | null;
+  status?: string | null;
+  description?: string | null;
+  address?: string | null;
+};
+
 function asLatest(v: unknown): LatestNov | null {
   if (v == null || typeof v !== "object") return null;
   return v as LatestNov;
+}
+
+function asLatestComplaint(v: unknown): LatestComplaint | null {
+  if (v == null || typeof v !== "object") return null;
+  return v as LatestComplaint;
 }
 
 function fmtDate(iso: string | null | undefined): string {
@@ -50,12 +68,13 @@ export function RiskComplianceCard({
   listing: RiskComplianceCardListing;
 }) {
   const hasViolations = listing.codeViolationsFetchedAt != null;
+  const hasComplaints = listing.dbiComplaintsFetchedAt != null;
   const hasHousing = listing.housingInventoryFetchedAt != null;
   const hasRentControl = listing.rentControlComputedAt != null;
   const softStoryRedFlag =
     listing.softStoryFetchedAt != null && listing.softStoryRedFlag === true;
   const hasAnything =
-    hasViolations || hasHousing || hasRentControl || softStoryRedFlag;
+    hasViolations || hasComplaints || hasHousing || hasRentControl || softStoryRedFlag;
 
   if (!hasAnything) return null;
 
@@ -63,6 +82,10 @@ export function RiskComplianceCard({
   const recent = listing.codeViolationsRecentCount ?? 0;
   const latest = asLatest(listing.codeViolationsLatest);
   const dualUse = open >= OPEN_NOV_DUAL_USE_THRESHOLD;
+
+  const complaintsOpen = listing.dbiComplaintsOpenCount ?? 0;
+  const complaintsRecent = listing.dbiComplaintsRecentCount ?? 0;
+  const complaintLatest = asLatestComplaint(listing.dbiComplaintsLatest);
 
   const netChange = listing.housingNetUnitChange5y ?? 0;
   const lostUnits = netChange < 0;
@@ -158,6 +181,89 @@ export function RiskComplianceCard({
                       size="small"
                       variant="outlined"
                       label={`Latest: ${fmtDate(latest.dateFiled)}`}
+                    />
+                  </Tooltip>
+                )}
+              </>
+            )}
+          </Stack>
+        </Box>
+      )}
+
+      {/* Row 1b — DBI inspection complaints (superset of NOVs) */}
+      {hasComplaints && (
+        <Box sx={{ mb: 1.5 }}>
+          <Typography variant="caption" color="text.secondary">
+            Complaints (DBI)
+          </Typography>
+          <Stack
+            direction="row"
+            spacing={1}
+            alignItems="center"
+            sx={{ mt: 0.5 }}
+            flexWrap="wrap"
+            useFlexGap
+          >
+            {complaintsOpen === 0 && complaintsRecent === 0 ? (
+              <Chip
+                size="small"
+                variant="outlined"
+                label="No complaints on record"
+              />
+            ) : (
+              <>
+                <Tooltip
+                  arrow
+                  placement="top"
+                  title={
+                    complaintsOpen === 0
+                      ? "No open DBI complaints on this parcel today."
+                      : `${complaintsOpen} open DBI complaint${complaintsOpen === 1 ? "" : "s"} on this parcel — habitability/work-without-permit reports the seller may not be disclosing. Cross-reference with NOVs above.`
+                  }
+                >
+                  <Chip
+                    size="small"
+                    color={complaintsOpen > 0 ? "warning" : "default"}
+                    variant={complaintsOpen > 0 ? "filled" : "outlined"}
+                    label={`Open complaints: ${complaintsOpen}`}
+                  />
+                </Tooltip>
+                {complaintsRecent > 0 && (
+                  <Tooltip
+                    arrow
+                    placement="top"
+                    title={`${complaintsRecent} complaint${complaintsRecent === 1 ? "" : "s"} on this parcel in the last 5 years (any status).`}
+                  >
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label={`5y history: ${complaintsRecent}`}
+                    />
+                  </Tooltip>
+                )}
+                {complaintLatest && complaintLatest.dateOpened && (
+                  <Tooltip
+                    arrow
+                    placement="top"
+                    title={
+                      [
+                        complaintLatest.status
+                          ? `Status: ${complaintLatest.status}`
+                          : null,
+                        complaintLatest.description
+                          ? complaintLatest.description.length > 200
+                            ? `${complaintLatest.description.slice(0, 200)}…`
+                            : complaintLatest.description
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" — ") || "Most recent DBI complaint on this parcel."
+                    }
+                  >
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label={`Latest: ${fmtDate(complaintLatest.dateOpened)}`}
                     />
                   </Tooltip>
                 )}

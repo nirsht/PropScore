@@ -1,5 +1,6 @@
 import { Box, Button, Paper, Stack, Tooltip, Typography } from "@mui/material";
 import DirectionsWalkRoundedIcon from "@mui/icons-material/DirectionsWalkRounded";
+import GavelRoundedIcon from "@mui/icons-material/GavelRounded";
 import HomeWorkRoundedIcon from "@mui/icons-material/HomeWorkRounded";
 import LayersRoundedIcon from "@mui/icons-material/LayersRounded";
 import LocationOnRoundedIcon from "@mui/icons-material/LocationOnRounded";
@@ -119,6 +120,12 @@ export function GisToolsSection({
           href="https://build.symbium.com"
           icon={<HomeWorkRoundedIcon fontSize="small" />}
           label="Symbium"
+          copyText={fullAddress}
+        />
+        <CopyAndOpenLink
+          href="https://dbiweb02.sfgov.org/dbipts/"
+          icon={<GavelRoundedIcon fontSize="small" />}
+          label="DBI complaints"
           copyText={fullAddress}
         />
         <Tooltip

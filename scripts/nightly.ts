@@ -62,6 +62,10 @@ const PARALLEL_LANES: Stage[][] = [
     // them serially in this lane after the upstream stages so we don't race
     // on Listing rows.
     stage("code-enforcement", "enrich:code-enforcement", ["--concurrency=3"]),
+    // DBI inspection complaints (Socrata 9c7e-yn3d) — same Socrata host as
+    // code-enforcement, same blockLot join. Sits next to NOVs in the lane so
+    // we don't double up Socrata throughput from a parallel lane.
+    stage("dbi-complaints", "enrich:dbi-complaints", ["--concurrency=3"]),
     stage("housing-inventory", "enrich:housing-inventory", ["--concurrency=3"]),
     stage("rent-control", "compute:rent-control"),
   ],
