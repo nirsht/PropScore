@@ -92,8 +92,15 @@ export function MultiSelectFilter<T>(props: MultiSelectFilterProps<T>) {
   } = props;
 
   const totalCount = options.length;
-  const isAll = value.length === 0;
-  const checked = isAll ? options : value;
+  const semanticAll = value.length === 0;
+
+  // pickMode lets the user empty the visible selection while keeping the
+  // filter semantic "all" (the parent still sees value=[]). Useful for the
+  // "deselect everything and pick exactly one" workflow.
+  const [pickMode, setPickMode] = React.useState(false);
+
+  const showAsCleared = semanticAll && pickMode;
+  const checked = semanticAll && !pickMode ? options : value;
   const checkedCount = checked.length;
 
   const checkedKeys = React.useMemo(
@@ -103,8 +110,10 @@ export function MultiSelectFilter<T>(props: MultiSelectFilterProps<T>) {
 
   const commit = React.useCallback(
     (next: T[]) => {
-      if (next.length === 0 || next.length === totalCount) {
-        onChange([]);
+      // any non-empty selection means user is in narrowed mode — exit pickMode.
+      if (next.length > 0) setPickMode(false);
+      if (next.length === totalCount) {
+        onChange([]); // normalize "everything ticked" to canonical empty
       } else {
         onChange(next);
       }
@@ -112,9 +121,18 @@ export function MultiSelectFilter<T>(props: MultiSelectFilterProps<T>) {
     [onChange, totalCount],
   );
 
-  const toggleAll = React.useCallback(() => {
+  const onSelectAll = React.useCallback(() => {
+    setPickMode(false);
     onChange([]);
   }, [onChange]);
+
+  const onClearAll = React.useCallback(() => {
+    setPickMode(true);
+    onChange([]);
+  }, [onChange]);
+
+  const allChecked = checkedCount === totalCount;
+  const noneChecked = checkedCount === 0;
 
   // Header rendered above the option list inside the dropdown Paper.
   const HeaderRow = (
@@ -130,25 +148,23 @@ export function MultiSelectFilter<T>(props: MultiSelectFilterProps<T>) {
         direction="row"
         alignItems="center"
         spacing={1}
-        sx={{
-          cursor: isAll ? "default" : "pointer",
-          userSelect: "none",
-        }}
-        onClick={() => {
-          if (!isAll) toggleAll();
-        }}
+        sx={{ userSelect: "none" }}
       >
         <Checkbox
           size="small"
           disableRipple
-          checked={isAll}
-          indeterminate={!isAll}
+          checked={allChecked}
+          indeterminate={!allChecked && !noneChecked}
           icon={blankIcon}
           checkedIcon={checkedIcon}
           indeterminateIcon={
             <IndeterminateCheckBoxRoundedIcon fontSize="small" color="primary" />
           }
-          sx={{ p: 0.25 }}
+          onClick={() => {
+            if (allChecked) onClearAll();
+            else onSelectAll();
+          }}
+          sx={{ p: 0.25, cursor: "pointer" }}
         />
         <Typography sx={{ fontSize: 13, fontWeight: 600, flex: 1 }}>
           {allLabel}
@@ -158,9 +174,9 @@ export function MultiSelectFilter<T>(props: MultiSelectFilterProps<T>) {
           color="text.secondary"
           sx={{ fontVariantNumeric: "tabular-nums" }}
         >
-          {isAll ? totalCount : checkedCount} / {totalCount}
+          {checkedCount} / {totalCount}
         </Typography>
-        {!isAll && (
+        {!allChecked && (
           <Link
             component="button"
             type="button"
@@ -168,14 +184,38 @@ export function MultiSelectFilter<T>(props: MultiSelectFilterProps<T>) {
             variant="caption"
             onClick={(e) => {
               e.stopPropagation();
-              toggleAll();
+              onSelectAll();
             }}
             sx={{ fontWeight: 600 }}
           >
             Select all
           </Link>
         )}
+        {!noneChecked && (
+          <Link
+            component="button"
+            type="button"
+            underline="hover"
+            variant="caption"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClearAll();
+            }}
+            sx={{ fontWeight: 600, color: "text.secondary" }}
+          >
+            Clear
+          </Link>
+        )}
       </Stack>
+      {showAsCleared && (
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ display: "block", mt: 0.25, ml: 4 }}
+        >
+          Nothing selected — pick one or more below.
+        </Typography>
+      )}
       <Divider sx={{ mt: 0.75 }} />
     </Box>
   );
@@ -191,9 +231,9 @@ export function MultiSelectFilter<T>(props: MultiSelectFilterProps<T>) {
           </Paper>
         );
       },
-    // HeaderRow closes over current props; rebuild when those change.
+    // HeaderRow closes over current state; rebuild when it changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isAll, checkedCount, totalCount, allLabel],
+    [allChecked, noneChecked, checkedCount, totalCount, allLabel, showAsCleared],
   );
 
   return (
@@ -207,6 +247,7 @@ export function MultiSelectFilter<T>(props: MultiSelectFilterProps<T>) {
       getOptionLabel={getOptionLabel}
       isOptionEqualToValue={(a, b) => getOptionKey(a) === getOptionKey(b)}
       onChange={(_, next) => commit(next)}
+      onClose={() => setPickMode(false)}
       PaperComponent={PaperWithHeader}
       slotProps={{
         listbox: {
@@ -249,8 +290,9 @@ export function MultiSelectFilter<T>(props: MultiSelectFilterProps<T>) {
       }}
       renderTags={(tagValue, getTagProps) => {
         // The Autocomplete passes the *internal* value (which is `checked`) here.
-        // We render compact summaries.
-        if (isAll) {
+        // We render compact summaries based on what filter is effectively applied
+        // (semanticAll), not on the visible checkbox state.
+        if (semanticAll) {
           return [
             <Chip
               key="__all"
@@ -312,7 +354,7 @@ export function MultiSelectFilter<T>(props: MultiSelectFilterProps<T>) {
       renderInput={(params) => (
         <TextField
           {...params}
-          placeholder={isAll ? undefined : placeholder}
+          placeholder={semanticAll ? undefined : placeholder}
         />
       )}
     />
