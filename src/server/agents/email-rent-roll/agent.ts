@@ -61,6 +61,15 @@ type AttachmentInput = {
   gmailAttachmentId: string;
 };
 
+/// Attachment shape used by the shared buffer-based parser. The email path
+/// fetches buffers from Gmail before calling in; the manual-upload path reads
+/// bytes straight out of ListingDocument.
+export type RentRollAttachment = {
+  filename: string;
+  mimeType: string;
+  buffer: Buffer;
+};
+
 async function fetchAttachmentBuffer(
   userId: string,
   gmailMessageId: string,
@@ -112,30 +121,19 @@ type ContentBlock =
   | { type: "text"; text: string }
   | { type: "image_url"; image_url: { url: string } };
 
-async function buildAttachmentBlocks(args: {
-  userId: string;
-  gmailMessageId: string;
-  attachments: AttachmentInput[];
-}): Promise<ContentBlock[]> {
+async function buildAttachmentBlocks(
+  attachments: RentRollAttachment[],
+): Promise<ContentBlock[]> {
   const out: ContentBlock[] = [];
   let totalBytes = 0;
-  const slice = args.attachments.slice(0, MAX_ATTACHMENTS);
+  const slice = attachments.slice(0, MAX_ATTACHMENTS);
 
   for (const att of slice) {
-    if (totalBytes + att.size > MAX_TOTAL_BYTES) {
+    const buf = att.buffer;
+    if (totalBytes + buf.length > MAX_TOTAL_BYTES) {
       out.push({
         type: "text",
         text: `[Skipped ${att.filename}: total attachment size would exceed ${MAX_TOTAL_BYTES} bytes]`,
-      });
-      continue;
-    }
-    let buf: Buffer;
-    try {
-      buf = await fetchAttachmentBuffer(args.userId, args.gmailMessageId, att.gmailAttachmentId);
-    } catch (err) {
-      out.push({
-        type: "text",
-        text: `[Failed to fetch ${att.filename}: ${(err as Error).message}]`,
       });
       continue;
     }
@@ -234,6 +232,43 @@ function buildResponseSchema(): Record<string, unknown> {
 }
 
 /**
+ * Pure LLM call: turn a listing context + buffer attachments into a structured
+ * rent-roll output. No persistence; callers (email reply, manual upload)
+ * persist into their own tables and write their own AgentTrace.
+ */
+export async function runRentRollLlm(args: {
+  contextHeader: string;
+  attachments: RentRollAttachment[];
+}): Promise<EmailRentRollOutput> {
+  const attachmentBlocks = await buildAttachmentBlocks(args.attachments);
+  const userBlocks: ContentBlock[] = [
+    { type: "text", text: args.contextHeader },
+    ...attachmentBlocks,
+  ];
+  const completion = await openai.chat.completions.create({
+    model: env.OPENAI_RENT_ROLL_MODEL,
+    messages: [
+      { role: "system", content: SYSTEM_PROMPT },
+      // OpenAI types accept multimodal content as an array of parts when
+      // the role is user. The Node SDK's types are slightly stricter; we
+      // cast to the SDK's expected shape.
+      { role: "user", content: userBlocks as unknown as string },
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "email_rent_roll_output",
+        schema: buildResponseSchema(),
+        strict: false,
+      },
+    },
+  });
+  const text = completion.choices[0]?.message?.content ?? "";
+  const json = JSON.parse(text);
+  return EmailRentRollOutput.parse(json);
+}
+
+/**
  * Parse the rent roll out of an inbound email message. Multimodal single-shot
  * call to OPENAI_RENT_ROLL_MODEL (default gpt-5). Persists into Listing
  * (extractedRentRoll / extractedTotalMonthlyRent / extractedOccupancy /
@@ -267,11 +302,28 @@ export async function parseEmailRentRoll(emailMessageId: string): Promise<EmailR
   const listing = thread.listing;
 
   const attachments = (message.attachments as AttachmentInput[] | null) ?? [];
-  const attachmentBlocks = await buildAttachmentBlocks({
-    userId: thread.userId,
-    gmailMessageId: message.gmailMessageId,
-    attachments,
-  });
+
+  // Fetch buffers from Gmail before handing off to the buffer-based parser.
+  // Per-attachment failures are surfaced as text blocks in the prompt so the
+  // model still gets a useful signal from whatever did fetch.
+  const rentRollAttachments: RentRollAttachment[] = [];
+  const fetchNotes: string[] = [];
+  for (const att of attachments) {
+    try {
+      const buffer = await fetchAttachmentBuffer(
+        thread.userId,
+        message.gmailMessageId,
+        att.gmailAttachmentId,
+      );
+      rentRollAttachments.push({
+        filename: att.filename,
+        mimeType: att.mimeType,
+        buffer,
+      });
+    } catch (err) {
+      fetchNotes.push(`[Failed to fetch ${att.filename}: ${(err as Error).message}]`);
+    }
+  }
 
   const listingContext = [
     `Listing: ${listing.address} (mlsId=${listing.mlsId})`,
@@ -284,51 +336,28 @@ export async function parseEmailRentRoll(emailMessageId: string): Promise<EmailR
     .filter(Boolean)
     .join("\n");
 
-  const userBlocks: ContentBlock[] = [
-    {
-      type: "text",
-      text: [
-        "Listing context:",
-        listingContext,
-        "",
-        "Email reply from:",
-        `${message.fromEmail}`,
-        "",
-        "Subject:",
-        message.subject,
-        "",
-        "Body:",
-        message.bodyText ?? "(empty)",
-      ].join("\n"),
-    },
-    ...attachmentBlocks,
-  ];
+  const contextHeader = [
+    "Listing context:",
+    listingContext,
+    "",
+    "Email reply from:",
+    `${message.fromEmail}`,
+    "",
+    "Subject:",
+    message.subject,
+    "",
+    "Body:",
+    message.bodyText ?? "(empty)",
+    ...(fetchNotes.length ? ["", ...fetchNotes] : []),
+  ].join("\n");
 
   const started = Date.now();
   let parsed: EmailRentRollOutput;
   try {
-    const completion = await openai.chat.completions.create({
-      model: env.OPENAI_RENT_ROLL_MODEL,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        // OpenAI types accept multimodal content as an array of parts when
-        // the role is user. The Node SDK's types are slightly stricter; we
-        // cast to the SDK's expected shape.
-        { role: "user", content: userBlocks as unknown as string },
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "email_rent_roll_output",
-          schema: buildResponseSchema(),
-          strict: false,
-        },
-      },
+    parsed = await runRentRollLlm({
+      contextHeader,
+      attachments: rentRollAttachments,
     });
-
-    const text = completion.choices[0]?.message?.content ?? "";
-    const json = JSON.parse(text);
-    parsed = EmailRentRollOutput.parse(json);
 
     await db.aIEnrichment.create({
       data: {
