@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import {
-  Autocomplete,
   Box,
   Button,
   Chip,
@@ -22,6 +21,7 @@ import { ScoringWeightsButton } from "./ScoringWeightsPopover";
 import { DateRange, Field, NumberRange } from "./FilterBar/fields";
 import { QuickChips } from "./FilterBar/QuickChips";
 import { RENO_OPTIONS, countActive } from "./FilterBar/filterConstants";
+import { MultiSelectFilter } from "@/components/common/MultiSelectFilter";
 
 export function FilterBar() {
   const { state, set, reset } = useFilter();
@@ -116,21 +116,15 @@ export function FilterBar() {
 
           <Box sx={{ gridColumn: { xs: "auto", sm: "span 1" } }}>
             <Field label="Property type">
-              <Autocomplete
-                multiple
-                size="small"
+              <MultiSelectFilter
                 options={propertyTypeOptions}
                 value={state.propertyTypes ?? []}
-                onChange={(_, value) => set({ propertyTypes: value.length ? value : undefined })}
-                renderInput={(params) => (
-                  <TextField {...params} placeholder="Any type" />
-                )}
-                renderTags={(value, getTagProps) =>
-                  value.map((option, index) => {
-                    const { key, ...tagProps } = getTagProps({ index });
-                    return <Chip key={key} size="small" label={option} {...tagProps} />;
-                  })
+                onChange={(next) =>
+                  set({ propertyTypes: next.length ? next : undefined })
                 }
+                getOptionLabel={(o) => o}
+                placeholder="All types"
+                allLabel="All property types"
               />
             </Field>
           </Box>
@@ -140,39 +134,23 @@ export function FilterBar() {
               label="Renovation"
               hint="MLS-vision classification of renovation level. Multi-select (any match)."
             >
-              <Autocomplete
-                multiple
-                size="small"
+              <MultiSelectFilter
                 options={RENO_OPTIONS}
-                getOptionLabel={(opt) => opt.label}
-                isOptionEqualToValue={(a, b) => a.value === b.value}
                 value={RENO_OPTIONS.filter((o) =>
                   (state.renovationLevel ?? []).includes(o.value),
                 )}
-                onChange={(_, value) =>
+                onChange={(next) =>
                   set({
-                    renovationLevel: value.length
-                      ? value.map((v) => v.value)
+                    renovationLevel: next.length
+                      ? next.map((v) => v.value)
                       : undefined,
                   })
                 }
-                renderInput={(params) => (
-                  <TextField {...params} placeholder="Any condition" />
-                )}
-                renderTags={(value, getTagProps) =>
-                  value.map((opt, index) => {
-                    const { key, ...tagProps } = getTagProps({ index });
-                    return (
-                      <Chip
-                        key={key}
-                        size="small"
-                        label={opt.label}
-                        color={opt.color}
-                        {...tagProps}
-                      />
-                    );
-                  })
-                }
+                getOptionLabel={(o) => o.label}
+                getOptionKey={(o) => o.value}
+                getOptionColor={(o) => o.color}
+                placeholder="All conditions"
+                allLabel="All conditions"
               />
             </Field>
           </Box>

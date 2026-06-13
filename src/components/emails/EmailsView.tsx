@@ -7,9 +7,7 @@ import {
   Chip,
   Container,
   Divider,
-  MenuItem,
   Paper,
-  Select,
   Stack,
   Tooltip,
   Typography,
@@ -19,21 +17,26 @@ import MailOutlineRoundedIcon from "@mui/icons-material/MailOutlineRounded";
 import { trpc } from "@/lib/trpc/client";
 import { ConnectGmailPill } from "./ConnectGmailPill";
 import { ThreadDetail } from "./ThreadDetail";
+import {
+  MultiSelectFilter,
+  type ChipColor,
+} from "@/components/common/MultiSelectFilter";
 
-const STATUS_OPTIONS = [
-  { value: "all", label: "All statuses" },
-  { value: "DRAFT", label: "Draft" },
-  { value: "SENT", label: "Sent" },
-  { value: "REPLIED", label: "Replied" },
-  { value: "PARSED", label: "Parsed" },
-  { value: "FAILED", label: "Failed" },
-] as const;
+type ThreadStatus = "DRAFT" | "SENT" | "REPLIED" | "PARSED" | "FAILED";
+type TriggerKind = "manual" | "auto_under_450";
 
-const TRIGGER_OPTIONS = [
-  { value: "all", label: "All triggers" },
+const STATUS_OPTIONS: Array<{ value: ThreadStatus; label: string; color: ChipColor }> = [
+  { value: "DRAFT", label: "Draft", color: "default" },
+  { value: "SENT", label: "Sent", color: "info" },
+  { value: "REPLIED", label: "Replied", color: "warning" },
+  { value: "PARSED", label: "Parsed", color: "success" },
+  { value: "FAILED", label: "Failed", color: "error" },
+];
+
+const TRIGGER_OPTIONS: Array<{ value: TriggerKind; label: string }> = [
   { value: "manual", label: "Manual" },
   { value: "auto_under_450", label: "Auto < $450/sqft" },
-] as const;
+];
 
 const STATUS_COLOR: Record<
   string,
@@ -46,22 +49,17 @@ const STATUS_COLOR: Record<
   FAILED: "error",
 };
 
-type StatusValue = (typeof STATUS_OPTIONS)[number]["value"];
-type TriggerValue = (typeof TRIGGER_OPTIONS)[number]["value"];
-type ThreadStatusFilter = Exclude<StatusValue, "all">;
-type TriggerFilter = Exclude<TriggerValue, "all">;
-
 export function EmailsView() {
-  const [statusFilter, setStatusFilter] = React.useState<StatusValue>("all");
-  const [triggerFilter, setTriggerFilter] = React.useState<TriggerValue>("all");
+  const [statusFilter, setStatusFilter] = React.useState<ThreadStatus[]>([]);
+  const [triggerFilter, setTriggerFilter] = React.useState<TriggerKind[]>([]);
   const [selectedThreadId, setSelectedThreadId] = React.useState<string | null>(
     null,
   );
 
   const utils = trpc.useUtils();
   const threads = trpc.emails.listThreads.useQuery({
-    status: statusFilter === "all" ? undefined : (statusFilter as ThreadStatusFilter),
-    trigger: triggerFilter === "all" ? undefined : (triggerFilter as TriggerFilter),
+    status: statusFilter.length ? statusFilter : undefined,
+    trigger: triggerFilter.length ? triggerFilter : undefined,
   });
   const syncAll = trpc.emails.syncNow.useMutation({
     onSuccess: () => {
@@ -105,28 +103,29 @@ export function EmailsView() {
       </Stack>
 
       <Stack direction="row" spacing={1.5} sx={{ mb: 2 }} alignItems="center">
-        <Select
-          size="small"
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as StatusValue)}
-        >
-          {STATUS_OPTIONS.map((o) => (
-            <MenuItem key={o.value} value={o.value}>
-              {o.label}
-            </MenuItem>
-          ))}
-        </Select>
-        <Select
-          size="small"
-          value={triggerFilter}
-          onChange={(e) => setTriggerFilter(e.target.value as TriggerValue)}
-        >
-          {TRIGGER_OPTIONS.map((o) => (
-            <MenuItem key={o.value} value={o.value}>
-              {o.label}
-            </MenuItem>
-          ))}
-        </Select>
+        <Box sx={{ minWidth: 220 }}>
+          <MultiSelectFilter
+            options={STATUS_OPTIONS}
+            value={STATUS_OPTIONS.filter((o) => statusFilter.includes(o.value))}
+            onChange={(next) => setStatusFilter(next.map((o) => o.value))}
+            getOptionLabel={(o) => o.label}
+            getOptionKey={(o) => o.value}
+            getOptionColor={(o) => o.color}
+            placeholder="All statuses"
+            allLabel="All statuses"
+          />
+        </Box>
+        <Box sx={{ minWidth: 220 }}>
+          <MultiSelectFilter
+            options={TRIGGER_OPTIONS}
+            value={TRIGGER_OPTIONS.filter((o) => triggerFilter.includes(o.value))}
+            onChange={(next) => setTriggerFilter(next.map((o) => o.value))}
+            getOptionLabel={(o) => o.label}
+            getOptionKey={(o) => o.value}
+            placeholder="All triggers"
+            allLabel="All triggers"
+          />
+        </Box>
         <Box sx={{ flex: 1 }} />
         {bulkResult && (
           <Typography variant="caption" color="text.secondary">

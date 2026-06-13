@@ -273,18 +273,22 @@ export const emailsRouter = router({
       z
         .object({
           status: z
-            .enum(["DRAFT", "SENT", "REPLIED", "PARSED", "FAILED"])
+            .array(z.enum(["DRAFT", "SENT", "REPLIED", "PARSED", "FAILED"]))
             .optional(),
-          trigger: z.enum(["manual", "auto_under_450"]).optional(),
+          trigger: z.array(z.enum(["manual", "auto_under_450"])).optional(),
         })
         .optional(),
     )
     .query(async ({ ctx, input }) => {
+      const statusFilter = input?.status?.length ? { in: input.status } : undefined;
+      const triggerFilter = input?.trigger?.length
+        ? { in: input.trigger }
+        : undefined;
       return ctx.db.emailThread.findMany({
         where: {
           userId: ctx.user.id,
-          status: input?.status,
-          trigger: input?.trigger,
+          ...(statusFilter ? { status: statusFilter } : {}),
+          ...(triggerFilter ? { trigger: triggerFilter } : {}),
         },
         include: threadInclude,
         orderBy: { createdAt: "desc" },
