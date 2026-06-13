@@ -155,6 +155,25 @@ async function request<T>(url: string, attempt = 0): Promise<T> {
     },
   });
 
+  // AWS WAF in front of Bridge sometimes responds with HTTP 202 + an empty
+  // body and `x-amzn-waf-action: challenge` when the client looks bot-like
+  // (server-to-server, no JS challenge support). Detect this explicitly —
+  // otherwise the `await res.json()` below throws an opaque
+  // `SyntaxError: Unexpected end of JSON input`. Retry like a 429; if WAF
+  // keeps challenging, surface a clear error so the caller knows it's a
+  // WAF block, not a transient parse issue.
+  const wafAction = res.headers.get("x-amzn-waf-action");
+  if (wafAction === "challenge") {
+    if (attempt >= MAX_RETRIES) {
+      throw new Error(
+        `Bridge WAF challenge after ${attempt} retries (x-amzn-waf-action=challenge). Likely IP-rate-limited by Bridge/CloudFront.`,
+      );
+    }
+    const delay = Math.min(30_000, 2 ** attempt * 1000);
+    await new Promise((r) => setTimeout(r, delay));
+    return request<T>(url, attempt + 1);
+  }
+
   if (res.status === 429 || (res.status >= 500 && res.status < 600)) {
     if (attempt >= MAX_RETRIES) {
       throw new Error(`Bridge ${res.status} after ${attempt} retries: ${await res.text()}`);

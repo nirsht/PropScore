@@ -13,6 +13,10 @@
  *   4. recompute:scores                   (heuristic; skips AI rows)
  *   5. ai-score:changed                   (delta: re-score only listings whose AI inputs changed)
  *
+ * Note: `enrich:contacts` (RentCast) is paused — the API is too expensive at
+ * scale. Run it manually if/when re-enabled, or wait for a free replacement
+ * (CalDRE scrape / Tavily search). See enrich-contacts.ts.
+ *
  * Each stage is a child process so it gets a fresh Prisma client / cursor;
  * we stream each one's stdout/stderr line-tagged into the parent log so
  * concurrent output stays readable. Any failure aborts the run with a
@@ -65,7 +69,6 @@ const PARALLEL_LANES: Stage[][] = [
   [stage("rent-comps", "enrich:rent-comps", ["--concurrency=3"])],
   [stage("walkscore", "refresh:walkscore")],
   [stage("crime", "refresh:crime")],
-  [stage("contacts", "enrich:contacts", ["--concurrency=3"])],
 ];
 // Neighborhood comp medians depend on assessor data being populated, so
 // run after the parallel phase finishes but before recompute:scores reads
