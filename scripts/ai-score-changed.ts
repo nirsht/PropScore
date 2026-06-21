@@ -115,7 +115,17 @@ async function main() {
   console.log(
     `[ai-score] done — scored=${scored} skipped=${skipped} errored=${errored}`,
   );
-  if (errored > 0) process.exit(1);
+  // Per-listing errors (LLM schema validation, occasional 429s, etc.) are
+  // inevitable at this fan-out. They're already logged individually and
+  // counted in the summary; the next nightly will re-pick the unchanged
+  // input hashes. Only a catastrophic failure (>50% errored on a non-trivial
+  // batch) signals a real problem worth aborting the cron for.
+  if (processed >= 20 && errored / processed > 0.5) {
+    console.error(
+      `[ai-score] aborting nightly: ${errored}/${processed} listings errored (>50%)`,
+    );
+    process.exit(1);
+  }
 }
 
 main()
