@@ -39,6 +39,12 @@ function stage(name: string, script: string, scriptArgs: string[] = []): Stage {
 // effective in-flight query count is ~3-5x these numbers. Standalone
 // `pnpm enrich:*` runs keep their higher script defaults.
 const PRE: Stage = stage("etl-sync", "etl:sync");
+// Offboarding: scan Bridge for the current set of live ListingKeys, mark
+// any local Active listing whose key is no longer in Bridge as
+// `deletedAt = now()` (soft-delete only; forensic data is preserved). Runs
+// after etl-sync so freshly-upserted listings get their lastSeenAt bumped
+// before the missing-from-Bridge check fires.
+const OFFBOARD: Stage = stage("offboard-stale", "offboard:stale");
 // `landuse` and `permits` join on `Listing.blockLot`, which is populated by
 // `enrich:sfpim`. They run after sfpim in the same lane, parallel with the
 // other lanes that don't depend on parcel IDs.
@@ -130,6 +136,9 @@ async function main() {
 
   console.log(`[nightly] phase 1: ${PRE.name}`);
   await runStage(PRE);
+
+  console.log(`[nightly] phase 1b: ${OFFBOARD.name}`);
+  await runStage(OFFBOARD);
 
   console.log(
     `[nightly] phase 2: ${PARALLEL_LANES.length} lanes in parallel — ${PARALLEL_LANES

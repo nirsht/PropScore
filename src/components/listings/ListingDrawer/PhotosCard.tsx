@@ -7,6 +7,7 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
+import { DataFreshness } from "./DataFreshness";
 import { PhotoStrip } from "./PhotoStrip";
 
 type PhotosQueryData = {
@@ -18,11 +19,13 @@ type PhotosQueryData = {
 export function PhotosCard({
   loading,
   data,
+  visionFetchedAt,
   onOpenPhoto,
   onRefresh,
 }: {
   loading: boolean;
   data: PhotosQueryData;
+  visionFetchedAt: Date | string | null | undefined;
   onOpenPhoto: (idx: number) => void;
   onRefresh: () => void;
 }) {
@@ -44,6 +47,7 @@ export function PhotosCard({
         <Typography variant="caption" color="text.secondary">
           {data?.items.length ?? 0} photos
         </Typography>
+        <DataFreshness updatedAt={visionFetchedAt} label="Vision" />
         <Button size="small" variant="text" onClick={onRefresh}>
           Refresh
         </Button>

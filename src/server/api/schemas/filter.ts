@@ -94,6 +94,13 @@ export const FilterInput = z.object({
   // user has starred (joined against StarredListing in the SQL builder).
   starredOnly: z.boolean().optional(),
 
+  // Offboarded visibility. Default behavior (false / undefined) hides
+  // listings whose ListingKey is no longer in Bridge (soft-deleted by the
+  // nightly `offboard-stale` sweep). Set true to surface them — they
+  // remain queryable for forensic review but render with a muted style
+  // and an "Offboarded on …" chip in the UI.
+  includeOffboarded: z.boolean().optional(),
+
   // Date ranges (ISO YYYY-MM-DD strings — coerced to Date in the SQL builder).
   // `min` and `max` are independent: either alone is a valid one-sided range.
   postDate: z

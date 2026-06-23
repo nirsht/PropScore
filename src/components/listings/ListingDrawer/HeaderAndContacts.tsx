@@ -10,6 +10,7 @@ import {
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import { StarCell } from "../ListingsGrid/gridCells";
 import { ContactCard } from "./ContactCard";
+import { DataFreshness } from "./DataFreshness";
 import { Metric } from "./Metric";
 import { deriveRatio, fmtDate, fmtMoney } from "./formatters";
 import type { ListingContactFields } from "./useListingContact";
@@ -39,11 +40,13 @@ export function HeaderAndContacts({
   listing,
   address,
   contact,
+  contactFetchedAt,
   onClose,
 }: {
   listing: ListingLike;
   address: string;
   contact: ListingContactFields;
+  contactFetchedAt: Date | string | null;
   onClose: () => void;
 }) {
   const {
@@ -102,6 +105,12 @@ export function HeaderAndContacts({
           {hasAnyContact && (
             <>
               <Stack spacing={0.25}>
+                {contactFetchedAt && (
+                  <Stack direction="row" alignItems="center" sx={{ mb: 0.25 }}>
+                    <Box sx={{ flex: 1 }} />
+                    <DataFreshness updatedAt={contactFetchedAt} label="Contact" />
+                  </Stack>
+                )}
                 {(agentName || agentPhone || agentEmail) && (
                   <ContactCard
                     role="Listed by"

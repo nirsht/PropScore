@@ -2,6 +2,7 @@ import * as React from "react";
 import { Alert, Box, Paper, Stack, Typography } from "@mui/material";
 import { isDiverging, rowDiverges } from "@/lib/diff";
 import { AIEvidenceTrail } from "./AIEvidenceTrail";
+import { DataFreshness } from "./DataFreshness";
 import { deriveRatio, fmtMoney, fmtNum } from "./formatters";
 import type { ListingForDetails } from "./types";
 
@@ -113,6 +114,8 @@ export function BuildingDetailsCard({ listing }: { listing: ListingForDetails })
         <Typography variant="caption" color="text.secondary">
           MLS · Assessor · AI — diffs &gt; 5% highlighted
         </Typography>
+        <Box sx={{ flex: 1 }} />
+        <DataFreshness updatedAt={listing.assessorFetchedAt} label="Assessor" />
       </Stack>
       {!listing.assessorFetchedAt && (
         <Alert severity="info" sx={{ mb: 1.5, py: 0.5 }}>

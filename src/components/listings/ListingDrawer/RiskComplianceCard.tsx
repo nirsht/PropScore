@@ -1,4 +1,5 @@
 import { Box, Chip, Paper, Stack, Tooltip, Typography } from "@mui/material";
+import { DataFreshness } from "./DataFreshness";
 
 export type RiskComplianceCardListing = {
   // DBI Notice of Violations (Socrata nife-svxp)
@@ -51,6 +52,19 @@ function asLatestComplaint(v: unknown): LatestComplaint | null {
   return v as LatestComplaint;
 }
 
+function newestDate(
+  dates: Array<Date | string | null | undefined>,
+): Date | null {
+  let best: number | null = null;
+  for (const d of dates) {
+    if (d == null) continue;
+    const t = (d instanceof Date ? d : new Date(d)).getTime();
+    if (!Number.isFinite(t)) continue;
+    if (best == null || t > best) best = t;
+  }
+  return best == null ? null : new Date(best);
+}
+
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -93,10 +107,23 @@ export function RiskComplianceCard({
 
   const rentCtrl = listing.rentControlCovered;
 
+  // Most-recently-fetched timestamp across the four sub-pipelines that feed
+  // this card — gives the user a single "Updated …" anchor without one
+  // pipeline lagging the others making everything look stale.
+  const newest = newestDate([
+    listing.codeViolationsFetchedAt,
+    listing.dbiComplaintsFetchedAt,
+    listing.housingInventoryFetchedAt,
+    listing.rentControlComputedAt,
+    listing.softStoryFetchedAt,
+  ]);
+
   return (
     <Paper variant="outlined" sx={{ p: 2 }}>
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
         <Typography variant="subtitle2">Risk &amp; compliance</Typography>
+        <Box sx={{ flex: 1 }} />
+        <DataFreshness updatedAt={newest} />
       </Stack>
 
       {/* Row 1 — Code enforcement (dual-use framing) */}

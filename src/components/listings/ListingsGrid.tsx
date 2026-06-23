@@ -48,6 +48,7 @@ export function ListingsGrid({ onSelectListing }: Props) {
     state.valueAddWeightedAvg,
     state.hasSizeDiscrepancy,
     state.starredOnly,
+    state.includeOffboarded,
     state.radius,
     state.polygon,
     state.sortBy,

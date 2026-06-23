@@ -169,10 +169,19 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
       {listing && tab === "details" && (
         <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
         <Stack spacing={2.5} sx={{ p: 3 }}>
+          {listing.deletedAt && (
+            <Alert severity="warning" variant="outlined" sx={{ py: 0.75 }}>
+              This listing was offboarded on{" "}
+              {new Date(listing.deletedAt).toLocaleDateString()} — it is no
+              longer in Bridge. All enrichment data below is preserved for
+              forensic review but may be out of date.
+            </Alert>
+          )}
           <HeaderAndContacts
             listing={listing}
             address={address}
             contact={contact}
+            contactFetchedAt={listing.contact?.fetchedAt ?? null}
             onClose={onClose}
           />
 
@@ -237,6 +246,7 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
                   }
                 : null
             }
+            compsUpdatedAt={listing.neighborhoodRel?.compsUpdatedAt ?? null}
             zoningDistrict={listing.zoningDistrict ?? null}
             zoningMaxUnits={listing.zoningMaxUnits ?? null}
           />
@@ -278,6 +288,7 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
           <PhotosCard
             loading={photosQuery.isLoading}
             data={photosQuery.data}
+            visionFetchedAt={listing.visionFetchedAt}
             onOpenPhoto={openPhoto}
             onRefresh={refreshPhotos}
           />
