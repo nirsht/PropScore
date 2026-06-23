@@ -44,6 +44,7 @@ export function countActive(s: ReturnType<typeof useFilter>["state"]): number {
   if (s.rentControlCovered != null) n++;
   if (s.softStoryRedFlag != null) n++;
   if (s.starredOnly) n++;
+  if (s.includeOffboarded) n++;
   if (s.radius) n++;
   if (s.polygon) n++;
   return n;

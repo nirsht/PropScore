@@ -17,6 +17,7 @@
     "etl:sync": "tsx --env-file-if-exists=.env scripts/etl-sync.ts",
     "etl:full": "tsx --env-file-if-exists=.env scripts/etl-sync.ts --full",
     "nightly": "tsx --env-file-if-exists=.env scripts/nightly.ts",
+    "offboard:stale": "tsx --env-file-if-exists=.env scripts/offboard-stale.ts",
     "seed:neighborhoods": "tsx --env-file-if-exists=.env scripts/seed-neighborhoods.ts",
     "refresh:crime": "tsx --env-file-if-exists=.env scripts/refresh-crime.ts",
     "refresh:walkscore": "tsx --env-file-if-exists=.env scripts/refresh-walkscore.ts",

@@ -289,6 +289,15 @@ model Listing {
   raw                         Json
   bridgeModificationTimestamp DateTime
 
+  // Offboarding: `lastSeenAt` is bumped on every Bridge sync that surfaces
+  // this ListingKey (incremental upsert *or* the `offboard-stale` ListingKey
+  // sweep). `deletedAt` is set by `offboard-stale` once the listing has been
+  // missing from Bridge across two consecutive sweeps — soft-delete only,
+  // forensic data (scores, enrichments, contacts, chats) stays intact. A
+  // resurrected listing clears `deletedAt` automatically on next sync.
+  lastSeenAt    DateTime?
+  deletedAt     DateTime?
+
   score         Score?
   enrichments   AIEnrichment[]
   conversations ChatConversation[]
@@ -303,6 +312,7 @@ model Listing {
   @@index([propertyType])
   @@index([yearBuilt])
   @@index([status])
+  @@index([deletedAt])
   @@index([bridgeModificationTimestamp])
   @@index([blockLot])
   @@index([renovationLevel])

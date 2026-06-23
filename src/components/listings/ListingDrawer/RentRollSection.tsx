@@ -10,6 +10,7 @@ import {
 } from "@mui/material";
 import AutoFixHighOutlinedIcon from "@mui/icons-material/AutoFixHighOutlined";
 import { trpc } from "@/lib/trpc/client";
+import { DataFreshness } from "./DataFreshness";
 import { fmtMoney, unitTypeLabel } from "./formatters";
 import { Metric } from "./Metric";
 import { MlsRemarksFooter } from "./MlsRemarksFooter";
@@ -180,6 +181,9 @@ export function RentRollSection({ listing }: { listing: ListingForAI }) {
             />
           </Tooltip>
         )}
+        <Box sx={{ flex: 1 }} />
+        <DataFreshness updatedAt={listing.extractFetchedAt} label="Extract" />
+        <DataFreshness updatedAt={compsCachedAt} label="Comps" />
       </Stack>
 
       <Box

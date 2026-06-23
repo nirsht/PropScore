@@ -114,6 +114,15 @@ export function QuickChips() {
       active: !!state.starredOnly,
       apply: () => set({ starredOnly: state.starredOnly ? undefined : true }),
     },
+    {
+      key: "include-offboarded",
+      label: "Show offboarded",
+      active: !!state.includeOffboarded,
+      apply: () =>
+        set({
+          includeOffboarded: state.includeOffboarded ? undefined : true,
+        }),
+    },
   ];
 
   return (

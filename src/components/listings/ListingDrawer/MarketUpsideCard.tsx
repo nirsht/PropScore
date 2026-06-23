@@ -12,6 +12,7 @@ import {
 } from "@mui/material";
 import HelpOutlineRoundedIcon from "@mui/icons-material/HelpOutlineRounded";
 import TrendingUpRoundedIcon from "@mui/icons-material/TrendingUpRounded";
+import { DataFreshness } from "./DataFreshness";
 import { fmtMoney } from "./formatters";
 
 const MIN_SAMPLE = 5;
@@ -34,6 +35,7 @@ type Props = {
   units: number | null;
   neighborhood: string | null;
   comps: NeighborhoodComps;
+  compsUpdatedAt: Date | string | null;
   // Zoning inputs
   zoningDistrict: string | null;
   zoningMaxUnits: number | null;
@@ -56,6 +58,7 @@ export function MarketUpsideCard(props: Props) {
     units,
     neighborhood,
     comps,
+    compsUpdatedAt,
     zoningDistrict,
     zoningMaxUnits,
   } = props;
@@ -118,6 +121,7 @@ export function MarketUpsideCard(props: Props) {
           />
         </Tooltip>
         <Box sx={{ flex: 1 }} />
+        <DataFreshness updatedAt={compsUpdatedAt} label="Comps" />
         <ScoreChip score={marketUpsideScore} />
       </Stack>
 

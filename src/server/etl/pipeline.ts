@@ -205,6 +205,7 @@ function buildFilter(since: Date | null): string {
 async function flush(rows: NormalizedListing[]): Promise<{ upserted: number; scored: number }> {
   // Bounded parallelism — distinct mlsIds, no row contention. Concurrency
   // is capped low to stay friendly to the shared Render Postgres pool.
+  const seenAt = new Date();
   const results = await mapWithConcurrency(rows, FLUSH_CONCURRENCY, async (r) => {
     await db.listing.upsert({
       where: { mlsId: r.mlsId },
@@ -234,6 +235,7 @@ async function flush(rows: NormalizedListing[]): Promise<{ upserted: number; sco
         isAuction: r.isAuction,
         auctionDate: r.auctionDate,
         raw: r.raw as Prisma.InputJsonValue,
+        lastSeenAt: seenAt,
       },
       update: {
         address: r.address,
@@ -260,6 +262,11 @@ async function flush(rows: NormalizedListing[]): Promise<{ upserted: number; sco
         isAuction: r.isAuction,
         auctionDate: r.auctionDate,
         raw: r.raw as Prisma.InputJsonValue,
+        // Bridge is currently showing this ListingKey. Bump lastSeenAt so
+        // `offboard-stale` knows the row is alive, and clear deletedAt if
+        // the listing was previously offboarded (Bridge re-listed it).
+        lastSeenAt: seenAt,
+        deletedAt: null,
       },
     });
 

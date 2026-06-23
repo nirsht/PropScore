@@ -83,6 +83,14 @@ export function buildWhere(
     }
   }
 
+  // Hide offboarded listings unless the caller explicitly opts in. The MV
+  // exposes `deletedAt` as a column so this is a plain column predicate;
+  // the partial index `mv_listing_search_deletedAt_null_idx` covers the
+  // default (hide) path.
+  if (!input.includeOffboarded) {
+    where.push(Prisma.sql`"deletedAt" IS NULL`);
+  }
+
   if (input.postDate?.min) {
     where.push(Prisma.sql`"postDate" >= ${new Date(input.postDate.min)}`);
   }

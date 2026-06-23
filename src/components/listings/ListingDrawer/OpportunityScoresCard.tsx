@@ -1,11 +1,14 @@
 import { Box, Paper, Stack, Tooltip, Typography } from "@mui/material";
 import AutoFixHighOutlinedIcon from "@mui/icons-material/AutoFixHighOutlined";
 import HelpOutlineRoundedIcon from "@mui/icons-material/HelpOutlineRounded";
+import { DataFreshness } from "./DataFreshness";
 import { Rationale } from "./Rationale";
 import { ScoreBars } from "./ScoreBars";
 
 type ScoreLike = {
   aiBreakdown?: unknown;
+  aiComputedAt?: Date | string | null;
+  computedAt?: Date | string | null;
 } | null | undefined;
 
 export function OpportunityScoresCard({
@@ -16,6 +19,7 @@ export function OpportunityScoresCard({
   heuristic: Parameters<typeof ScoreBars>[0]["heuristic"];
 }) {
   const aiBreakdown = score?.aiBreakdown ?? null;
+  const scoreUpdatedAt = score?.aiComputedAt ?? score?.computedAt ?? null;
   return (
     <Paper variant="outlined" sx={{ p: 2 }}>
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
@@ -45,6 +49,10 @@ export function OpportunityScoresCard({
           </Tooltip>
         )}
         <Box sx={{ flex: 1 }} />
+        <DataFreshness
+          updatedAt={scoreUpdatedAt}
+          label={score?.aiComputedAt ? "AI" : "Scored"}
+        />
       </Stack>
       <ScoreBars
         score={score as Parameters<typeof ScoreBars>[0]["score"]}

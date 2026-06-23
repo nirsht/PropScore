@@ -9,6 +9,7 @@ import {
   Typography,
 } from "@mui/material";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
+import { formatAgo } from "@/lib/formatAgo";
 import { fmtDate } from "./formatters";
 import type { ListingForDetails } from "./types";
 
@@ -170,7 +171,7 @@ function ConclusionRow({ conclusion }: { conclusion: Conclusion }) {
         </Typography>
       )}
       <Typography variant="caption" color="text.secondary">
-        {conclusion.attribution} · {fmtDate(conclusion.date)}
+        {conclusion.attribution} · {formatAgo(conclusion.date) ?? fmtDate(conclusion.date)}
       </Typography>
     </Box>
   );
