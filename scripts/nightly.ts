@@ -1,17 +1,34 @@
 /**
- * Nightly orchestrator. Runs the full enrichment pipeline with as much
- * concurrency as is safe given which stages share Listing columns.
+ * Nightly orchestrator. Runs in one of three modes:
  *
- *   1. etl:sync                                              (must be first)
- *   2. parallel:
- *        - enrich:sfpim → enrich:vision → enrich:zoning  (all write Listing.raw or Listing → serial)
- *        - enrich:listings                (disjoint columns)
- *        - enrich:rent-comps              (writes AIEnrichment, throttled)
- *        - refresh:walkscore              (Listing.walkScore only)
- *        - refresh:crime                  (Neighborhood table only)
- *   3. refresh:neighborhood-comps         (reads listings/assessor + writes Neighborhood medians)
- *   4. recompute:scores                   (heuristic; skips AI rows)
- *   5. ai-score:changed                   (delta: re-score only listings whose AI inputs changed)
+ *   --mode=base   (default for the daily Render cron — FREE only)
+ *     1. etl:sync                                      (must be first)
+ *     1b. offboard:stale                               (soft-delete missing)
+ *     2. parallel lanes (LLM stages filtered out):
+ *          - sfpim → landuse → permits → zoning →
+ *            code-enforcement → dbi-complaints →
+ *            housing-inventory → rent-control          (share Listing cols)
+ *          - rent-comps                                (Bridge, throttled)
+ *          - walkscore                                 (Walk Score free tier)
+ *          - crime                                     (DataSF, free)
+ *     3. refresh:neighborhood-comps
+ *     4. recompute:scores                              (heuristic baseline)
+ *
+ *   --mode=llm    (Mon+Fri Render cron — PAID, OpenAI tokens)
+ *     1. etl:sync                                      (self-healing if the
+ *                                                       daily base failed
+ *                                                       earlier in the day)
+ *     2. parallel: [vision → vision-interior], [extract]
+ *     3. recompute:scores                              (so AI score sees the
+ *                                                       fresh heuristic
+ *                                                       baseline from new
+ *                                                       vision/extract)
+ *     4. ai-score:changed
+ *     5. emails:poll
+ *
+ *   --mode=all    (manual/dev — runs everything in the historical order)
+ *     The original pre-split pipeline. Kept as the default for `pnpm nightly`
+ *     without args so ad-hoc local runs are unchanged.
  *
  * Note: `enrich:contacts` (RentCast) is paused — the API is too expensive at
  * scale. Run it manually if/when re-enabled, or wait for a free replacement
@@ -22,16 +39,39 @@
  * concurrent output stays readable. Any failure aborts the run with a
  * non-zero exit code (Promise.all-style fail-fast).
  *
- * Usage: pnpm nightly
+ * Usage:
+ *   pnpm nightly                  # mode=all
+ *   pnpm nightly:base             # mode=base (daily cron)
+ *   pnpm nightly:llm              # mode=llm  (Mon+Fri cron)
  */
 import { spawn } from "node:child_process";
 
-type Stage = { name: string; cmd: string; args: string[] };
+type Mode = "base" | "llm" | "all";
 
-function stage(name: string, script: string, scriptArgs: string[] = []): Stage {
+type Stage = {
+  name: string;
+  cmd: string;
+  args: string[];
+  llm: boolean;
+};
+
+function stage(
+  name: string,
+  script: string,
+  scriptArgs: string[] = [],
+  opts: { llm?: boolean } = {},
+): Stage {
   // pnpm forwards args after `--` to the underlying script.
   const args = scriptArgs.length > 0 ? [script, "--", ...scriptArgs] : [script];
-  return { name, cmd: "pnpm", args };
+  return { name, cmd: "pnpm", args, llm: opts.llm ?? false };
+}
+
+function parseMode(argv: string[]): Mode {
+  const flag = argv.find((a) => a.startsWith("--mode="));
+  if (!flag) return "all";
+  const value = flag.slice("--mode=".length);
+  if (value === "base" || value === "llm" || value === "all") return value;
+  throw new Error(`Unknown --mode value: ${value} (expected base|llm|all)`);
 }
 
 // Per-lane concurrency caps tuned for shared-DB load when all lanes run in
@@ -45,41 +85,65 @@ const PRE: Stage = stage("etl-sync", "etl:sync");
 // after etl-sync so freshly-upserted listings get their lastSeenAt bumped
 // before the missing-from-Bridge check fires.
 const OFFBOARD: Stage = stage("offboard-stale", "offboard:stale");
-// `landuse` and `permits` join on `Listing.blockLot`, which is populated by
-// `enrich:sfpim`. They run after sfpim in the same lane, parallel with the
-// other lanes that don't depend on parcel IDs.
-const PARALLEL_LANES: Stage[][] = [
-  [
-    stage("sfpim", "enrich:sfpim", ["--concurrency=5"]),
-    stage("vision", "enrich:vision", ["--concurrency=5"]),
-    // Interior-photo Reno pass — supplements (not replaces) the exterior
-    // verdict. Overwrites Listing.renovationLevel only when its confidence
-    // beats the exterior verdict by > 0.1, or when the exterior one is null.
-    stage("vision-interior", "enrich:vision-interior", ["--concurrency=5"]),
-    // landuse + permits join on Listing.blockLot (populated by sfpim);
-    // zoning needs assessor lot size for RM-* density-by-area rules, so
-    // they all chain after sfpim in the same lane.
-    stage("landuse", "enrich:landuse", ["--concurrency=3"]),
-    stage("permits", "enrich:permits", ["--concurrency=3"]),
-    stage("zoning", "enrich:zoning", ["--concurrency=5"]),
-    // Risk & Compliance: code-enforcement + housing-inventory both join on
-    // blockLot (filled by sfpim); compute:rent-control depends on
-    // yearBuilt + units + landUseCategory (filled by sfpim + landuse). Run
-    // them serially in this lane after the upstream stages so we don't race
-    // on Listing rows.
-    stage("code-enforcement", "enrich:code-enforcement", ["--concurrency=3"]),
-    // DBI inspection complaints (Socrata 9c7e-yn3d) — same Socrata host as
-    // code-enforcement, same blockLot join. Sits next to NOVs in the lane so
-    // we don't double up Socrata throughput from a parallel lane.
-    stage("dbi-complaints", "enrich:dbi-complaints", ["--concurrency=3"]),
-    stage("housing-inventory", "enrich:housing-inventory", ["--concurrency=3"]),
-    stage("rent-control", "compute:rent-control"),
-  ],
-  [stage("extract", "enrich:listings", ["--concurrency=8"])],
-  [stage("rent-comps", "enrich:rent-comps", ["--concurrency=3"])],
-  [stage("walkscore", "refresh:walkscore")],
-  [stage("crime", "refresh:crime")],
+
+const SFPIM = stage("sfpim", "enrich:sfpim", ["--concurrency=5"]);
+const VISION = stage("vision", "enrich:vision", ["--concurrency=5"], { llm: true });
+// Interior-photo Reno pass — supplements (not replaces) the exterior
+// verdict. Overwrites Listing.renovationLevel only when its confidence
+// beats the exterior verdict by > 0.1, or when the exterior one is null.
+const VISION_INTERIOR = stage(
+  "vision-interior",
+  "enrich:vision-interior",
+  ["--concurrency=5"],
+  { llm: true },
+);
+// landuse + permits join on Listing.blockLot (populated by sfpim);
+// zoning needs assessor lot size for RM-* density-by-area rules, so
+// they all chain after sfpim in the same lane.
+const LANDUSE = stage("landuse", "enrich:landuse", ["--concurrency=3"]);
+const PERMITS = stage("permits", "enrich:permits", ["--concurrency=3"]);
+const ZONING = stage("zoning", "enrich:zoning", ["--concurrency=5"]);
+// Risk & Compliance: code-enforcement + housing-inventory both join on
+// blockLot (filled by sfpim); compute:rent-control depends on
+// yearBuilt + units + landUseCategory (filled by sfpim + landuse).
+const CODE_ENF = stage("code-enforcement", "enrich:code-enforcement", ["--concurrency=3"]);
+// DBI inspection complaints (Socrata 9c7e-yn3d) — same Socrata host as
+// code-enforcement, same blockLot join.
+const DBI_COMPLAINTS = stage("dbi-complaints", "enrich:dbi-complaints", ["--concurrency=3"]);
+const HOUSING_INV = stage("housing-inventory", "enrich:housing-inventory", ["--concurrency=3"]);
+const RENT_CONTROL = stage("rent-control", "compute:rent-control");
+
+const EXTRACT = stage("extract", "enrich:listings", ["--concurrency=8"], { llm: true });
+const RENT_COMPS = stage("rent-comps", "enrich:rent-comps", ["--concurrency=3"]);
+const WALKSCORE = stage("walkscore", "refresh:walkscore");
+const CRIME = stage("crime", "refresh:crime");
+
+// Original `mode=all` parallel structure — preserved verbatim for backwards
+// compatibility with manual `pnpm nightly` runs.
+const PARALLEL_LANES_ALL: Stage[][] = [
+  [SFPIM, VISION, VISION_INTERIOR, LANDUSE, PERMITS, ZONING, CODE_ENF, DBI_COMPLAINTS, HOUSING_INV, RENT_CONTROL],
+  [EXTRACT],
+  [RENT_COMPS],
+  [WALKSCORE],
+  [CRIME],
 ];
+
+// Base mode: same lanes with LLM stages stripped. Lane 2 (extract) drops
+// out entirely since it was a one-stage LLM lane.
+const PARALLEL_LANES_BASE: Stage[][] = [
+  [SFPIM, LANDUSE, PERMITS, ZONING, CODE_ENF, DBI_COMPLAINTS, HOUSING_INV, RENT_CONTROL],
+  [RENT_COMPS],
+  [WALKSCORE],
+  [CRIME],
+];
+
+// LLM mode: vision pair chained (shares Listing.renovationLevel), extract
+// runs in parallel (column-disjoint).
+const PARALLEL_LANES_LLM: Stage[][] = [
+  [VISION, VISION_INTERIOR],
+  [EXTRACT],
+];
+
 // Neighborhood comp medians depend on assessor data being populated, so
 // run after the parallel phase finishes but before recompute:scores reads
 // the medians.
@@ -91,11 +155,11 @@ const POST: Stage = stage("recompute", "recompute:scores");
 // 10 keeps wall-clock under the cron timeout on a full re-score (~2.3k
 // listings × 3-5s/call ÷ 10 ≈ 12-15 min) — gpt-5-mini stays cheap at this
 // fan-out.
-const AI_SCORE: Stage = stage("ai-score", "ai-score:changed", ["--concurrency=10"]);
+const AI_SCORE: Stage = stage("ai-score", "ai-score:changed", ["--concurrency=10"], { llm: true });
 // Reply polling — independent of scoring, runs last. The parser writes back
 // into Listing.extractedRentRoll, but the next nightly will pick up the new
 // rent roll via the normal extract → scoring chain.
-const EMAILS_POLL: Stage = stage("emails-poll", "emails:poll");
+const EMAILS_POLL: Stage = stage("emails-poll", "emails:poll", [], { llm: true });
 
 function runStage(s: Stage): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -131,9 +195,7 @@ async function runLane(lane: Stage[]): Promise<void> {
   for (const s of lane) await runStage(s);
 }
 
-async function main() {
-  const overallStart = Date.now();
-
+async function runAll() {
   console.log(`[nightly] phase 1: ${PRE.name}`);
   await runStage(PRE);
 
@@ -141,11 +203,11 @@ async function main() {
   await runStage(OFFBOARD);
 
   console.log(
-    `[nightly] phase 2: ${PARALLEL_LANES.length} lanes in parallel — ${PARALLEL_LANES
+    `[nightly] phase 2: ${PARALLEL_LANES_ALL.length} lanes in parallel — ${PARALLEL_LANES_ALL
       .map((lane) => lane.map((s) => s.name).join("→"))
       .join(", ")}`,
   );
-  await Promise.all(PARALLEL_LANES.map(runLane));
+  await Promise.all(PARALLEL_LANES_ALL.map(runLane));
 
   console.log(`[nightly] phase 3: ${NEIGHBORHOOD_COMPS.name}`);
   await runStage(NEIGHBORHOOD_COMPS);
@@ -158,9 +220,61 @@ async function main() {
 
   console.log(`[nightly] phase 6: ${EMAILS_POLL.name}`);
   await runStage(EMAILS_POLL);
+}
+
+async function runBase() {
+  console.log(`[nightly:base] phase 1: ${PRE.name}`);
+  await runStage(PRE);
+
+  console.log(`[nightly:base] phase 1b: ${OFFBOARD.name}`);
+  await runStage(OFFBOARD);
+
+  console.log(
+    `[nightly:base] phase 2: ${PARALLEL_LANES_BASE.length} lanes in parallel — ${PARALLEL_LANES_BASE
+      .map((lane) => lane.map((s) => s.name).join("→"))
+      .join(", ")}`,
+  );
+  await Promise.all(PARALLEL_LANES_BASE.map(runLane));
+
+  console.log(`[nightly:base] phase 3: ${NEIGHBORHOOD_COMPS.name}`);
+  await runStage(NEIGHBORHOOD_COMPS);
+
+  console.log(`[nightly:base] phase 4: ${POST.name}`);
+  await runStage(POST);
+}
+
+async function runLlm() {
+  console.log(`[nightly:llm] phase 1: ${PRE.name}`);
+  await runStage(PRE);
+
+  console.log(
+    `[nightly:llm] phase 2: ${PARALLEL_LANES_LLM.length} lanes in parallel — ${PARALLEL_LANES_LLM
+      .map((lane) => lane.map((s) => s.name).join("→"))
+      .join(", ")}`,
+  );
+  await Promise.all(PARALLEL_LANES_LLM.map(runLane));
+
+  console.log(`[nightly:llm] phase 3: ${POST.name}`);
+  await runStage(POST);
+
+  console.log(`[nightly:llm] phase 4: ${AI_SCORE.name}`);
+  await runStage(AI_SCORE);
+
+  console.log(`[nightly:llm] phase 5: ${EMAILS_POLL.name}`);
+  await runStage(EMAILS_POLL);
+}
+
+async function main() {
+  const mode = parseMode(process.argv.slice(2));
+  const overallStart = Date.now();
+  console.log(`[nightly] mode=${mode}`);
+
+  if (mode === "all") await runAll();
+  else if (mode === "base") await runBase();
+  else await runLlm();
 
   const total = ((Date.now() - overallStart) / 1000).toFixed(1);
-  console.log(`[nightly] all stages succeeded in ${total}s`);
+  console.log(`[nightly] all stages succeeded in ${total}s (mode=${mode})`);
 }
 
 main().catch((err) => {

@@ -28,32 +28,61 @@ services:
       - key: OPENAI_MODEL
         value: gpt-5-mini
 
+  # Daily FREE refresh. Runs every day at 20:00 UTC = 12:00 PST (literal
+  # UTC-8, year-round; fires at 1pm Pacific during DST). Pulls Bridge,
+  # refreshes Socrata enrichments, zoning, walkscore, crime, neighborhood
+  # comps, and recomputes the heuristic score. No OpenAI calls.
   - type: cron
-    name: propscore-etl-nightly
+    name: propscore-etl-daily
     runtime: node
     region: ohio
     branch: main
-    # Mon + Fri at 20:00 UTC = 12:00 PST (literal UTC-8, year-round; fires at
-    # 1pm Pacific during DST). Render cron is UTC and does not observe DST.
-    schedule: "0 20 * * 1,5"
+    schedule: "0 20 * * *"
     buildCommand: npm install -g corepack@latest && corepack enable && pnpm install --frozen-lockfile && pnpm prisma generate
-    # Single nightly orchestrator. Each step is delta-only (skips listings
-    # already enriched) so AI tokens are spent on new listings only:
+    # See scripts/nightly.ts (mode=base) for the full pipeline. Summary:
     #   etl:sync          — incremental Bridge pull (cursor-based)
-    #   enrich:sfpim      — assessor (free Socrata API)
-    #   enrich:vision     — gpt-5-mini vision (NEW listings only)
-    #   enrich:listings   — gpt-5-mini text extract (NEW only)
-    #   enrich:rent-comps — Bridge SFAR Residential Lease comps within 1mi/24mo,
-    #                        bucketed by (beds, baths). Deterministic, no
-    #                        LLM cost; refreshes every 7 days per listing.
-    #   recompute:scores  — re-run heuristic so new enrichment data feeds the
-    #                        value-add score (no AI calls, free).
-    #   ai-score:changed  — gpt-5-mini opportunity score, delta-only via
-    #                        Score.aiInputHash (~$0.001/listing scored).
+    #   offboard:stale    — soft-delete listings no longer in Bridge
+    #   enrich:sfpim/landuse/permits/zoning/code-enforcement/
+    #     dbi-complaints/housing-inventory + compute:rent-control
+    #                     — Socrata/PostGIS (free)
+    #   enrich:rent-comps — Bridge SFAR lease comps (free, deterministic)
+    #   refresh:walkscore — Walk Score free tier
+    #   refresh:crime     — DataSF aggregates (free)
+    #   refresh:neighborhood-comps — pure SQL aggregation
+    #   recompute:scores  — heuristic baseline (no AI)
+    startCommand: pnpm nightly:base
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: BRIDGE_DATASET
+        value: sfar
+      - key: BRIDGE_BASE_URL
+        value: https://api.bridgedataoutput.com/api/v2/OData
+      - key: OPENAI_MODEL
+        value: gpt-5-mini
+
+  # PAID LLM refresh. Mon + Fri at 22:00 UTC — two hours after the daily
+  # base finishes so it can build on the freshest non-LLM data. Re-runs
+  # etl:sync first so the job is self-healing if the morning base failed.
+  # OpenAI tokens spent here: vision, vision-interior, listing extract,
+  # ai-score, and the Gmail rent-roll parser.
+  - type: cron
+    name: propscore-etl-llm
+    runtime: node
+    region: ohio
+    branch: main
+    schedule: "0 22 * * 1,5"
+    buildCommand: npm install -g corepack@latest && corepack enable && pnpm install --frozen-lockfile && pnpm prisma generate
+    # See scripts/nightly.ts (mode=llm) for the full pipeline. Summary:
+    #   etl:sync                       — self-healing incremental pull
+    #   enrich:vision → vision-interior — gpt-4o(-mini) photo analysis
+    #   enrich:listings                — gpt-5-mini text extract
+    #   recompute:scores               — refresh heuristic for ai-score
+    #   ai-score:changed               — gpt-5-mini, delta-only via hash
+    #   emails:poll                    — gpt-5 rent-roll parser on inbox
     # Note: enrich:contacts (RentCast) is paused — too expensive. Run
-    # manually via `pnpm enrich:contacts` if the key is restored, or
-    # swap in a free source (CalDRE / Tavily) — see scripts/enrich-contacts.ts.
-    startCommand: pnpm nightly
+    # manually via `pnpm enrich:contacts` if the key is restored.
+    startCommand: pnpm nightly:llm
     envVars:
       - key: NODE_ENV
         value: production
