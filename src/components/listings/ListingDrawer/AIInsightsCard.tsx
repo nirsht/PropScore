@@ -41,7 +41,7 @@ export function AIInsightsCard({ listing }: { listing: ListingForAI }) {
     | null
     | undefined;
   const rentRoll = listing.extractedRentRoll as
-    | Array<{ rent: number; beds: number | null; baths: number | null }>
+    | Array<{ rent: number | null; beds: number | null; baths: number | null }>
     | null
     | undefined;
   const capex = listing.recentCapex as string[] | null | undefined;

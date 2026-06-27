@@ -26,7 +26,7 @@ Output schema fields:
      (total 5 beds/3 baths not split by unit)..."  →  unitMixEvidence:
      {sourceQuote: "Two-unit property that lives like an SFR (total 5 beds/3 baths not split by unit)", sourceField: "publicRemarks"}
 
-2. rentRoll — array of {rent, beds, baths, sqft?, unitLabel?} when actual rents are listed PER UNIT.
+2. rentRoll — array of {rent, beds, baths, sqft?, unitLabel?, moveInDate?} when actual rents are listed PER UNIT.
    Tabular form to parse:
      "current rent  unit type
       1,284         3bd/2ba
@@ -34,12 +34,13 @@ Output schema fields:
       3,100         3bd/2ba
       7,850         4bd/3ba"
    → [{rent:1284,beds:3,baths:2},{rent:1500,beds:3,baths:2},{rent:3100,beds:3,baths:2},{rent:7850,beds:4,baths:3}]
-   Strip dollar signs and commas. If a row says "vacant" or "tbd" skip it.
+   Strip dollar signs and commas. If a row is vacant (rent shown as "vacant", "tbd", "$0", or blank), KEEP the row and set rent: null — preserve beds/baths/sqft/unitLabel/moveInDate so the consumer can show the vacant unit with a market/proforma estimate.
    If beds/baths not stated for a row, leave them null. Set rentRoll to null when no per-unit rents are given.
 
    Capture per-apartment context when stated:
      sqft — when the row lists a unit's square footage ("Unit A: 850 sf · 2BR · $2,400" → sqft:850).
      unitLabel — the unit identifier used in remarks ("Unit A", "#3", "Upper flat", "Top floor"). Keep it short (≤ 40 chars). Omit/null when remarks don't label units distinctly.
+     moveInDate — verbatim move-in / lease-start text when the row lists it ("12/1/1992", "04/15/2025", "Vacant", "MTM", "2021"). Drives buyout assessment for rent-controlled tenancies — longer tenancies are harder/more expensive to buy out. Null when absent.
 
 3. aiRentEstimate — array of {beds, baths, estimatedRent, rationale, sqft?, unitLabel?} estimating CURRENT market-rate monthly rent in the unit's CURRENT condition (no renovation assumed).
    When rentRoll is non-empty: emit ONE entry per rentRoll entry, in the SAME order. Mirror sqft and unitLabel from the matching rentRoll entry so the consumer can match by index. This lets two same-(beds,baths) units of different sizes get distinct estimates.

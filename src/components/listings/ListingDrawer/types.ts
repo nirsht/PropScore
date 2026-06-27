@@ -84,11 +84,14 @@ export type ListingForAI = {
 };
 
 export type RentRollEntryUI = {
-  rent: number;
+  // null = vacant unit. Row stays so totals/UI can render the unit and a
+  // market/proforma estimate even when there's no current rent.
+  rent: number | null;
   beds: number | null;
   baths: number | null;
   sqft?: number | null;
   unitLabel?: string | null;
+  moveInDate?: string | null;
 };
 
 export type UnitMixEntryUI = {
