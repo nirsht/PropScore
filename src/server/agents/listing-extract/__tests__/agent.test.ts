@@ -40,13 +40,40 @@ describe("deriveDetachedAduFromHeuristic", () => {
 
   it("scores in the medium band for tight-but-plausible yards", () => {
     const out = deriveDetachedAduFromHeuristic({
-      units: 4,
-      buildingSqft: 3600,
-      lotSqft: 2400,
+      units: 3,
+      buildingSqft: 2000,
+      lotSqft: 2500,
       stories: 2,
     });
     expect(out.score).toBeGreaterThan(20);
     expect(out.score).toBeLessThan(80);
+  });
+
+  it("zeros out when the building covers the full lot depth", () => {
+    // 2,000 sqft lot, 4,500 sqft 2-story building → footprint ≈ 2,250 sqft,
+    // building depth exceeds lot depth ⇒ no rear yard.
+    const out = deriveDetachedAduFromHeuristic({
+      units: 1,
+      buildingSqft: 4500,
+      lotSqft: 2000,
+      stories: 2,
+    });
+    expect(out.score).toBe(0);
+  });
+
+  it("applies side setbacks — a tall SF townhouse no longer scores top band", () => {
+    // The old residual-area heuristic would call this ~100 (1,333 sqft
+    // "unused" of a 2,500 sqft lot). The new rear-yard math accounts for
+    // the building spanning the full lot width and 4 ft side setbacks,
+    // so the score lands in the mid-band.
+    const out = deriveDetachedAduFromHeuristic({
+      units: 2,
+      buildingSqft: 3500,
+      lotSqft: 2500,
+      stories: 3,
+    });
+    expect(out.score).toBeGreaterThan(40);
+    expect(out.score).toBeLessThan(85);
   });
 });
 

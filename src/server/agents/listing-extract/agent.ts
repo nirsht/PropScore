@@ -164,6 +164,11 @@ async function persist(mlsId: string, out: Output) {
  * Local fallback heuristic for the DETACHED-ADU score (vacant-yard play)
  * when there are no remarks at all. Mirrors the rule documented in the
  * system prompt so the empty-remarks path still emits a sane read.
+ *
+ * SF lots are deep-narrow and the building usually spans nearly the full
+ * lot width, so usable yard is a rear STRIP, not residual lot area. We
+ * estimate lot width from the SF-typical 4:1 depth:width ratio (clamped to
+ * 15–40 ft), then subtract 4 ft side setbacks from the usable width.
  */
 export function deriveDetachedAduFromHeuristic(input: {
   units: number | null;
@@ -172,43 +177,69 @@ export function deriveDetachedAduFromHeuristic(input: {
   stories: number | null;
 }): { score: number | null; rationale: string } {
   const { lotSqft, buildingSqft, units, stories } = input;
-  if (lotSqft == null) {
+  if (lotSqft == null || lotSqft <= 0) {
     return { score: null, rationale: "No lot size on file." };
   }
 
-  const storiesClamped = Math.max(1, Math.min(4, stories ?? 2));
+  const lotWidth = Math.max(15, Math.min(40, Math.sqrt(lotSqft / 4)));
+  const lotDepth = lotSqft / lotWidth;
+  const storiesInput = stories ?? 2;
+  // Top floor in SF buildings ≥ 3 stories is usually smaller (mansard,
+  // setback). Trim 0.3 off the divisor so footprint isn't underestimated.
+  const storyDivisor = Math.max(
+    1,
+    storiesInput <= 2 ? storiesInput : storiesInput - 0.3,
+  );
   const footprint =
-    buildingSqft != null ? buildingSqft / storiesClamped : lotSqft * 0.55;
-  const unused = Math.round(lotSqft - footprint);
+    buildingSqft != null && buildingSqft > 0
+      ? buildingSqft / storyDivisor
+      : lotSqft * 0.55;
+  const buildingDepth = footprint / lotWidth;
+  const rearYardDepth = Math.max(0, lotDepth - buildingDepth);
+  const usableWidth = Math.max(0, lotWidth - 8);
+  const rearYardArea = Math.round(rearYardDepth * usableWidth);
 
   // Dense multifamily with no real yard.
-  if (units != null && units > 6 && unused < 1200) {
+  if (units != null && units > 6 && rearYardArea < 1200) {
     return {
       score: 0,
-      rationale: `Dense lot (${units} units, ~${unused} sqft yard) leaves no detached-ADU envelope.`,
+      rationale: `Dense lot (${units} units, ~${rearYardArea} sqft rear yard) leaves no detached-ADU envelope.`,
     };
   }
 
-  // Continuous map: 200 sqft → 0, 1200 sqft → 100, linear in between.
-  const raw = ((unused - 200) / 1000) * 100;
-  const score = Math.max(0, Math.min(100, Math.round(raw)));
+  const score = scoreRearYardArea(rearYardArea);
 
   if (score >= 80) {
     return {
       score,
-      rationale: `~${unused} sqft of unused lot — clears SF setback envelope (4 ft side/rear, 6 ft separation).`,
+      rationale: `~${rearYardArea} sqft rear yard after side setbacks — clears SF ADU envelope (4 ft rear, 6 ft separation).`,
     };
   }
   if (score >= 40) {
     return {
       score,
-      rationale: `~${unused} sqft of unused lot — tight but plausible after setbacks.`,
+      rationale: `~${rearYardArea} sqft rear yard after side setbacks — tight but plausible for a small detached ADU.`,
     };
   }
   return {
     score,
-    rationale: `Only ~${unused} sqft of unused lot — minimal envelope after SF setbacks.`,
+    rationale: `Only ~${rearYardArea} sqft rear yard after side setbacks — minimal envelope for a detached ADU.`,
   };
+}
+
+/**
+ * Piecewise-linear mapping from usable rear-yard area (sqft, already net
+ * of 4 ft side setbacks) to a 0–100 detached-ADU score. Anchors: 300→0,
+ * 500→30, 800→60, 1200→85, 1600+→100. See the system prompt for the
+ * narrative version used by the LLM.
+ */
+function scoreRearYardArea(area: number): number {
+  if (area <= 300) return 0;
+  if (area <= 500) return Math.round((area - 300) * 0.15);
+  if (area <= 800) return Math.round(30 + (area - 500) * 0.1);
+  if (area <= 1200) return Math.round(60 + (area - 800) * 0.0625);
+  if (area <= 1600) return Math.round(85 + (area - 1200) * 0.0375);
+  return 100;
 }
 
 /**

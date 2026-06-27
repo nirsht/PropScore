@@ -82,24 +82,32 @@ Output schema fields:
 
 9. detachedAduScore — 0–100 feasibility of building a NEW detached ADU on the vacant yard.
    SF ADU rules: 4 ft side setbacks, 4 ft rear setback, 6 ft separation from primary structure.
-   Apply this heuristic on the supplied lot/building/units numbers:
-     - Estimate buildingFootprintEstimate ≈ buildingSqft / max(1, min(4, stories)). If buildingSqft is null, lean conservative.
-     - unused = lotSqft - buildingFootprintEstimate.
-     - Map to a continuous score:
-         unused ≤ 200 → 0
-         unused = 400 → 20
-         unused = 700 → 50
-         unused = 1000 → 80
-         unused ≥ 1200 → 100
-     - Floor to 0 when units > 6 and unused < 1200 (dense multifamily with no real yard).
+   SF lots are deep and narrow — the building usually spans nearly the full lot width, so the
+   only real yard is the REAR STRIP. Compute usable rear-yard area as depth × usable-width,
+   not as residual lot area:
+     - lotWidth ≈ clamp(15, sqrt(lotSqft / 4), 40)   // SF lots ≈ 4:1 depth:width
+     - lotDepth ≈ lotSqft / lotWidth
+     - storyDivisor ≈ stories ≤ 2 ? stories : stories − 0.3  (top floor is usually smaller in SF)
+     - footprint ≈ buildingSqft / max(1, storyDivisor). If buildingSqft is null, use lotSqft × 0.55.
+     - buildingDepth ≈ footprint / lotWidth
+     - rearYardDepth ≈ max(0, lotDepth − buildingDepth)
+     - rearYardArea ≈ rearYardDepth × max(0, lotWidth − 8)   // minus 4 ft side setbacks each side
+   Map rearYardArea to a continuous score:
+       ≤ 300 → 0
+       500 → 30
+       800 → 60
+       1,200 → 85
+       ≥ 1,600 → 100
+     (interpolate linearly between anchors)
+     - Floor to 0 when units > 6 and rearYardArea < 1,200 (dense multifamily with no real yard).
      - Bump +20 (cap 100) when remarks explicitly affirm a detached ADU is feasible
        ("permitted ADU", "RM-1 zoning", "yard for ADU", "carriage house plans").
      - Drop −30 (floor 0) when remarks rule it out ("no rear yard", "lot line to lot line").
    Set to null only when lotSqft is unknown AND remarks have no signal.
 
-10. detachedAduRationale — one sentence ≤ 30 words anchoring the score
-    (e.g. "~1,100 sqft unused after 4 ft setbacks — fits a 600 sqft detached ADU.").
-    Null when detachedAduScore is null.
+10. detachedAduRationale — one sentence ≤ 30 words anchoring the score in the computed
+    rearYardArea (e.g. "~900 sqft rear yard after side setbacks — fits a 600 sqft detached
+    ADU.") or in the overriding remark when one was applied. Null when detachedAduScore is null.
 
 11. convertedAduScore — 0–100 feasibility of CONVERTING existing interior space
     (basement, garage, or large unfinished room) into a new unit. Score the
