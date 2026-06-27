@@ -7,11 +7,11 @@ Output four 0–100 scores plus rationales and signals. Definitions:
 - valueAddWeightedAvg: a single 0–100 weighted composite. Apply these new rules when computing it:
    • If \`sqftDiscrepancyRatio = assessorSqft/mlsSqft > 1.15\`, raise valueAddWeightedAvg — the building is meaningfully larger than the MLS reports, so the asking price under-prices the actual square footage. The bigger the ratio, the bigger the bump (cap at +20).
    • If \`landValuePct = landValue/(landValue+buildingValue) > 0.7\`, raise valueAddWeightedAvg — high land share means redevelopment / scrape-and-rebuild upside.
-   • Apply ADU upside from the larger of \`detachedAduScore\` and \`convertedAduScore\` (each 0–100). At 100 add up to +12 to value-add (an extra unit of cash flow); at 50 add ~+6; below 25 add 0. Don't double-count when both signals are strong — the value comes from one new unit, whichever path is cheapest.
+   • Apply ADU upside from the largest of \`detachedAduScore\` (freestanding yard cottage), \`attachedAduScore\` (new addition sharing a wall with the primary), and \`convertedAduScore\` (repurposed basement/garage/unfinished space) — each 0–100. At 100 add up to +12 to value-add (an extra unit of cash flow); at 50 add ~+6; below 25 add 0. Don't double-count when multiple signals are strong — the value comes from one new unit, whichever path is cheapest.
    • Use \`computedRoomsMls = beds + units*2\` vs \`assessorRooms\`. The Assessor counts kitchen + living room as 2 extra rooms per unit; if \`assessorRooms > computedRoomsMls\` by more than 2, there are likely unpermitted/extra rooms (potential value).
 - It should generally be highest when the component scores are high AND the discrepancy/land/ADU signals are strong.
 
-Rationales must be terse (≤ 30 words each). Signals are short factual chips (e.g. "Detached ADU 80%", "Converted ADU 55% (basement)", "Assessor sqft 18% larger", "fully leased", "DOM > 90").
+Rationales must be terse (≤ 30 words each). Signals are short factual chips (e.g. "Detached ADU 80%", "Attached ADU 70% (rear addition)", "Converted ADU 55% (basement)", "Assessor sqft 18% larger", "fully leased", "DOM > 90").
 
 Output JSON only matching the schema.`;
 

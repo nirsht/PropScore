@@ -52,6 +52,8 @@ export type HeuristicContext = {
   extractedUnitsTotal?: number | null;
   /** AI-extracted detached-ADU score (vacant-yard play, 0–100). */
   detachedAduScore?: number | null;
+  /** AI-extracted attached-ADU score (new addition sharing a wall, 0–100). */
+  attachedAduScore?: number | null;
   /** AI-extracted converted-ADU score (basement/garage play, 0–100). */
   convertedAduScore?: number | null;
   /** 0–100 location rating (walk + safety). Null when unavailable. */
@@ -109,9 +111,14 @@ export function computeHeuristicScore(
     permitsBlockAduRecentCount: ctx.permitsBlockAduRecentCount,
     permitsRadiusAduRecentCount: ctx.permitsRadiusAduRecentCount,
   };
-  // AI base = max(detached, converted) (one new unit, whichever path is
-  // cheapest), then layer in parcel-level structural feasibility evidence.
-  const aiAduBase = aduCombinedScore(ctx.detachedAduScore, ctx.convertedAduScore);
+  // AI base = max(detached, attached, converted) (one new unit, whichever
+  // path is cheapest), then layer in parcel-level structural feasibility
+  // evidence.
+  const aiAduBase = aduCombinedScore(
+    ctx.detachedAduScore,
+    ctx.attachedAduScore,
+    ctx.convertedAduScore,
+  );
   const aduResult = applyAduFeasibilityBoosts(aiAduBase, aduFeasibilityCtx);
   const adu = aduResult.score;
   const location = ctx.locationScore ?? null;
@@ -168,6 +175,7 @@ export function computeHeuristicScore(
         landValue: ctx.assessorLandValue,
         buildingValue: ctx.assessorBuildingValue,
         detachedAduScore: ctx.detachedAduScore ?? null,
+        attachedAduScore: ctx.attachedAduScore ?? null,
         convertedAduScore: ctx.convertedAduScore ?? null,
         renovationConfidence: ctx.renovationConfidence ?? null,
         assessedValueTotal: ctx.assessedValueTotal ?? null,

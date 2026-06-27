@@ -57,7 +57,7 @@ export async function searchListings(input: FilterInput, userId?: string): Promi
         "assessorBuildingValue", "assessorLandValue",
         "renovationLevel", "renovationConfidence",
         "aiStories", "aiHasBasement", "aiHasPenthouse",
-        "detachedAduScore", "convertedAduScore",
+        "detachedAduScore", "attachedAduScore", "convertedAduScore",
         "extractedTotalMonthlyRent", "extractedOccupancy",
         "pricePerSqft", "pricePerUnit", "sqftPerUnit",
         "hasSizeDiscrepancy",

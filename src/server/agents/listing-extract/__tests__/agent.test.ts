@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  deriveAttachedAduFromHeuristic,
   deriveDetachedAduFromHeuristic,
   deriveConvertedAduFromHeuristic,
 } from "../agent";
@@ -77,6 +78,65 @@ describe("deriveDetachedAduFromHeuristic", () => {
   });
 });
 
+describe("deriveAttachedAduFromHeuristic", () => {
+  it("returns null score when lot is unknown", () => {
+    expect(
+      deriveAttachedAduFromHeuristic({
+        units: 1,
+        buildingSqft: 1500,
+        lotSqft: null,
+        stories: 2,
+      }).score,
+    ).toBeNull();
+  });
+
+  it("scores high on a generous lot — no separation buffer needed", () => {
+    const out = deriveAttachedAduFromHeuristic({
+      units: 1,
+      buildingSqft: 1500,
+      lotSqft: 4000,
+      stories: 2,
+    });
+    expect(out.score).toBeGreaterThanOrEqual(80);
+  });
+
+  it("zeros out when the building leaves no rear envelope after rear setback", () => {
+    const out = deriveAttachedAduFromHeuristic({
+      units: 1,
+      buildingSqft: 4500,
+      lotSqft: 2000,
+      stories: 2,
+    });
+    expect(out.score).toBe(0);
+  });
+
+  it("scores attached slightly higher than detached on the same tight lot", () => {
+    // No 6 ft separation buffer means the attached envelope is at least as
+    // generous as the detached one; the looser score ladder usually pushes it
+    // a touch higher in the mid-band.
+    const input = {
+      units: 2,
+      buildingSqft: 3000,
+      lotSqft: 3000,
+      stories: 2,
+    };
+    const detached = deriveDetachedAduFromHeuristic(input).score ?? 0;
+    const attached = deriveAttachedAduFromHeuristic(input).score ?? 0;
+    expect(attached).toBeGreaterThanOrEqual(detached);
+  });
+
+  it("floors to 0 for dense large multifamily", () => {
+    expect(
+      deriveAttachedAduFromHeuristic({
+        units: 12,
+        buildingSqft: 12000,
+        lotSqft: 5000,
+        stories: 3,
+      }).score,
+    ).toBe(0);
+  });
+});
+
 describe("deriveConvertedAduFromHeuristic", () => {
   it("returns null when no signals", () => {
     expect(
@@ -136,6 +196,8 @@ describe("ListingExtractOutput schema", () => {
       viewNotes: null,
       detachedAduScore: 55,
       detachedAduRationale: "ok",
+      attachedAduScore: 60,
+      attachedAduRationale: "rear addition possible",
       convertedAduScore: 70,
       convertedAduRationale: "huge basement",
       convertedAduSource: "basement" as const,
@@ -167,6 +229,8 @@ describe("ListingExtractOutput schema", () => {
       viewNotes: null,
       detachedAduScore: null,
       detachedAduRationale: "",
+      attachedAduScore: null,
+      attachedAduRationale: "",
       convertedAduScore: null,
       convertedAduRationale: "",
       convertedAduSource: null,
@@ -197,6 +261,8 @@ describe("ListingExtractOutput schema", () => {
       viewNotes: null,
       detachedAduScore: null,
       detachedAduRationale: "",
+      attachedAduScore: null,
+      attachedAduRationale: "",
       convertedAduScore: null,
       convertedAduRationale: "",
       convertedAduSource: null,

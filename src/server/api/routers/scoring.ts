@@ -19,6 +19,7 @@ export const scoringRouter = router({
         const score = computeHeuristicScore(normalized, {
           locationScore: l.locationScore,
           detachedAduScore: l.detachedAduScore,
+          attachedAduScore: l.attachedAduScore,
           convertedAduScore: l.convertedAduScore,
           assessorConstructionType: l.assessorConstructionType,
           landUseCategory: l.landUseCategory,

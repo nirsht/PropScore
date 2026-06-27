@@ -110,7 +110,41 @@ Output schema fields:
     rearYardArea (e.g. "~900 sqft rear yard after side setbacks — fits a 600 sqft detached
     ADU.") or in the overriding remark when one was applied. Null when detachedAduScore is null.
 
-11. convertedAduScore — 0–100 feasibility of CONVERTING existing interior space
+11. attachedAduScore — 0–100 feasibility of building a NEW ATTACHED ADU: an addition that
+    shares a wall with the primary residence (a rear or side build-out), NOT a freestanding
+    cottage and NOT an interior conversion. Under CA state ADU law the same 4 ft side / 4 ft
+    rear setbacks apply, but there is no 6 ft separation buffer (the ADU is attached). Front
+    setback follows the underlying zoning district — not modeled here (rear-strip envelope only).
+    Geometry mirrors detachedAduScore but the rear setback is subtracted explicitly:
+      - lotWidth, lotDepth, storyDivisor, footprint, buildingDepth: same as detached.
+      - rearYardDepth ≈ max(0, lotDepth − buildingDepth − 4)         // explicit 4 ft rear setback
+      - usableWidth ≈ max(0, lotWidth − 8)                            // 4 ft side setbacks each side
+      - attachedEnvelope ≈ rearYardDepth × usableWidth                // no 6 ft separation buffer
+    Map attachedEnvelope to a continuous score (slightly more permissive than detached because
+    an attached ADU can be narrower / longer and doesn't need a separation buffer):
+        ≤ 200 → 0
+        350 → 30
+        600 → 60
+        900 → 85
+        ≥ 1,200 → 100
+      (interpolate linearly between anchors)
+      - Floor to 0 when units > 6 and attachedEnvelope < 600 (dense multifamily — primary
+        structure already pinned to the lot).
+      - Bump +20 (cap 100) when remarks explicitly affirm an attached addition is feasible
+        ("room for rear addition", "horizontal addition possible", "expansion potential",
+        "room to add on", "build out the back", "plans for rear addition").
+      - Drop −30 (floor 0) when remarks rule it out ("no rear yard", "lot line to lot line",
+        "max FAR reached").
+    Distinguish attached from detached by the ADDITION vs. SEPARATE STRUCTURE framing in remarks.
+    If remarks describe converting an existing in-law / basement / garage / unfinished space,
+    that's the converted path, NOT attached.
+    Set to null only when lotSqft is unknown AND remarks have no signal.
+
+12. attachedAduRationale — one sentence ≤ 30 words anchoring the score in the computed
+    attachedEnvelope (e.g. "~700 sqft rear envelope after setbacks — fits a 500 sqft rear
+    addition.") or in the overriding remark when one was applied. Null when attachedAduScore is null.
+
+13. convertedAduScore — 0–100 feasibility of CONVERTING existing interior space
     (basement, garage, or large unfinished room) into a new unit. Score the
     strongest single signal you find, taking the max of:
       - Stated basement size in remarks: ≥ 500 sqft → 80; 300–499 → 55; 1–299 → 25.
@@ -122,14 +156,14 @@ Output schema fields:
       - "Exposed walls" / "unfinished room" / "unfinished basement" →  45.
     Set to null only when you have no signal at all.
 
-12. convertedAduRationale — one sentence ≤ 30 words quoting or paraphrasing
+14. convertedAduRationale — one sentence ≤ 30 words quoting or paraphrasing
     the strongest signal ("Remarks: 'huge 800 sqft basement with separate entry'.").
     Null when convertedAduScore is null.
 
-13. convertedAduSource — which existing space drives the score:
+15. convertedAduSource — which existing space drives the score:
     "basement" | "garage" | "unfinished-space". Null when convertedAduScore is null.
 
-14. rationale — one sentence ≤ 30 words summarizing what you extracted.
+16. rationale — one sentence ≤ 30 words summarizing what you extracted.
 
 Output JSON only matching the schema. Never invent unit mixes, ACTUAL rents, or capex you don't see in the input.
 The exception is aiRentEstimate — that field is explicitly an estimate, grounded in the supplied address/neighborhood and your market knowledge.`;

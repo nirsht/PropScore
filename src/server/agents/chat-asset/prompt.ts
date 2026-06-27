@@ -82,6 +82,8 @@ export async function buildChatAssetSystemPrompt(mlsId: string): Promise<string>
       recentCapex: listing.recentCapex,
       detachedAduScore: listing.detachedAduScore,
       detachedAduRationale: listing.detachedAduRationale,
+      attachedAduScore: listing.attachedAduScore,
+      attachedAduRationale: listing.attachedAduRationale,
       convertedAduScore: listing.convertedAduScore,
       convertedAduRationale: listing.convertedAduRationale,
       convertedAduSource: listing.convertedAduSource,
