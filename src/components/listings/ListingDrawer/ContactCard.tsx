@@ -119,13 +119,26 @@ function RequestRentRollButton({
   });
   const existing = trpc.emails.forListing.useQuery({ listingMlsId });
   const utils = trpc.useUtils();
+  // Hold a tab opened synchronously on click so the post-mutation navigation
+  // counts as a user gesture and isn't blocked by popup blockers.
+  const pendingTab = React.useRef<Window | null>(null);
   const request = trpc.emails.requestRentRoll.useMutation({
     onSuccess: (result) => {
       void utils.emails.forListing.invalidate({ listingMlsId });
       void utils.emails.listThreads.invalidate();
+      const tab = pendingTab.current;
+      pendingTab.current = null;
       if (result.draftUrl) {
-        window.open(result.draftUrl, "_blank", "noopener");
+        if (tab && !tab.closed) tab.location.href = result.draftUrl;
+        else window.open(result.draftUrl, "_blank", "noopener");
+      } else if (tab && !tab.closed) {
+        tab.close();
       }
+    },
+    onError: () => {
+      const tab = pendingTab.current;
+      pendingTab.current = null;
+      if (tab && !tab.closed) tab.close();
     },
   });
 
@@ -185,7 +198,10 @@ function RequestRentRollButton({
         <IconButton
           size="small"
           disabled={request.isPending}
-          onClick={() => request.mutate({ listingMlsId })}
+          onClick={() => {
+            pendingTab.current = window.open("about:blank", "_blank", "noopener");
+            request.mutate({ listingMlsId });
+          }}
           sx={{ p: 0.25, color: "primary.main" }}
         >
           {request.isPending ? (
