@@ -7,6 +7,7 @@ import { countListings, searchListings } from "../listings-search";
 import { fetchListingMedia, type BridgeMediaItem } from "@/server/etl/bridge-client";
 import { normalizeListing } from "@/server/etl/normalize";
 import { computeHeuristicScore } from "@/server/etl/scoring";
+import { daysSincePost } from "@/server/etl/scoring/daysLive";
 
 function round1(n: number) {
   return Math.round(n * 10) / 10;
@@ -137,7 +138,9 @@ export const listingsRouter = router({
           }
         : null;
 
-      return { ...listing, heuristicSnapshot };
+      // Override Bridge's forensic `daysOnMls` snapshot with the live
+      // postDate-derived value the grid (via `mv_listing_search`) shows.
+      return { ...listing, daysOnMls: daysSincePost(listing), heuristicSnapshot };
     }),
 
   getPhotos: protectedProcedure
