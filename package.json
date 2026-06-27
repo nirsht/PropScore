@@ -17,6 +17,8 @@
     "etl:sync": "tsx -r ./scripts/load-env.cjs scripts/etl-sync.ts",
     "etl:full": "tsx -r ./scripts/load-env.cjs scripts/etl-sync.ts --full",
     "nightly": "tsx -r ./scripts/load-env.cjs scripts/nightly.ts",
+    "nightly:base": "tsx -r ./scripts/load-env.cjs scripts/nightly.ts --mode=base",
+    "nightly:llm": "tsx -r ./scripts/load-env.cjs scripts/nightly.ts --mode=llm",
     "offboard:stale": "tsx -r ./scripts/load-env.cjs scripts/offboard-stale.ts",
     "seed:neighborhoods": "tsx -r ./scripts/load-env.cjs scripts/seed-neighborhoods.ts",
     "refresh:crime": "tsx -r ./scripts/load-env.cjs scripts/refresh-crime.ts",
