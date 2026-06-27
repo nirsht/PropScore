@@ -11,7 +11,12 @@
 import { bucketIncidentCategory, type CrimeCategory } from "./scoring/location";
 
 const INCIDENTS_URL = "https://data.sfgov.org/resource/wg3w-h783.json";
-const NEIGHBORHOODS_URL = "https://data.sfgov.org/resource/p5b7-5n3h.geojson";
+// As of Nov 2023 the canonical Analysis Neighborhoods dataset `p5b7-5n3h`
+// was re-published as a map asset and no longer exposes polygon geometry
+// via the Socrata resource API (returns 41 features with geometry: null).
+// `j2bu-swwd` is the underlying dataset view that still serves the GeoJSON
+// (referenced as `modifyingViewUid` in p5b7-5n3h's metadata).
+const NEIGHBORHOODS_URL = "https://data.sfgov.org/resource/j2bu-swwd.geojson";
 
 const THROTTLE_MS = 1100;
 

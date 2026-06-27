@@ -16,7 +16,7 @@ services:
     autoDeploy: true
     buildCommand: npm install -g corepack@latest && corepack enable && pnpm install --frozen-lockfile && NODE_OPTIONS=--max-old-space-size=4096 pnpm build
     startCommand: pnpm start
-    preDeployCommand: npm install -g corepack@latest && corepack enable && pnpm prisma migrate deploy && pnpm db:seed
+    preDeployCommand: npm install -g corepack@latest && corepack enable && pnpm prisma migrate deploy && pnpm db:seed && pnpm seed:neighborhoods
     healthCheckPath: /sign-in
     envVars:
       - key: NODE_ENV
