@@ -13,7 +13,9 @@ export const UnitMixEntry = z.object({
 });
 
 export const RentRollEntry = z.object({
-  rent: z.number().positive(),
+  // null = vacant unit. Kept in the array so totals/UI know the building's
+  // real unit count and so per-row market/proforma estimates still line up.
+  rent: z.number().min(0).nullable(),
   beds: z.number().int().min(0).nullable(),
   baths: z.number().min(0).nullable(),
   // Optional per-apartment context — extracted when remarks list it
@@ -22,6 +24,11 @@ export const RentRollEntry = z.object({
   // estimator scale by sqft.
   sqft: z.number().positive().nullable().optional(),
   unitLabel: z.string().max(40).nullable().optional(),
+  // Verbatim move-in / lease-start text from the rent roll. Stored as a
+  // free-form string so we keep whatever the source said ("12/1/1992",
+  // "04/15/2025", "MTM", "Vacant"); the UI parses for display/age.
+  // Drives buyout assessment in rent-controlled markets.
+  moveInDate: z.string().max(40).nullable().optional(),
 });
 
 // AI-estimated market-rate rent for one unit. Emitted alongside `unitMix`

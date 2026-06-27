@@ -36,16 +36,21 @@ Rules:
 - Emit one entry per RESIDENTIAL unit. Skip commercial / retail / parking
   rows unless the building is mostly commercial.
 - "rent" = current actual monthly rent in dollars (numeric, no $ sign). If a
-  unit is vacant (rent = $0 or "vacant"), skip that row from rentRoll but
-  reduce occupancy proportionally.
+  unit is vacant (rent = $0, blank, or "vacant"), KEEP the row and set
+  rent: null — preserve beds/baths/sqft/unitLabel/moveInDate so the consumer
+  can show the vacant unit with a market/proforma estimate. Reduce occupancy
+  proportionally.
 - "beds" and "baths" — if the table doesn't list them per-unit, infer from
   the building's listed unit mix (e.g. "10x 1BR/1BA" → beds=1, baths=1 for
   all rows). Use null when truly unknowable.
 - "sqft" — populate when the rent roll lists it per unit.
 - "unitLabel" — short identifier from the rent roll (Unit 1, A, 101). Trim
   to ≤40 chars.
-- "totalMonthlyRent" — sum of rent across all rentRoll entries (residential).
-  Round to a whole dollar.
+- "moveInDate" — verbatim move-in / lease-start text when the row lists it
+  ("12/1/1992", "04/15/2025", "Vacant", "MTM", "2021"). Drives buyout
+  assessment for rent-controlled tenancies. Null when absent.
+- "totalMonthlyRent" — sum of rent across all rentRoll entries (residential),
+  treating null/vacant as 0. Round to a whole dollar.
 - "occupancy" — fraction in [0,1]. occupied_units / total_units.
 - If you cannot find a rent roll at all, return rentRoll=null and write a
   rationale explaining what you saw instead (e.g. "Agent declined to share").
@@ -212,11 +217,12 @@ function buildResponseSchema(): Record<string, unknown> {
             items: {
               type: "object",
               properties: {
-                rent: { type: "number" },
+                rent: { anyOf: [{ type: "number" }, { type: "null" }] },
                 beds: { anyOf: [{ type: "integer" }, { type: "null" }] },
                 baths: { anyOf: [{ type: "number" }, { type: "null" }] },
                 sqft: { anyOf: [{ type: "number" }, { type: "null" }] },
                 unitLabel: { anyOf: [{ type: "string" }, { type: "null" }] },
+                moveInDate: { anyOf: [{ type: "string" }, { type: "null" }] },
               },
               required: ["rent", "beds", "baths"],
             },

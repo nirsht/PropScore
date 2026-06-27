@@ -19,6 +19,7 @@ type Row = {
   baths: number | null;
   sqft: number | null;
   unitLabel: string | null;
+  moveInDate: string | null;
   sourceIndex: number;
   isGrouped: boolean;
 };
@@ -65,6 +66,7 @@ export function enrichRentRoll(args: {
         baths: r.baths,
         sqft: r.sqft ?? null,
         unitLabel: r.unitLabel ?? null,
+        moveInDate: r.moveInDate ?? null,
         sourceIndex: i,
         isGrouped: false,
       }))
@@ -75,6 +77,7 @@ export function enrichRentRoll(args: {
         baths: u.baths,
         sqft: null,
         unitLabel: null,
+        moveInDate: null,
         sourceIndex: i,
         isGrouped: true,
       }));

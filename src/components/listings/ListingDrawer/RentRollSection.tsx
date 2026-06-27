@@ -256,11 +256,22 @@ export function RentRollSection({ listing }: { listing: ListingForAI }) {
 
         {enriched.map((row, key) => (
           <React.Fragment key={key}>
-            <Typography variant="body2">
-              {row.isGrouped
-                ? unitTypeLabel(row.weight, row.beds, row.baths)
-                : `${row.unitLabel ? row.unitLabel + " · " : ""}${bedsBathsLabel(row.beds, row.baths)}`}
-            </Typography>
+            <Box sx={{ display: "flex", flexDirection: "column" }}>
+              <Typography variant="body2">
+                {row.isGrouped
+                  ? unitTypeLabel(row.weight, row.beds, row.baths)
+                  : `${row.unitLabel ? row.unitLabel + " · " : ""}${bedsBathsLabel(row.beds, row.baths)}`}
+              </Typography>
+              {row.moveInDate && (
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ lineHeight: 1.1, fontSize: 11 }}
+                >
+                  Tenant since {row.moveInDate}
+                </Typography>
+              )}
+            </Box>
             <Typography
               variant="body2"
               color="text.secondary"
@@ -268,7 +279,11 @@ export function RentRollSection({ listing }: { listing: ListingForAI }) {
             >
               {row.sqft ? `${row.sqft.toLocaleString()} sf` : "—"}
             </Typography>
-            <RentCell value={row.actualRent} italic={false} />
+            <RentCell
+              value={row.actualRent}
+              italic={false}
+              placeholder={row.actualRent == null ? "Vacant" : undefined}
+            />
             <RentCell
               value={row.market?.rent ?? null}
               rationale={row.market?.rationale}
