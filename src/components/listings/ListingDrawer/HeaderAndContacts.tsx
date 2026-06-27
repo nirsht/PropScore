@@ -27,7 +27,7 @@ type ListingLike = {
   listingUpdatedAt: Date | string;
   bridgeModificationTimestamp?: Date | string | null;
   price: number;
-  daysOnMls: number;
+  daysOnMls: number | null;
   sqft: number | null;
   units: number | null;
   assessorBuildingSqft: number | null;
@@ -186,7 +186,10 @@ export function HeaderAndContacts({
               deriveRatio(listing.price, listing.assessorUnits ?? listing.units),
             )}
           />
-          <Metric label="DOM" value={listing.daysOnMls.toString()} />
+          <Metric
+            label="DOM"
+            value={listing.daysOnMls != null ? listing.daysOnMls.toString() : "—"}
+          />
         </Stack>
       </Paper>
     </>

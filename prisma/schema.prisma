@@ -83,7 +83,11 @@ model Listing {
   // (Prisma doesn't model PostGIS types directly; we query via $queryRaw.)
 
   price            Int
-  daysOnMls        Int
+  // Snapshot of Bridge's `DaysOnMarket` at last sync. `null` when Bridge
+  // returned 0 or no value — that field is a static MLS snapshot, not a
+  // live counter. The user-facing DOM in `mv_listing_search` is derived
+  // from `postDate` at MV-refresh time; this column is forensic only.
+  daysOnMls        Int?
   postDate         DateTime
   listingUpdatedAt DateTime
   status           String
@@ -308,7 +312,6 @@ model Listing {
   createdAt     DateTime           @default(now())
 
   @@index([price])
-  @@index([daysOnMls])
   @@index([propertyType])
   @@index([yearBuilt])
   @@index([status])

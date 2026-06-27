@@ -1,3 +1,4 @@
+import { Tooltip } from "@mui/material";
 import { type GridColDef } from "@mui/x-data-grid";
 import type { ListingRow } from "@/server/api/listings-search";
 import { fmtMoney } from "../gridFormatters";
@@ -36,9 +37,20 @@ export const daysOnMlsColumn: GridColDef<ListingRow> = {
   renderHeader: () => (
     <HeaderTooltip
       label="DOM"
-      hint="DaysOnMarket from MLS, or computed from postDate if missing."
+      hint="Days since postDate (computed live at every search). Bridge's MLS DaysOnMarket field is a frozen snapshot and not used."
     />
   ),
+  renderCell: ({ row }) => {
+    if (row.daysOnMls == null) return <span>—</span>;
+    const posted = row.postDate
+      ? new Date(row.postDate).toLocaleDateString()
+      : "unknown";
+    return (
+      <Tooltip arrow placement="top" title={`Posted ${posted}`}>
+        <span>{row.daysOnMls}</span>
+      </Tooltip>
+    );
+  },
 };
 
 export const postDateColumn: GridColDef<ListingRow> = {

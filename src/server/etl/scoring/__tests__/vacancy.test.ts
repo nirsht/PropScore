@@ -14,8 +14,11 @@ const baseListing = (
   lng: -122.41,
   price: 1_000_000,
   daysOnMls: 30,
-  postDate: new Date("2026-01-01"),
-  listingUpdatedAt: new Date("2026-01-15"),
+  // DOM is derived live from postDate, so use a fresh-ish baseline that
+  // doesn't trigger the >60 / >120-day vacancy bumps for tests focused
+  // on remark-language signals.
+  postDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+  listingUpdatedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000),
   status: "Active",
   propertyType: "Multi Family",
   sqft: 4000,
@@ -103,8 +106,11 @@ describe("vacancyScore heuristic", () => {
   });
 
   it("adds DOM-based vacancy pressure for stale listings", () => {
-    const fresh = vacancyScore(baseListing({ daysOnMls: 30 }));
-    const stale = vacancyScore(baseListing({ daysOnMls: 130 }));
+    // DOM is derived live from postDate, not the snapshot column.
+    const now = Date.now();
+    const day = 24 * 60 * 60 * 1000;
+    const fresh = vacancyScore(baseListing({ postDate: new Date(now - 30 * day) }));
+    const stale = vacancyScore(baseListing({ postDate: new Date(now - 130 * day) }));
     expect(stale).toBeGreaterThan(fresh);
   });
 });

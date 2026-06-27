@@ -1,4 +1,5 @@
 import type { NormalizedListing } from "../normalize";
+import { daysSincePost } from "./daysLive";
 
 /**
  * Motivation score — 0..100. How motivated does the seller look?
@@ -9,10 +10,13 @@ export function motivationScore(l: NormalizedListing): number {
   let s = 30;
 
   // Days on market — the strongest deterministic signal we have.
-  if (l.daysOnMls > 30) s += 10;
-  if (l.daysOnMls > 60) s += 15;
-  if (l.daysOnMls > 120) s += 20;
-  if (l.daysOnMls > 240) s += 10;
+  // Derived from postDate so it tracks reality even when Bridge stops
+  // updating the MLS row.
+  const dom = daysSincePost(l);
+  if (dom > 30) s += 10;
+  if (dom > 60) s += 15;
+  if (dom > 120) s += 20;
+  if (dom > 240) s += 10;
 
   // Price-drop signal if Bridge surfaces it
   const previousPrice = num(l.raw.PreviousListPrice);

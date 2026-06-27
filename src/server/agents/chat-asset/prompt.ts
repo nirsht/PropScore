@@ -29,7 +29,15 @@ export async function buildChatAssetSystemPrompt(mlsId: string): Promise<string>
     propertyType: listing.propertyType,
     status: listing.status,
     price: listing.price,
-    daysOnMls: listing.daysOnMls,
+    // Live DOM from postDate — Bridge's snapshot is unreliable.
+    daysOnMls: listing.postDate
+      ? Math.max(
+          0,
+          Math.floor(
+            (Date.now() - listing.postDate.getTime()) / (1000 * 60 * 60 * 24),
+          ),
+        )
+      : null,
     postDate: listing.postDate,
 
     sqft: listing.sqft,

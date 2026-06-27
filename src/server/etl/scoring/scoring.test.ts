@@ -12,8 +12,10 @@ const baseListing = (overrides: Partial<NormalizedListing> = {}): NormalizedList
   lng: -122.41,
   price: 1_000_000,
   daysOnMls: 30,
-  postDate: new Date("2026-01-01"),
-  listingUpdatedAt: new Date("2026-01-15"),
+  // DOM is derived live from postDate; keep the baseline fresh so tests
+  // not focused on DOM don't pick up the >60 / >120 motivation bumps.
+  postDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+  listingUpdatedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000),
   status: "Active",
   propertyType: "Multi Family",
   sqft: 4000,
@@ -47,8 +49,16 @@ describe("computeHeuristicScore", () => {
   });
 
   it("rewards long DOM in motivationScore", () => {
-    const fresh = computeHeuristicScore(baseListing({ daysOnMls: 5 }));
-    const stale = computeHeuristicScore(baseListing({ daysOnMls: 200 }));
+    // DOM is derived from postDate live; vary it via postDate, not the
+    // snapshot column on Listing.
+    const now = Date.now();
+    const day = 24 * 60 * 60 * 1000;
+    const fresh = computeHeuristicScore(
+      baseListing({ postDate: new Date(now - 5 * day) }),
+    );
+    const stale = computeHeuristicScore(
+      baseListing({ postDate: new Date(now - 200 * day) }),
+    );
     expect(stale.motivationScore).toBeGreaterThan(fresh.motivationScore);
   });
 
