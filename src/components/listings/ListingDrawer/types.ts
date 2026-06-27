@@ -72,6 +72,8 @@ export type ListingForAI = {
   recentCapex: unknown;
   detachedAduScore: number | null;
   detachedAduRationale: string | null;
+  attachedAduScore: number | null;
+  attachedAduRationale: string | null;
   convertedAduScore: number | null;
   convertedAduRationale: string | null;
   convertedAduSource: string | null;

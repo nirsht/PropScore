@@ -41,6 +41,7 @@ export type ListingRow = {
   aiHasBasement: boolean | null;
   aiHasPenthouse: boolean | null;
   detachedAduScore: number | null;
+  attachedAduScore: number | null;
   convertedAduScore: number | null;
   extractedTotalMonthlyRent: number | null;
   extractedOccupancy: number | null;

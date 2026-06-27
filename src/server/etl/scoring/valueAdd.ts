@@ -187,21 +187,25 @@ export function landRatioScore(
 }
 
 /**
- * AI ADU base score: max of the two 0–100 reads emitted by the listing-extract
- * agent. detached = vacant-yard play; converted = repurpose-existing-space.
+ * AI ADU base score: max of the three 0–100 reads emitted by the
+ * listing-extract agent.
+ *   detached  = vacant-yard freestanding cottage
+ *   attached  = new rear/side addition sharing a wall with the primary
+ *   converted = repurpose existing interior space (basement / garage / unfinished)
  *
- * The contribution to value-add is the MAX of the two — either path adds a
+ * The contribution to value-add is the MAX of the three — every path adds a
  * single unit of cash flow, so we don't double-count and we don't average
- * them down. Returns null only when both reads are missing.
+ * them down. Returns null only when all reads are missing.
  *
  * The output feeds `applyAduFeasibilityBoosts` below, which layers in parcel-
  * level structural evidence (construction type / land use / permit precedent).
  */
 export function aduCombinedScore(
   detached: number | null | undefined,
+  attached: number | null | undefined,
   converted: number | null | undefined,
 ): number | null {
-  const candidates = [detached, converted].filter(
+  const candidates = [detached, attached, converted].filter(
     (v): v is number => v != null,
   );
   if (candidates.length === 0) return null;
@@ -245,7 +249,7 @@ function isWoodFrame(constructionType: string | null | undefined): boolean {
  *   - Land use category (MIXRES ⇒ flexible / RESIDENT ⇒ baseline)
  *   - Permit precedent on the parcel, the block, and within ~500ft
  *
- * The AI base (`aduCombinedScore(detached, converted)`) is the anchor;
+ * The AI base (`aduCombinedScore(detached, attached, converted)`) is the anchor;
  * structural data confirms or weakens it. A null AI base still yields a
  * score (baseline 40) when at least one structural signal is available —
  * structural feasibility alone is informative. When *no* signal is present

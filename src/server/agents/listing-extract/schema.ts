@@ -91,6 +91,12 @@ export const ListingExtractOutput = z.object({
   // empty-remarks heuristic still emits a string, but we accept null from
   // the LLM rather than failing the whole extract.
   detachedAduRationale: z.string().nullable(),
+  // Attached ADU — a new addition sharing a wall with the primary residence
+  // (a rear/side build-out, not a freestanding cottage and not an interior
+  // conversion). Same 4 ft side/rear setbacks under CA state ADU law, but
+  // no 6 ft separation buffer since the ADU IS attached to the primary.
+  attachedAduScore: z.number().int().min(0).max(100).nullable(),
+  attachedAduRationale: z.string().nullable(),
   // Converted ADU — repurposing existing space (basement / garage /
   // unfinished space) into a unit. 0–100 score; `convertedAduSource` names
   // the dominant signal; null source when no signal at all.

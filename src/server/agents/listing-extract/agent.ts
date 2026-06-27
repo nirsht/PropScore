@@ -89,6 +89,7 @@ export async function runListingExtract(mlsId: string, userId: string | null): P
   // If there's no text at all, skip the model call and write a heuristic-only result.
   if (!publicRemarks && !privateRemarks) {
     const detached = deriveDetachedAduFromHeuristic(input);
+    const attached = deriveAttachedAduFromHeuristic(input);
     const converted = deriveConvertedAduFromHeuristic(input);
     const empty: Output = {
       unitMix: null,
@@ -104,6 +105,8 @@ export async function runListingExtract(mlsId: string, userId: string | null): P
       viewNotes: null,
       detachedAduScore: detached.score,
       detachedAduRationale: detached.rationale,
+      attachedAduScore: attached.score,
+      attachedAduRationale: attached.rationale,
       convertedAduScore: converted.score,
       convertedAduRationale: converted.rationale,
       convertedAduSource: converted.source,
@@ -144,6 +147,8 @@ async function persist(mlsId: string, out: Output) {
         : Prisma.JsonNull,
       detachedAduScore: out.detachedAduScore,
       detachedAduRationale: out.detachedAduRationale,
+      attachedAduScore: out.attachedAduScore,
+      attachedAduRationale: out.attachedAduRationale,
       convertedAduScore: out.convertedAduScore,
       convertedAduRationale: out.convertedAduRationale,
       convertedAduSource: out.convertedAduSource,
@@ -239,6 +244,85 @@ function scoreRearYardArea(area: number): number {
   if (area <= 800) return Math.round(30 + (area - 500) * 0.1);
   if (area <= 1200) return Math.round(60 + (area - 800) * 0.0625);
   if (area <= 1600) return Math.round(85 + (area - 1200) * 0.0375);
+  return 100;
+}
+
+/**
+ * Local fallback heuristic for the ATTACHED-ADU score (new addition sharing a
+ * wall with the primary residence). Same SF lot geometry as detached, but:
+ *   - rear 4 ft setback is subtracted explicitly from depth
+ *   - no 6 ft separation buffer (the ADU is physically attached)
+ *   - score ladder is more permissive — an attached addition can be narrower
+ *     / longer and doesn't need to stand alone as a footprint.
+ */
+export function deriveAttachedAduFromHeuristic(input: {
+  units: number | null;
+  buildingSqft: number | null;
+  lotSqft: number | null;
+  stories: number | null;
+}): { score: number | null; rationale: string } {
+  const { lotSqft, buildingSqft, units, stories } = input;
+  if (lotSqft == null || lotSqft <= 0) {
+    return { score: null, rationale: "No lot size on file." };
+  }
+
+  const lotWidth = Math.max(15, Math.min(40, Math.sqrt(lotSqft / 4)));
+  const lotDepth = lotSqft / lotWidth;
+  const storiesInput = stories ?? 2;
+  const storyDivisor = Math.max(
+    1,
+    storiesInput <= 2 ? storiesInput : storiesInput - 0.3,
+  );
+  const footprint =
+    buildingSqft != null && buildingSqft > 0
+      ? buildingSqft / storyDivisor
+      : lotSqft * 0.55;
+  const buildingDepth = footprint / lotWidth;
+  // Explicit 4 ft rear setback (detached bakes it into the ladder; attached
+  // makes it explicit so we can later add the 0-ft exception toggle).
+  const rearYardDepth = Math.max(0, lotDepth - buildingDepth - 4);
+  const usableWidth = Math.max(0, lotWidth - 8);
+  const attachedEnvelope = Math.round(rearYardDepth * usableWidth);
+
+  if (units != null && units > 6 && attachedEnvelope < 600) {
+    return {
+      score: 0,
+      rationale: `Dense lot (${units} units, ~${attachedEnvelope} sqft rear envelope) leaves no attached-ADU build-out.`,
+    };
+  }
+
+  const score = scoreAttachedEnvelope(attachedEnvelope);
+
+  if (score >= 80) {
+    return {
+      score,
+      rationale: `~${attachedEnvelope} sqft rear envelope after setbacks — clears SF attached-ADU build-out (4 ft rear, 4 ft side).`,
+    };
+  }
+  if (score >= 40) {
+    return {
+      score,
+      rationale: `~${attachedEnvelope} sqft rear envelope after setbacks — tight but plausible for a small rear addition.`,
+    };
+  }
+  return {
+    score,
+    rationale: `Only ~${attachedEnvelope} sqft rear envelope after setbacks — minimal room for an attached ADU.`,
+  };
+}
+
+/**
+ * Piecewise-linear mapping from usable attached-envelope area (sqft, net of
+ * 4 ft rear + 4 ft side setbacks) to a 0–100 attached-ADU score. Anchors:
+ * 200→0, 350→30, 600→60, 900→85, 1200+→100. Looser than detached because an
+ * attached addition has no 6 ft separation buffer and can be narrower/longer.
+ */
+function scoreAttachedEnvelope(area: number): number {
+  if (area <= 200) return 0;
+  if (area <= 350) return Math.round((area - 200) * 0.2);
+  if (area <= 600) return Math.round(30 + (area - 350) * 0.12);
+  if (area <= 900) return Math.round(60 + (area - 600) * (25 / 300));
+  if (area <= 1200) return Math.round(85 + (area - 900) * (15 / 300));
   return 100;
 }
 

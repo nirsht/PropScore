@@ -159,14 +159,18 @@ model Listing {
   // higher than aiRentEstimate for the same unit type.
   postRenovationRentEstimate Json?
   recentCapex               Json?
-  // ADU feasibility split into two parallel signals (2026-05-08).
-  // detached = vacant-yard play (lot-minus-footprint heuristic).
+  // ADU feasibility split into three parallel signals.
+  // detached = vacant-yard play (freestanding cottage on the rear strip).
+  // attached = new addition sharing a wall with the primary residence
+  //   (rear/side build-out; same 4 ft setbacks but no 6 ft separation).
   // converted = repurpose-existing-space play (basement / garage).
   // Each is a 0–100 score with its own rationale; the value-add scorer
-  // takes max(detached, converted) as the AI base, then applies structural
-  // feasibility boosts (construction type / land use / permit precedent).
+  // takes max(detached, attached, converted) as the AI base, then applies
+  // structural feasibility boosts (construction type / land use / permit precedent).
   detachedAduScore          Int?
   detachedAduRationale      String?
+  attachedAduScore          Int?
+  attachedAduRationale      String?
   convertedAduScore         Int?
   convertedAduRationale     String?
   // Which signal drove the converted score: 'basement' | 'garage' |

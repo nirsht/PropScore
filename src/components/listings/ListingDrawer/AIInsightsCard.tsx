@@ -46,8 +46,10 @@ export function AIInsightsCard({ listing }: { listing: ListingForAI }) {
     | undefined;
   const capex = listing.recentCapex as string[] | null | undefined;
   const detachedScore = listing.detachedAduScore;
+  const attachedScore = listing.attachedAduScore;
   const convertedScore = listing.convertedAduScore;
-  const hasAdu = detachedScore != null || convertedScore != null;
+  const hasAdu =
+    detachedScore != null || attachedScore != null || convertedScore != null;
 
   const hasAnyExtract =
     !!unitMix?.length ||
@@ -135,7 +137,7 @@ export function AIInsightsCard({ listing }: { listing: ListingForAI }) {
           ADU potential
         </Typography>
         <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mt: 0.5 }}>
-          {detachedScore == null && convertedScore == null ? (
+          {detachedScore == null && attachedScore == null && convertedScore == null ? (
             <Typography variant="body2" color="text.secondary">
               Not yet analyzed — click Enrich to populate.
             </Typography>
@@ -152,6 +154,20 @@ export function AIInsightsCard({ listing }: { listing: ListingForAI }) {
                     size="small"
                     color={aduLevel(detachedScore).color}
                     label={`Detached ADU · ${aduLevel(detachedScore).label}`}
+                  />
+                </Tooltip>
+              )}
+              {attachedScore != null && (
+                <Tooltip
+                  title={listing.attachedAduRationale ?? ""}
+                  arrow
+                  placement="top"
+                  disableHoverListener={!listing.attachedAduRationale}
+                >
+                  <Chip
+                    size="small"
+                    color={aduLevel(attachedScore).color}
+                    label={`Attached ADU · ${aduLevel(attachedScore).label}`}
                   />
                 </Tooltip>
               )}

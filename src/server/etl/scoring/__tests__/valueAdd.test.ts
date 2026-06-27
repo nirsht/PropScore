@@ -120,17 +120,19 @@ describe("landRatioScore", () => {
 });
 
 describe("aduCombinedScore", () => {
-  it("returns null when both reads are missing", () => {
-    expect(aduCombinedScore(null, null)).toBeNull();
-    expect(aduCombinedScore(undefined, undefined)).toBeNull();
+  it("returns null when all reads are missing", () => {
+    expect(aduCombinedScore(null, null, null)).toBeNull();
+    expect(aduCombinedScore(undefined, undefined, undefined)).toBeNull();
   });
   it("returns the available read when only one is present", () => {
-    expect(aduCombinedScore(60, null)).toBe(60);
-    expect(aduCombinedScore(null, 80)).toBe(80);
+    expect(aduCombinedScore(60, null, null)).toBe(60);
+    expect(aduCombinedScore(null, 70, null)).toBe(70);
+    expect(aduCombinedScore(null, null, 80)).toBe(80);
   });
-  it("returns the max of the two reads — one new unit, whichever path is cheapest", () => {
-    expect(aduCombinedScore(40, 80)).toBe(80);
-    expect(aduCombinedScore(95, 50)).toBe(95);
+  it("returns the max of all three reads — one new unit, whichever path is cheapest", () => {
+    expect(aduCombinedScore(40, 30, 80)).toBe(80);
+    expect(aduCombinedScore(40, 90, 60)).toBe(90);
+    expect(aduCombinedScore(95, 50, 50)).toBe(95);
   });
 });
 
@@ -281,7 +283,7 @@ describe("weightedValueAdd", () => {
       locationScore: 50,
       densityScore: 50,
       rehabScore: 50,
-      aduScore: aduCombinedScore(95, 30),
+      aduScore: aduCombinedScore(95, 30, 30),
       motivationScore: 50,
     });
     expect(highAdu).toBeGreaterThan(noAdu);
