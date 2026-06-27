@@ -1,4 +1,5 @@
 import type { NormalizedListing } from "../normalize";
+import { daysSincePost } from "./daysLive";
 import type { HeuristicContext } from "./index";
 
 /**
@@ -38,8 +39,9 @@ export function vacancyScore(
   if (OCCUPIED_RE.test(remarks)) s -= 25;
   if (VALUE_ADD_RE.test(remarks)) s -= 15;
 
-  if (l.daysOnMls > 60) s += 5;
-  if (l.daysOnMls > 120) s += 5;
+  const dom = daysSincePost(l);
+  if (dom > 60) s += 5;
+  if (dom > 120) s += 5;
 
   return clamp(s);
 }

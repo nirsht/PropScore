@@ -3,6 +3,7 @@ import type { NormalizedListing } from "../normalize";
 import { assessmentDeltaScore } from "./assessmentDelta";
 import { densityScore } from "./density";
 import { locationScore } from "./location";
+import { daysSincePost } from "./daysLive";
 import { motivationScore } from "./motivation";
 import { vacancyScore } from "./vacancy";
 import {
@@ -154,7 +155,7 @@ export function computeHeuristicScore(
       weights: VALUE_ADD_WEIGHTS,
       renovationUpside: RENOVATION_UPSIDE,
       inputs: {
-        daysOnMls: l.daysOnMls,
+        daysOnMls: daysSincePost(l),
         units: ctx.effectiveUnits ?? l.units,
         propertyType: l.propertyType,
         beds: l.beds,

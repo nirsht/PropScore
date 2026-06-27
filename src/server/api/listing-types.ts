@@ -9,7 +9,7 @@ export type ListingRow = {
   lat: number | null;
   lng: number | null;
   price: number;
-  daysOnMls: number;
+  daysOnMls: number | null;
   postDate: Date;
   listingUpdatedAt: Date;
   status: string;

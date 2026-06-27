@@ -9,7 +9,7 @@ export type NormalizedListing = {
   lat: number | null;
   lng: number | null;
   price: number;
-  daysOnMls: number;
+  daysOnMls: number | null;
   postDate: Date;
   listingUpdatedAt: Date;
   status: string;
@@ -148,13 +148,13 @@ export function normalizeListing(p: BridgeProperty): NormalizedListing | null {
   const lat = num(p.Latitude);
   const lng = num(p.Longitude);
 
-  const daysOnMlsRaw = int(p.DaysOnMarket);
-  const daysOnMls =
-    daysOnMlsRaw ??
-    Math.max(
-      0,
-      Math.floor((Date.now() - postDate.getTime()) / (1000 * 60 * 60 * 24)),
-    );
+  // Treat Bridge's `DaysOnMarket` as a forensic snapshot only. It is a static
+  // field the source MLS wrote at the last modification event and does NOT
+  // tick forward; SFAR frequently reports `0` for reactivated / freshly
+  // modified listings even when the listing has been live for weeks. Store
+  // it verbatim when positive (so we can audit later) and NULL otherwise —
+  // the user-facing DOM is derived from `postDate` in `mv_listing_search`.
+  const daysOnMls = positiveInt(p.DaysOnMarket);
 
   return {
     mlsId,

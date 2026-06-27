@@ -9,7 +9,10 @@ export type AIScoringSlim = {
   city: string | null;
   propertyType: string | null;
   price: number | null;
+  /** Bridge's stored DaysOnMarket snapshot. Often null/stale; prefer postDate-derived age. */
   daysOnMls: number | null;
+  /** Date the listing was posted. Use this to compute live DOM at scoring time. */
+  postDate: Date | null;
   beds: number | null;
   baths: number | null;
   yearBuilt: number | null;
@@ -78,7 +81,12 @@ export function buildAIScoringInput(listing: AIScoringListing): AIScoringSlim {
     city: listing.city,
     propertyType: listing.propertyType,
     price: listing.price,
+    // Pass Bridge's stored snapshot (nullable — 0 is treated as missing
+    // in normalize.ts) plus postDate; the AI agent computes the actual
+    // DOM band from postDate. Putting `Date.now()` here would churn the
+    // hash daily and force unnecessary re-scoring.
     daysOnMls: listing.daysOnMls,
+    postDate: listing.postDate ?? null,
     beds: listing.beds,
     baths: listing.baths,
     yearBuilt: listing.yearBuilt,
