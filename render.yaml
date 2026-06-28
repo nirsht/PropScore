@@ -32,9 +32,17 @@ services:
   # UTC-8, year-round; fires at 1pm Pacific during DST). Pulls Bridge,
   # refreshes Socrata enrichments, zoning, walkscore, crime, neighborhood
   # comps, and recomputes the heuristic score. No OpenAI calls.
+  #
+  # Plan: `standard` (2 GiB RAM). The 4 parallel lanes in mode=base
+  # (sfpim chain + rent-comps + walkscore + crime) OOM-killed at the
+  # 512 MiB Starter ceiling — see Render event
+  # `oomKilled: {memoryLimit: "512Mi"}` from 2026-06-28. Cron compute is
+  # billed per execution minute, so this only costs more on the ~15 min/
+  # day the job actually runs.
   - type: cron
     name: propscore-etl-daily
     runtime: node
+    plan: standard
     region: ohio
     branch: main
     schedule: "0 20 * * *"
@@ -66,9 +74,13 @@ services:
   # etl:sync first so the job is self-healing if the morning base failed.
   # OpenAI tokens spent here: vision, vision-interior, listing extract,
   # ai-score, and the Gmail rent-roll parser.
+  #
+  # Plan: `standard` for parity with the daily cron — vision + extract
+  # also run in parallel and would OOM the same way on Starter.
   - type: cron
     name: propscore-etl-llm
     runtime: node
+    plan: standard
     region: ohio
     branch: main
     schedule: "0 22 * * 1,5"

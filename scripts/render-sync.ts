@@ -1,7 +1,7 @@
 /**
- * Push secret env vars from `.env` to the two Render services that the
- * blueprint creates (`propscore-web` and `propscore-etl-nightly`), then
- * trigger a redeploy of each.
+ * Push secret env vars from `.env` to the three Render services that the
+ * blueprint creates (`propscore-web`, `propscore-etl-daily`,
+ * `propscore-etl-llm`), then trigger a redeploy of each.
  *
  * Required in `.env`:
  *   - RENDER_API_KEY        (from https://dashboard.render.com/u/settings#api-keys)
@@ -12,12 +12,22 @@
  *
  * Optional in `.env`:
  *   - NEXT_PUBLIC_MAP_STYLE_URL  (web-only)
+ *   - WALKSCORE_API_KEY          (web + daily cron)
+ *   - TAVILY_API_KEY             (web-only — chat search)
+ *   - RENTCAST_API_KEY           (web + daily cron — paused)
+ *   - GOOGLE_CLIENT_ID/SECRET    (web + LLM cron — Gmail integration)
  *
  * Static env vars (NODE_ENV, BRIDGE_DATASET, BRIDGE_BASE_URL, OPENAI_MODEL)
  * live in `render.yaml` and don't need to be synced.
  *
+ * NEXTAUTH_SECRET is pushed to the cron services too even though they
+ * don't actually authenticate users — `src/lib/env.ts` validates it at
+ * module-load time, so any cron script that touches the app's
+ * `env`-importing modules (etl-sync → bridge-client → env) crashes
+ * without it. Cleaner than carving env.ts up service-by-service.
+ *
  * Usage:
- *   pnpm render:sync              # push env vars + redeploy both services
+ *   pnpm render:sync              # push env vars + redeploy all services
  *   pnpm render:sync --dry-run    # show what would be pushed
  *   pnpm render:sync --no-deploy  # push env vars only, skip redeploy
  */
@@ -25,7 +35,8 @@
 const API = "https://api.render.com/v1";
 
 const WEB_SERVICE_NAME = "propscore-web";
-const CRON_SERVICE_NAME = "propscore-etl-nightly";
+const CRON_DAILY_NAME = "propscore-etl-daily";
+const CRON_LLM_NAME = "propscore-etl-llm";
 
 type SecretMap = Record<string, string | undefined>;
 
@@ -181,15 +192,21 @@ async function main() {
   // contact-enrichment.ts no-ops and the drawer's "Listed by" / Brokerage
   // rows render empty (Bridge `sfar` IDX feed strips contact fields).
   const RENTCAST_API_KEY = envOptional("RENTCAST_API_KEY");
+  // Gmail integration — used by emails-poll in the LLM cron, and by the
+  // web service's NextAuth Google provider. Optional everywhere.
+  const GOOGLE_CLIENT_ID = envOptional("GOOGLE_CLIENT_ID");
+  const GOOGLE_CLIENT_SECRET = envOptional("GOOGLE_CLIENT_SECRET");
 
   // 1. Locate services.
   console.log("Looking up services on Render…");
-  const [webId, cronId] = await Promise.all([
+  const [webId, cronDailyId, cronLlmId] = await Promise.all([
     findServiceId(WEB_SERVICE_NAME),
-    findServiceId(CRON_SERVICE_NAME),
+    findServiceId(CRON_DAILY_NAME),
+    findServiceId(CRON_LLM_NAME),
   ]);
-  console.log(`  ${WEB_SERVICE_NAME}  → ${webId}`);
-  console.log(`  ${CRON_SERVICE_NAME} → ${cronId}\n`);
+  console.log(`  ${WEB_SERVICE_NAME}      → ${webId}`);
+  console.log(`  ${CRON_DAILY_NAME} → ${cronDailyId}`);
+  console.log(`  ${CRON_LLM_NAME}   → ${cronLlmId}\n`);
 
   // 2. Push env vars.
   await setEnvVars(
@@ -203,24 +220,44 @@ async function main() {
       ...(WALKSCORE_API_KEY ? { WALKSCORE_API_KEY } : {}),
       ...(TAVILY_API_KEY ? { TAVILY_API_KEY } : {}),
       ...(RENTCAST_API_KEY ? { RENTCAST_API_KEY } : {}),
+      ...(GOOGLE_CLIENT_ID ? { GOOGLE_CLIENT_ID } : {}),
+      ...(GOOGLE_CLIENT_SECRET ? { GOOGLE_CLIENT_SECRET } : {}),
     },
     WEB_SERVICE_NAME,
   );
+  // Daily cron: free pipeline (no OpenAI calls in this run, but env.ts
+  // still requires OPENAI_API_KEY at import time, so push it).
   await setEnvVars(
-    cronId,
+    cronDailyId,
     {
       DATABASE_URL,
+      NEXTAUTH_SECRET,
       BRIDGE_SERVER_TOKEN,
       OPENAI_API_KEY,
       ...(WALKSCORE_API_KEY ? { WALKSCORE_API_KEY } : {}),
       ...(RENTCAST_API_KEY ? { RENTCAST_API_KEY } : {}),
     },
-    CRON_SERVICE_NAME,
+    CRON_DAILY_NAME,
+  );
+  // LLM cron: vision/extract/ai-score/emails-poll. Needs Gmail OAuth
+  // creds for the emails-poll stage.
+  await setEnvVars(
+    cronLlmId,
+    {
+      DATABASE_URL,
+      NEXTAUTH_SECRET,
+      BRIDGE_SERVER_TOKEN,
+      OPENAI_API_KEY,
+      ...(GOOGLE_CLIENT_ID ? { GOOGLE_CLIENT_ID } : {}),
+      ...(GOOGLE_CLIENT_SECRET ? { GOOGLE_CLIENT_SECRET } : {}),
+    },
+    CRON_LLM_NAME,
   );
 
   // 3. Redeploy.
   await triggerDeploy(webId, WEB_SERVICE_NAME);
-  await triggerDeploy(cronId, CRON_SERVICE_NAME);
+  await triggerDeploy(cronDailyId, CRON_DAILY_NAME);
+  await triggerDeploy(cronLlmId, CRON_LLM_NAME);
 
   console.log("\n✓ done.");
   if (!DRY_RUN) {
