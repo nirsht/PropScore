@@ -47,7 +47,34 @@ export async function syncThread(threadId: string): Promise<SyncResult> {
   }
 
   const seen = new Set(thread.messages.map((m) => m.gmailMessageId));
-  const gmailMessages = await listThreadMessages(thread.userId, thread.gmailThreadId);
+  let gmailMessages: Awaited<ReturnType<typeof listThreadMessages>>;
+  try {
+    gmailMessages = await listThreadMessages(thread.userId, thread.gmailThreadId);
+  } catch (err) {
+    const code = (err as { code?: number }).code;
+    if (code === 404) {
+      // Thread was deleted in Gmail (e.g. an unsent draft removed directly
+      // from the mailbox) — it will 404 forever. Stop retrying it every
+      // night instead of throwing the same error on every poll.
+      await db.emailThread.update({
+        where: { id: thread.id },
+        data: {
+          status: "FAILED",
+          parseError: "Gmail thread no longer exists (deleted in Gmail) — sync disabled.",
+          lastSyncedAt: new Date(),
+        },
+      });
+      return {
+        threadId,
+        newMessages: 0,
+        newInboundMessages: 0,
+        parsedRentRoll: false,
+        statusBefore: thread.status,
+        statusAfter: "FAILED",
+      };
+    }
+    throw err;
+  }
 
   // Direction inference is anchored to thread.toEmail (the agent we wrote
   // to). Anything FROM that address is INBOUND; everything else (the user's
