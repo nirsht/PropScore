@@ -78,7 +78,7 @@ describe("bucketIncidentCategory", () => {
 });
 
 describe("percentileRankCrimeScores", () => {
-  it("ranks safest neighborhood at 100 and worst at 0", () => {
+  it("orders neighborhoods safest-to-worst without pinning either extreme to 0 or 100", () => {
     const ranks = percentileRankCrimeScores([
       { neighborhood: "Tenderloin", category: "violent", count: 500 },
       { neighborhood: "Tenderloin", category: "property", count: 1000 },
@@ -93,9 +93,19 @@ describe("percentileRankCrimeScores", () => {
       { neighborhood: "Seacliff", category: "qol", count: 2 },
     ]);
 
-    expect(ranks.get("Seacliff")?.crimeScore).toBe(100);
-    expect(ranks.get("Tenderloin")?.crimeScore).toBe(0);
-    expect(ranks.get("Marina")?.crimeScore).toBe(50);
+    const seacliff = ranks.get("Seacliff")!.crimeScore;
+    const marina = ranks.get("Marina")!.crimeScore;
+    const tenderloin = ranks.get("Tenderloin")!.crimeScore;
+
+    // Correct ordering, preserved from the old percentile-rank behavior.
+    expect(seacliff).toBeGreaterThan(marina);
+    expect(marina).toBeGreaterThan(tenderloin);
+
+    // But no hard pin at the extremes — a high-volume outlier neighborhood
+    // (like Tenderloin here, or Mission in production) should read as
+    // "notably worse than average" rather than a literal floor of 0.
+    expect(tenderloin).toBeGreaterThan(0);
+    expect(seacliff).toBeLessThan(100);
   });
 
   it("uses category weights (violent ×3, property ×1, qol ×0.5)", () => {
@@ -122,8 +132,12 @@ describe("percentileRankCrimeScores", () => {
     const ranks = percentileRankCrimeScores(stats);
 
     // N0 has zero crime → top score; N40 has the most → bottom score.
-    expect(ranks.get("N0")!.crimeScore).toBe(100);
-    expect(ranks.get("N40")!.crimeScore).toBe(0);
+    // Neither hits the literal endpoint — logistic squashing only trends
+    // toward 0/100 asymptotically.
+    expect(ranks.get("N0")!.crimeScore).toBeGreaterThan(80);
+    expect(ranks.get("N0")!.crimeScore).toBeLessThan(100);
+    expect(ranks.get("N40")!.crimeScore).toBeGreaterThan(0);
+    expect(ranks.get("N40")!.crimeScore).toBeLessThan(20);
 
     // Strictly monotonic.
     let prev = 100;

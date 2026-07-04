@@ -1,7 +1,9 @@
 /**
  * Nightly: pull crime aggregates for the last 12 months from DataSF (one
- * SoQL `$group` request, no pagination), then percentile-rank neighborhoods
- * to produce a 0–100 safety score where 100 = safest.
+ * SoQL `$group` request, no pagination), then z-score neighborhoods against
+ * the citywide distribution to produce a 0–100 safety score where 100 =
+ * safest (see percentileRankCrimeScores for why this isn't a raw percentile
+ * rank).
  *
  * Replaces the entire NeighborhoodCrimeStat table — the rolling-12-month
  * window slides forward each night, so prior-window rows would otherwise
@@ -52,7 +54,7 @@ async function main() {
     }),
   ]);
 
-  // Recompute percentile-rank crime scores across all neighborhoods.
+  // Recompute z-scored crime scores across all neighborhoods.
   // Parallel — distinct rows, ~41 of them, fully independent.
   const ranks = percentileRankCrimeScores(filtered);
   await Promise.all(
