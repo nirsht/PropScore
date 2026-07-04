@@ -53,6 +53,9 @@ export type NovSummary = {
   openCount: number;
   recentCount: number;
   latest: NovLatest | null;
+  // Every deduped NOV on the parcel, newest first — same rows `latest` is
+  // drawn from, just not discarded. Powers the "View details" drill-down.
+  records: NovLatest[];
 };
 
 function str(v: unknown): string | null {
@@ -97,7 +100,7 @@ async function fetchJson(url: string): Promise<NovRow[]> {
  */
 export async function fetchByBlockLot(blockLot: string): Promise<NovSummary> {
   if (blockLot.length < 7) {
-    return { blockLot, openCount: 0, recentCount: 0, latest: null };
+    return { blockLot, openCount: 0, recentCount: 0, latest: null, records: [] };
   }
   const block = blockLot.slice(0, 4);
   const lot = blockLot.slice(4);
@@ -116,6 +119,7 @@ export async function fetchByBlockLot(blockLot: string): Promise<NovSummary> {
   let openCount = 0;
   let recentCount = 0;
   let latest: NovLatest | null = null;
+  const records: NovLatest[] = [];
   // Dedupe to one row per complaint — the dataset has one row per NOV item,
   // so a single NOV with multiple violations would otherwise inflate counts.
   // Rows are ordered date_filed DESC, so the first occurrence is the freshest.
@@ -136,14 +140,16 @@ export async function fetchByBlockLot(blockLot: string): Promise<NovSummary> {
     if (isOpen(status)) openCount += 1;
     if (inWindow) recentCount += 1;
 
+    const record: NovLatest = {
+      complaintNumber,
+      dateFiled,
+      status,
+      description: str(row.nov_item_description),
+      address: fmtAddress(row),
+    };
+    records.push(record);
     if (!latest && dateFiled) {
-      latest = {
-        complaintNumber,
-        dateFiled,
-        status,
-        description: str(row.nov_item_description),
-        address: fmtAddress(row),
-      };
+      latest = record;
     }
   }
 
@@ -155,5 +161,5 @@ export async function fetchByBlockLot(blockLot: string): Promise<NovSummary> {
     ? canonicalBlockLot(first.block, first.lot)
     : blockLot;
 
-  return { blockLot: canonical, openCount, recentCount, latest };
+  return { blockLot: canonical, openCount, recentCount, latest, records };
 }

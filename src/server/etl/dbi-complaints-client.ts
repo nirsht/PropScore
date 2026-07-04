@@ -59,6 +59,9 @@ export type ComplaintSummary = {
   openCount: number;
   recentCount: number;
   latest: ComplaintLatest | null;
+  // Every deduped complaint on the parcel, newest first — same rows `latest`
+  // is drawn from, just not discarded. Powers the "View details" drill-down.
+  records: ComplaintLatest[];
 };
 
 function str(v: unknown): string | null {
@@ -107,7 +110,7 @@ async function fetchJson(url: string): Promise<ComplaintRow[]> {
  */
 export async function fetchByBlockLot(blockLot: string): Promise<ComplaintSummary> {
   if (blockLot.length < 7) {
-    return { blockLot, openCount: 0, recentCount: 0, latest: null };
+    return { blockLot, openCount: 0, recentCount: 0, latest: null, records: [] };
   }
   const block = blockLot.slice(0, 4);
   const lot = blockLot.slice(4);
@@ -126,6 +129,7 @@ export async function fetchByBlockLot(blockLot: string): Promise<ComplaintSummar
   let openCount = 0;
   let recentCount = 0;
   let latest: ComplaintLatest | null = null;
+  const records: ComplaintLatest[] = [];
   // Dedupe to one row per complaint — the dataset has one row per inspection
   // visit, so a complaint with multiple inspections would otherwise inflate
   // counts. Rows are ordered last_inspection_date DESC, so the first
@@ -149,14 +153,16 @@ export async function fetchByBlockLot(blockLot: string): Promise<ComplaintSummar
     if (isOpen(dateAbated, status)) openCount += 1;
     if (inWindow) recentCount += 1;
 
+    const record: ComplaintLatest = {
+      complaintNumber,
+      dateOpened,
+      status,
+      description: str(row.complaint_description),
+      address: fmtAddress(row),
+    };
+    records.push(record);
     if (!latest && dateOpened) {
-      latest = {
-        complaintNumber,
-        dateOpened,
-        status,
-        description: str(row.complaint_description),
-        address: fmtAddress(row),
-      };
+      latest = record;
     }
   }
 
@@ -167,5 +173,5 @@ export async function fetchByBlockLot(blockLot: string): Promise<ComplaintSummar
   const canonical =
     first?.block && first?.lot ? canonicalBlockLot(first.block, first.lot) : blockLot;
 
-  return { blockLot: canonical, openCount, recentCount, latest };
+  return { blockLot: canonical, openCount, recentCount, latest, records };
 }
