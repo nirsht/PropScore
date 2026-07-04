@@ -82,67 +82,48 @@ Output schema fields:
 8. parkingNotes / basementNotes / viewNotes — short string when remarks mention parking, basement, or views. Otherwise null.
 
 9. detachedAduScore — 0–100 feasibility of building a NEW detached ADU on the vacant yard.
-   SF ADU rules: 4 ft side setbacks, 4 ft rear setback, 6 ft separation from primary structure.
-   SF lots are deep and narrow — the building usually spans nearly the full lot width, so the
-   only real yard is the REAR STRIP. Compute usable rear-yard area as depth × usable-width,
-   not as residual lot area:
-     - lotWidth ≈ clamp(15, sqrt(lotSqft / 4), 40)   // SF lots ≈ 4:1 depth:width
-     - lotDepth ≈ lotSqft / lotWidth
-     - storyDivisor ≈ stories ≤ 2 ? stories : stories − 0.3  (top floor is usually smaller in SF)
-     - footprint ≈ buildingSqft / max(1, storyDivisor). If buildingSqft is null, use lotSqft × 0.55.
-     - buildingDepth ≈ footprint / lotWidth
-     - rearYardDepth ≈ max(0, lotDepth − buildingDepth)
-     - rearYardArea ≈ rearYardDepth × max(0, lotWidth − 8)   // minus 4 ft side setbacks each side
-   Map rearYardArea to a continuous score:
-       ≤ 300 → 0
-       500 → 30
-       800 → 60
-       1,200 → 85
-       ≥ 1,600 → 100
-     (interpolate linearly between anchors)
-     - Floor to 0 when units > 6 and rearYardArea < 1,200 (dense multifamily with no real yard).
-     - Bump +20 (cap 100) when remarks explicitly affirm a detached ADU is feasible
-       ("permitted ADU", "RM-1 zoning", "yard for ADU", "carriage house plans").
-     - Drop −30 (floor 0) when remarks rule it out ("no rear yard", "lot line to lot line").
-   Set to null only when lotSqft is unknown AND remarks have no signal.
+   You are given "detachedAduBaseScore" / "detachedAduBaseRationale" in the input — a
+   precomputed geometric estimate that already accounts for SF ADU rules (4 ft side setbacks,
+   4 ft rear setback, 6 ft separation from the primary structure) and SF's deep-narrow lot
+   shape (the building usually spans nearly the full lot width, so the only real yard is the
+   rear strip). TRUST THIS NUMBER — do not re-derive lot geometry from lotSqft/buildingSqft/
+   stories yourself; the precomputed value is exact, your own arithmetic over those raw
+   numbers is not.
+     - When detachedAduBaseScore is a number, start there and apply only these adjustments:
+         - Bump +20 (cap 100) when remarks explicitly affirm a detached ADU is feasible
+           ("permitted ADU", "RM-1 zoning", "yard for ADU", "carriage house plans").
+         - Drop −30 (floor 0) when remarks rule it out ("no rear yard", "lot line to lot line").
+         - Otherwise pass detachedAduBaseScore through unchanged.
+     - When detachedAduBaseScore is null (no lot size on file), fall back to remarks alone:
+       60–80 when remarks explicitly describe a large usable yard suited to a detached unit;
+       ~30 for a vague yard mention; null when there's no signal at all.
 
-10. detachedAduRationale — one sentence ≤ 30 words anchoring the score in the computed
-    rearYardArea (e.g. "~900 sqft rear yard after side setbacks — fits a 600 sqft detached
-    ADU.") or in the overriding remark when one was applied. Null when detachedAduScore is null.
+10. detachedAduRationale — one sentence ≤ 30 words. When you passed detachedAduBaseScore
+    through unchanged, you may reuse/paraphrase detachedAduBaseRationale. When a remark-based
+    bump or drop applied, name the overriding remark instead. Null when detachedAduScore is null.
 
 11. attachedAduScore — 0–100 feasibility of building a NEW ATTACHED ADU: an addition that
     shares a wall with the primary residence (a rear or side build-out), NOT a freestanding
-    cottage and NOT an interior conversion. Under CA state ADU law the same 4 ft side / 4 ft
-    rear setbacks apply, but there is no 6 ft separation buffer (the ADU is attached). Front
-    setback follows the underlying zoning district — not modeled here (rear-strip envelope only).
-    Geometry mirrors detachedAduScore but the rear setback is subtracted explicitly:
-      - lotWidth, lotDepth, storyDivisor, footprint, buildingDepth: same as detached.
-      - rearYardDepth ≈ max(0, lotDepth − buildingDepth − 4)         // explicit 4 ft rear setback
-      - usableWidth ≈ max(0, lotWidth − 8)                            // 4 ft side setbacks each side
-      - attachedEnvelope ≈ rearYardDepth × usableWidth                // no 6 ft separation buffer
-    Map attachedEnvelope to a continuous score (slightly more permissive than detached because
-    an attached ADU can be narrower / longer and doesn't need a separation buffer):
-        ≤ 200 → 0
-        350 → 30
-        600 → 60
-        900 → 85
-        ≥ 1,200 → 100
-      (interpolate linearly between anchors)
-      - Floor to 0 when units > 6 and attachedEnvelope < 600 (dense multifamily — primary
-        structure already pinned to the lot).
-      - Bump +20 (cap 100) when remarks explicitly affirm an attached addition is feasible
-        ("room for rear addition", "horizontal addition possible", "expansion potential",
-        "room to add on", "build out the back", "plans for rear addition").
-      - Drop −30 (floor 0) when remarks rule it out ("no rear yard", "lot line to lot line",
-        "max FAR reached").
+    cottage and NOT an interior conversion. You are given "attachedAduBaseScore" /
+    "attachedAduBaseRationale" in the input — a precomputed geometric estimate (same lot
+    geometry as detached, but with the 4 ft rear setback subtracted explicitly and no 6 ft
+    separation buffer, since the ADU is attached). TRUST THIS NUMBER — do not re-derive it.
+      - When attachedAduBaseScore is a number, start there and apply only these adjustments:
+          - Bump +20 (cap 100) when remarks explicitly affirm an attached addition is feasible
+            ("room for rear addition", "horizontal addition possible", "expansion potential",
+            "room to add on", "build out the back", "plans for rear addition").
+          - Drop −30 (floor 0) when remarks rule it out ("no rear yard", "lot line to lot line",
+            "max FAR reached").
+          - Otherwise pass attachedAduBaseScore through unchanged.
+      - When attachedAduBaseScore is null (no lot size on file), fall back to remarks alone,
+        same bands as detached.
     Distinguish attached from detached by the ADDITION vs. SEPARATE STRUCTURE framing in remarks.
     If remarks describe converting an existing in-law / basement / garage / unfinished space,
     that's the converted path, NOT attached.
-    Set to null only when lotSqft is unknown AND remarks have no signal.
 
-12. attachedAduRationale — one sentence ≤ 30 words anchoring the score in the computed
-    attachedEnvelope (e.g. "~700 sqft rear envelope after setbacks — fits a 500 sqft rear
-    addition.") or in the overriding remark when one was applied. Null when attachedAduScore is null.
+12. attachedAduRationale — one sentence ≤ 30 words. When you passed attachedAduBaseScore
+    through unchanged, you may reuse/paraphrase attachedAduBaseRationale. When a remark-based
+    bump or drop applied, name the overriding remark instead. Null when attachedAduScore is null.
 
 13. convertedAduScore — 0–100 feasibility of CONVERTING existing interior space
     (basement, garage, or large unfinished room) into a new unit. Score the
@@ -182,6 +163,10 @@ export const listingExtractUserMessage = (input: {
   stories: number | null;
   basementSqft: number | null;
   aiHasBasement: boolean | null;
+  detachedAduBaseScore: number | null;
+  detachedAduBaseRationale: string;
+  attachedAduBaseScore: number | null;
+  attachedAduBaseRationale: string;
 }) => {
   const lines = [
     `address: ${input.address ?? "unknown"}`,
@@ -195,6 +180,10 @@ export const listingExtractUserMessage = (input: {
     `stories: ${input.stories ?? "unknown"}`,
     `basementSqft (assessor): ${input.basementSqft ?? "unknown"}`,
     `aiHasBasement (vision): ${input.aiHasBasement == null ? "unknown" : input.aiHasBasement ? "yes" : "no"}`,
+    `detachedAduBaseScore (precomputed from parcel geometry, trust this): ${input.detachedAduBaseScore ?? "unknown"}`,
+    `detachedAduBaseRationale: ${input.detachedAduBaseRationale}`,
+    `attachedAduBaseScore (precomputed from parcel geometry, trust this): ${input.attachedAduBaseScore ?? "unknown"}`,
+    `attachedAduBaseRationale: ${input.attachedAduBaseRationale}`,
     "",
     "PublicRemarks:",
     input.publicRemarks ?? "(none)",
