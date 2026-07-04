@@ -2,9 +2,11 @@
 
 import * as React from "react";
 import {
+  Alert,
   CircularProgress,
   IconButton,
   Link as MuiLink,
+  Snackbar,
   Stack,
   Tooltip,
   Typography,
@@ -122,6 +124,7 @@ function RequestRentRollButton({
   // Hold a tab opened synchronously on click so the post-mutation navigation
   // counts as a user gesture and isn't blocked by popup blockers.
   const pendingTab = React.useRef<Window | null>(null);
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const request = trpc.emails.requestRentRoll.useMutation({
     onSuccess: (result) => {
       void utils.emails.forListing.invalidate({ listingMlsId });
@@ -135,10 +138,11 @@ function RequestRentRollButton({
         tab.close();
       }
     },
-    onError: () => {
+    onError: (err) => {
       const tab = pendingTab.current;
       pendingTab.current = null;
       if (tab && !tab.closed) tab.close();
+      setErrorMessage(err.message || "Couldn't create the Gmail draft.");
     },
   });
 
@@ -193,24 +197,41 @@ function RequestRentRollButton({
   }
 
   return (
-    <Tooltip title={`Create Gmail draft to ${agentEmail} requesting the rent roll`}>
-      <span>
-        <IconButton
-          size="small"
-          disabled={request.isPending}
-          onClick={() => {
-            pendingTab.current = window.open("about:blank", "_blank", "noopener");
-            request.mutate({ listingMlsId });
-          }}
-          sx={{ p: 0.25, color: "primary.main" }}
+    <>
+      <Tooltip title={`Create Gmail draft to ${agentEmail} requesting the rent roll`}>
+        <span>
+          <IconButton
+            size="small"
+            disabled={request.isPending}
+            onClick={() => {
+              pendingTab.current = window.open("about:blank", "_blank", "noopener");
+              request.mutate({ listingMlsId });
+            }}
+            sx={{ p: 0.25, color: "primary.main" }}
+          >
+            {request.isPending ? (
+              <CircularProgress size={14} />
+            ) : (
+              <EmailRoundedIcon sx={{ fontSize: 16 }} />
+            )}
+          </IconButton>
+        </span>
+      </Tooltip>
+      <Snackbar
+        open={errorMessage !== null}
+        autoHideDuration={5000}
+        onClose={() => setErrorMessage(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert
+          severity="error"
+          variant="filled"
+          onClose={() => setErrorMessage(null)}
+          sx={{ width: "100%" }}
         >
-          {request.isPending ? (
-            <CircularProgress size={14} />
-          ) : (
-            <EmailRoundedIcon sx={{ fontSize: 16 }} />
-          )}
-        </IconButton>
-      </span>
-    </Tooltip>
+          {errorMessage}
+        </Alert>
+      </Snackbar>
+    </>
   );
 }

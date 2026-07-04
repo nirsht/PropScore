@@ -1,6 +1,8 @@
 import { ChatAgent } from "../base/ChatAgent";
 import { searchListingsTool, getListingTool } from "../tools/searchListings";
 import { webSearchTool } from "../tools/webSearch";
+import { findListingsByAgentTool } from "../tools/findListingsByAgent";
+import { saveListingContactTool } from "../tools/saveListingContact";
 import { buildChatGlobalSystemPrompt } from "./prompt";
 
 /**
@@ -12,7 +14,13 @@ export function makeChatGlobalAgent(filterSnapshot: unknown) {
   return new ChatAgent({
     name: "chat-global",
     buildSystemPrompt: () => buildChatGlobalSystemPrompt({ filterSnapshot }),
-    tools: [searchListingsTool, getListingTool, webSearchTool],
+    tools: [
+      searchListingsTool,
+      getListingTool,
+      webSearchTool,
+      findListingsByAgentTool,
+      saveListingContactTool,
+    ],
     maxSteps: 8,
   });
 }

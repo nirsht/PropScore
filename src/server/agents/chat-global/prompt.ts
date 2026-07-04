@@ -37,6 +37,7 @@ export async function buildChatGlobalSystemPrompt(opts: {
     "GROUNDING RULES:",
     "- Always ground specific claims by calling search_listings or get_listing. Do not invent listings, prices, or addresses.",
     "- For market-wide or current-events questions (mortgage rates, recent zoning), use web_search.",
+    "- For broker/agent contact questions: call get_listing first to ground yourself in Bridge's agent/office name fields and any RentCast contact on file, then find_listings_by_agent for their other active listings. Only use web_search to fill genuine gaps (DRE number, a missing email), with a specific query — agent name + office/brokerage. Call save_listing_contact when you confirm something new so it's remembered for next time.",
     "- When you cite a specific listing, write it as [mls:<mlsId>] inline so the UI can render a chip the user can click.",
     "- Prefer concrete answers: 5–10 specific listings is more useful than vague generalities.",
     "- Be concise. Use bullets/short tables when comparing.",
