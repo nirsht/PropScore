@@ -20,6 +20,12 @@ const InternalInput = z.object({
   stories: z.number().nullable(),
   basementSqft: z.number().nullable(),
   aiHasBasement: z.boolean().nullable(),
+  // Precomputed by deriveDetachedAduFromHeuristic / deriveAttachedAduFromHeuristic
+  // below — the model anchors to these instead of re-deriving lot geometry itself.
+  detachedAduBaseScore: z.number().int().min(0).max(100).nullable(),
+  detachedAduBaseRationale: z.string(),
+  attachedAduBaseScore: z.number().int().min(0).max(100).nullable(),
+  attachedAduBaseRationale: z.string(),
 });
 
 // Pinned to gpt-5-mini — chosen for cost. Bump to "gpt-5.4-mini" or
@@ -86,10 +92,16 @@ export async function runListingExtract(mlsId: string, userId: string | null): P
     aiHasBasement: listing.aiHasBasement,
   };
 
+  // Geometry-derived base — computed deterministically in code (not left to the
+  // model's free-form arithmetic) so setback/lot-shape math is actually correct.
+  // The LLM anchors to this and only layers remark-driven bumps/drops on top.
+  const detachedBase = deriveDetachedAduFromHeuristic(input);
+  const attachedBase = deriveAttachedAduFromHeuristic(input);
+
   // If there's no text at all, skip the model call and write a heuristic-only result.
   if (!publicRemarks && !privateRemarks) {
-    const detached = deriveDetachedAduFromHeuristic(input);
-    const attached = deriveAttachedAduFromHeuristic(input);
+    const detached = detachedBase;
+    const attached = attachedBase;
     const converted = deriveConvertedAduFromHeuristic(input);
     const empty: Output = {
       unitMix: null,
@@ -116,7 +128,16 @@ export async function runListingExtract(mlsId: string, userId: string | null): P
     return empty;
   }
 
-  const result = await internal.run({ input, userId });
+  const result = await internal.run({
+    input: {
+      ...input,
+      detachedAduBaseScore: detachedBase.score,
+      detachedAduBaseRationale: detachedBase.rationale,
+      attachedAduBaseScore: attachedBase.score,
+      attachedAduBaseRationale: attachedBase.rationale,
+    },
+    userId,
+  });
   await persist(mlsId, result.output);
   return result.output;
 }
