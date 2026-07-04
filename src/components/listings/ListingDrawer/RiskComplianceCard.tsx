@@ -1,7 +1,10 @@
-import { Box, Chip, Paper, Stack, Tooltip, Typography } from "@mui/material";
+import * as React from "react";
+import { Box, Button, Chip, Paper, Stack, Tooltip, Typography } from "@mui/material";
 import { DataFreshness } from "./DataFreshness";
+import { RiskComplianceDetailDialog } from "./RiskComplianceDetailDialog";
 
 export type RiskComplianceCardListing = {
+  mlsId: string;
   // DBI Notice of Violations (Socrata nife-svxp)
   codeViolationsOpenCount: number | null;
   codeViolationsRecentCount: number | null;
@@ -81,6 +84,8 @@ export function RiskComplianceCard({
 }: {
   listing: RiskComplianceCardListing;
 }) {
+  const [detailKind, setDetailKind] = React.useState<"nov" | "complaint" | null>(null);
+
   const hasViolations = listing.codeViolationsFetchedAt != null;
   const hasComplaints = listing.dbiComplaintsFetchedAt != null;
   const hasHousing = listing.housingInventoryFetchedAt != null;
@@ -129,9 +134,20 @@ export function RiskComplianceCard({
       {/* Row 1 — Code enforcement (dual-use framing) */}
       {hasViolations && (
         <Box sx={{ mb: 1.5 }}>
-          <Typography variant="caption" color="text.secondary">
-            Code enforcement (NOVs)
-          </Typography>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <Typography variant="caption" color="text.secondary">
+              Code enforcement (NOVs)
+            </Typography>
+            {(open > 0 || recent > 0) && (
+              <Button
+                size="small"
+                sx={{ minWidth: 0, py: 0, lineHeight: 1.2 }}
+                onClick={() => setDetailKind("nov")}
+              >
+                View details
+              </Button>
+            )}
+          </Stack>
           <Stack
             direction="row"
             spacing={1}
@@ -220,9 +236,20 @@ export function RiskComplianceCard({
       {/* Row 1b — DBI inspection complaints (superset of NOVs) */}
       {hasComplaints && (
         <Box sx={{ mb: 1.5 }}>
-          <Typography variant="caption" color="text.secondary">
-            Complaints (DBI)
-          </Typography>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <Typography variant="caption" color="text.secondary">
+              Complaints (DBI)
+            </Typography>
+            {(complaintsOpen > 0 || complaintsRecent > 0) && (
+              <Button
+                size="small"
+                sx={{ minWidth: 0, py: 0, lineHeight: 1.2 }}
+                onClick={() => setDetailKind("complaint")}
+              >
+                View details
+              </Button>
+            )}
+          </Stack>
           <Stack
             direction="row"
             spacing={1}
@@ -409,6 +436,13 @@ export function RiskComplianceCard({
           </Stack>
         </Box>
       )}
+
+      <RiskComplianceDetailDialog
+        open={detailKind != null}
+        kind={detailKind ?? "nov"}
+        mlsId={listing.mlsId}
+        onClose={() => setDetailKind(null)}
+      />
     </Paper>
   );
 }

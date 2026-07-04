@@ -8,6 +8,14 @@ import { fetchListingMedia, type BridgeMediaItem } from "@/server/etl/bridge-cli
 import { normalizeListing } from "@/server/etl/normalize";
 import { computeHeuristicScore } from "@/server/etl/scoring";
 import { daysSincePost } from "@/server/etl/scoring/daysLive";
+import {
+  fetchByBlockLot as fetchNovsByBlockLot,
+  type NovLatest,
+} from "@/server/etl/code-enforcement-client";
+import {
+  fetchByBlockLot as fetchComplaintsByBlockLot,
+  type ComplaintLatest,
+} from "@/server/etl/dbi-complaints-client";
 
 function round1(n: number) {
   return Math.round(n * 10) / 10;
@@ -186,6 +194,49 @@ export const listingsRouter = router({
         via: result.via,
         attempts: result.attempts,
       };
+    }),
+
+  // Live drill-down for the Risk & compliance card's "View details" action —
+  // reuses the nightly ETL's Socrata client to fetch every NOV on the parcel,
+  // not just the single denormalized `codeViolationsLatest` breadcrumb.
+  getCodeEnforcementDetail: protectedProcedure
+    .input(z.object({ mlsId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const listing = await ctx.db.listing.findUnique({
+        where: { mlsId: input.mlsId },
+        select: { blockLot: true },
+      });
+      if (!listing) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!listing.blockLot) return { records: [] as NovLatest[], error: false };
+
+      try {
+        const summary = await fetchNovsByBlockLot(listing.blockLot);
+        return { records: summary.records, error: false };
+      } catch (err) {
+        console.warn(`[listings:getCodeEnforcementDetail] fetch failed`, err);
+        return { records: [] as NovLatest[], error: true };
+      }
+    }),
+
+  // Live drill-down counterpart for DBI complaints — same shape as
+  // `getCodeEnforcementDetail`, backed by the DBI complaints Socrata client.
+  getComplaintsDetail: protectedProcedure
+    .input(z.object({ mlsId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const listing = await ctx.db.listing.findUnique({
+        where: { mlsId: input.mlsId },
+        select: { blockLot: true },
+      });
+      if (!listing) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!listing.blockLot) return { records: [] as ComplaintLatest[], error: false };
+
+      try {
+        const summary = await fetchComplaintsByBlockLot(listing.blockLot);
+        return { records: summary.records, error: false };
+      } catch (err) {
+        console.warn(`[listings:getComplaintsDetail] fetch failed`, err);
+        return { records: [] as ComplaintLatest[], error: true };
+      }
     }),
 
   facets: protectedProcedure.query(async ({ ctx }) => {
