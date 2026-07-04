@@ -89,9 +89,15 @@ export function bucketIncidentCategory(category: string): CrimeCategory | null {
 }
 
 /**
- * Percentile-rank neighborhoods by their weighted incident count, then
- * invert so that the *least* crime-prone neighborhood scores 100 and the
- * worst scores 0. Robust to missing per-capita data.
+ * Score neighborhoods by their weighted incident count relative to the
+ * citywide distribution: z-score each neighborhood against the mean/stddev
+ * of all neighborhoods, then squash through a logistic curve so *least*
+ * crime-prone trends toward 100 and worst trends toward 0 — without ever
+ * pinning either extreme to the literal endpoint. A straight percentile
+ * rank forces exactly one neighborhood to 0 and one to 100 regardless of
+ * margin, which produced misleading scores for high-volume/high-foot-traffic
+ * neighborhoods (e.g. Mission) that aren't uniquely dangerous per capita,
+ * just busy. Robust to missing per-capita data.
  *
  * Input: one row per (neighborhood, category) with raw incident counts.
  * Output: Map<neighborhood, { crimeScore, weightedIncidents }>.
@@ -109,21 +115,23 @@ export function percentileRankCrimeScores(
   if (weighted.size === 0) return new Map();
   const entries = [...weighted.entries()];
   if (entries.length === 1) {
-    // With a single neighborhood, percentile rank is undefined. Hand back a
+    // With a single neighborhood, a z-score is undefined. Hand back a
     // neutral 50 so we don't fail the pipeline.
     const [name, w] = entries[0]!;
     return new Map([[name, { crimeScore: 50, weightedIncidents: w }]]);
   }
 
-  // Sort ascending — low weighted-count = safer = high score.
-  const sorted = entries.sort((a, b) => a[1] - b[1]);
-  const n = sorted.length;
+  const counts = entries.map(([, w]) => w);
+  const mean = counts.reduce((a, b) => a + b, 0) / counts.length;
+  const variance = counts.reduce((a, b) => a + (b - mean) ** 2, 0) / counts.length;
+  const stddev = Math.sqrt(variance);
+
   const out = new Map<string, { crimeScore: number; weightedIncidents: number }>();
-  for (let i = 0; i < n; i++) {
-    const [name, w] = sorted[i]!;
-    // Standard percentile rank: i / (n - 1) ∈ [0, 1]. Invert so safest=100.
-    const rank = i / (n - 1);
-    const crimeScore = (1 - rank) * 100;
+  for (const [name, w] of entries) {
+    // z of safety: fewer incidents than the citywide mean = positive z.
+    // stddev === 0 means every neighborhood tied — treat all as average.
+    const z = stddev === 0 ? 0 : (mean - w) / stddev;
+    const crimeScore = 100 / (1 + Math.exp(-z));
     out.set(name, { crimeScore: round2(crimeScore), weightedIncidents: w });
   }
   return out;
