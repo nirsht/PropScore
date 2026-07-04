@@ -4,6 +4,7 @@ import type {
   RentCompsOutputUI,
   RentEstimateEntryUI,
   RentRollEntryUI,
+  UnitMixEntryUI,
 } from "./types";
 
 const baseArgs = {
@@ -166,5 +167,49 @@ describe("enrichRentRoll post-remodel rebase", () => {
     expect(result.enriched[0]!.market).toBeNull();
     expect(result.enriched[0]!.postReno!.rent).toBe(9000);
     expect(result.enriched[0]!.postReno!.rationale).toBe("reno");
+  });
+});
+
+describe("enrichRentRoll unitMix vs rentRoll null distinction", () => {
+  it("marks unitMix-derived rows as grouped (unknown rent, not vacant)", () => {
+    const unitMix: UnitMixEntryUI[] = [
+      { count: 3, beds: 2, baths: 1 },
+      { count: 2, beds: 1, baths: 1 },
+    ];
+
+    const result = enrichRentRoll({
+      rentRoll: null,
+      unitMix,
+      aiRentEstimate: null,
+      postRenoEstimate: null,
+      compsOutput: null,
+      extractedTotalMonthlyRent: 7113,
+    });
+
+    expect(result.rows.every((r) => r.isGrouped)).toBe(true);
+    expect(result.rows.every((r) => r.actualRent === null)).toBe(true);
+    // Falls back to the disclosed aggregate rather than summing unknown rows.
+    expect(result.currentTotal).toBe(7113);
+  });
+
+  it("marks a real rentRoll entry with rent:null as ungrouped (genuinely vacant)", () => {
+    const rentRoll: RentRollEntryUI[] = [
+      { rent: null, beds: 2, baths: 1, sqft: null, unitLabel: null },
+      { rent: 2000, beds: 2, baths: 1, sqft: null, unitLabel: null },
+    ];
+
+    const result = enrichRentRoll({
+      rentRoll,
+      unitMix: null,
+      aiRentEstimate: null,
+      postRenoEstimate: null,
+      compsOutput: null,
+      extractedTotalMonthlyRent: null,
+    });
+
+    expect(result.rows[0]!.isGrouped).toBe(false);
+    expect(result.rows[0]!.actualRent).toBeNull();
+    expect(result.rows[1]!.isGrouped).toBe(false);
+    expect(result.rows[1]!.actualRent).toBe(2000);
   });
 });

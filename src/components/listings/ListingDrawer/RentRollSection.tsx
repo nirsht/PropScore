@@ -25,6 +25,40 @@ import type {
   UnitMixEntryUI,
 } from "./types";
 
+function RentRollOccupancyChip({
+  occupancy,
+  totalMonthlyRent,
+}: {
+  occupancy: number | null;
+  totalMonthlyRent: number | null;
+}) {
+  const label =
+    occupancy != null
+      ? occupancy >= 1
+        ? "Fully occupied · rent not itemized"
+        : `${Math.round(occupancy * 100)}% occupied · not itemized`
+      : totalMonthlyRent != null
+        ? `${fmtMoney(totalMonthlyRent)}/mo disclosed · not itemized`
+        : null;
+
+  if (!label) return null;
+
+  return (
+    <Tooltip
+      arrow
+      placement="top"
+      title="Listing remarks disclose overall occupancy/rent but not a per-unit breakdown — blank Current cells below don't mean vacant."
+    >
+      <Chip
+        size="small"
+        variant="outlined"
+        label={label}
+        sx={{ height: 20, cursor: "help" }}
+      />
+    </Tooltip>
+  );
+}
+
 export function RentRollSection({ listing }: { listing: ListingForAI }) {
   const utils = trpc.useUtils();
   const compsQuery = trpc.agents.latestRentComps.useQuery({
@@ -165,6 +199,12 @@ export function RentRollSection({ listing }: { listing: ListingForAI }) {
             />
           </Tooltip>
         )}
+        {!rentRoll?.length && unitMix?.length ? (
+          <RentRollOccupancyChip
+            occupancy={listing.extractedOccupancy}
+            totalMonthlyRent={listing.extractedTotalMonthlyRent}
+          />
+        ) : null}
         {monthlyUpside != null && monthlyUpside > 0 && (
           <Tooltip
             arrow
@@ -282,7 +322,9 @@ export function RentRollSection({ listing }: { listing: ListingForAI }) {
             <RentCell
               value={row.actualRent}
               italic={false}
-              placeholder={row.actualRent == null ? "Vacant" : undefined}
+              placeholder={
+                row.actualRent == null && !row.isGrouped ? "Vacant" : undefined
+              }
             />
             <RentCell
               value={row.market?.rent ?? null}
