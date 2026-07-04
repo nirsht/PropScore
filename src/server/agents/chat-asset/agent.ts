@@ -4,6 +4,8 @@ import { fetchRentCompsTool } from "../tools/fetchRentComps";
 import { fetchParcelTool } from "../tools/fetchParcel";
 import { triggerAiScoringTool } from "../tools/triggerAiScoring";
 import { webSearchTool } from "../tools/webSearch";
+import { findListingsByAgentTool } from "../tools/findListingsByAgent";
+import { saveListingContactTool } from "../tools/saveListingContact";
 import { buildChatAssetSystemPrompt } from "./prompt";
 
 /**
@@ -21,6 +23,8 @@ export function makeChatAssetAgent(mlsId: string) {
       fetchParcelTool,
       triggerAiScoringTool,
       webSearchTool,
+      findListingsByAgentTool,
+      saveListingContactTool,
     ],
     maxSteps: 8,
   });
