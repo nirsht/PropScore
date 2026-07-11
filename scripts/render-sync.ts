@@ -20,11 +20,12 @@
  * Static env vars (NODE_ENV, BRIDGE_DATASET, BRIDGE_BASE_URL, OPENAI_MODEL)
  * live in `render.yaml` and don't need to be synced.
  *
- * NEXTAUTH_SECRET is pushed to the cron services too even though they
- * don't actually authenticate users — `src/lib/env.ts` validates it at
- * module-load time, so any cron script that touches the app's
- * `env`-importing modules (etl-sync → bridge-client → env) crashes
- * without it. Cleaner than carving env.ts up service-by-service.
+ * NEXTAUTH_SECRET is pushed to the cron services too for parity, but crons
+ * no longer NEED it: `src/lib/env.ts` treats it as optional and only
+ * `src/lib/auth.ts` (web-only) enforces its presence. Historically it was
+ * required at module-load, so any cron script touching the app's
+ * `env`-importing modules (etl-sync → bridge-client → env) crashed without
+ * it — that coupling is now gone.
  *
  * Usage:
  *   pnpm render:sync              # push env vars + redeploy all services

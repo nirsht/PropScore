@@ -19,7 +19,13 @@ const schema = z.object({
   // Rating card falls back to the neighborhood-safety component only.
   WALKSCORE_API_KEY: z.string().optional().or(z.literal("")),
 
-  NEXTAUTH_SECRET: z.string().min(16),
+  // Web/auth-only — consumed solely by src/lib/auth.ts. ETL & CLI scripts
+  // import this module transitively (etl-sync → bridge-client → env) but never
+  // authenticate a user, so hard-requiring it here crashed every cron run that
+  // legitimately lacks the secret. Optional at parse time; auth.ts hard-fails
+  // the web server when it's missing (see requireAuthSecret there), so the web
+  // app is no less strict than before.
+  NEXTAUTH_SECRET: z.string().min(16).optional(),
   // Render auto-injects RENDER_EXTERNAL_URL. Locally we fall back to
   // localhost:3020. Setting NEXTAUTH_URL explicitly is rarely needed.
   NEXTAUTH_URL: z
@@ -52,9 +58,11 @@ const schema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().optional().or(z.literal("")),
 
   // Phase-2 rent-roll parser (separate from OPENAI_MODEL so we don't
-  // disturb other extraction paths). gpt-5 by default; override per
-  // environment if needed.
-  OPENAI_RENT_ROLL_MODEL: z.string().min(1).default("gpt-5"),
+  // disturb other extraction paths). gpt-5-mini by default — the full gpt-5
+  // was ~8× the per-token cost for a marginal quality gain on this
+  // structured-extraction task. Override to gpt-5 per environment if a
+  // specific inbox needs the stronger model.
+  OPENAI_RENT_ROLL_MODEL: z.string().min(1).default("gpt-5-mini"),
 
   // Bulk-draft button threshold: drafts are created for active listings
   // with price/sqft below this value. Dedup is enforced at the DB layer
