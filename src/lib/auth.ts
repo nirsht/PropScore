@@ -29,10 +29,26 @@ const googleConfigured = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRE
 
 export const googleAuthEnabled = googleConfigured;
 
+// NEXTAUTH_SECRET is optional in env.ts so ETL/CLI scripts that transitively
+// import `env` don't crash without it. The web server, however, must never
+// boot without a real secret — enforce that here, at the single point of use.
+// This module is imported only by the Next.js app (src/app/**, src/server/api/**),
+// never by an ETL stage, so this guard can't fire in a cron context.
+function requireAuthSecret(): string {
+  const secret = env.NEXTAUTH_SECRET;
+  if (!secret) {
+    throw new Error(
+      "NEXTAUTH_SECRET is required to run the web server (missing or < 16 chars). " +
+        "Set it in the service environment. ETL & CLI scripts do not need it.",
+    );
+  }
+  return secret;
+}
+
 export const authConfig: NextAuthConfig = {
   adapter: PrismaAdapter(db),
   session: { strategy: "jwt" },
-  secret: env.NEXTAUTH_SECRET,
+  secret: requireAuthSecret(),
   // Required on any non-Vercel deployment (Render, Fly, Railway, etc.) —
   // without this NextAuth refuses to operate on a non-localhost host and
   // returns the "Server error" config page.

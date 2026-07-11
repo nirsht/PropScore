@@ -17,7 +17,11 @@ import {
 import type { BridgeMediaItem } from "@/server/etl/bridge-client";
 import type { Prisma } from "@prisma/client";
 
-const MAX_PHOTOS_TO_TAG = 16;
+// Screening tags low-detail thumbnails to find the best kitchen/bathroom
+// photos; 10 covers those rooms in a typical listing while cutting screening
+// image tokens ~40%. gpt-4o-mini bills each low-detail image at a high token
+// multiplier, so this batch is the biggest single cost driver in vision.
+const MAX_PHOTOS_TO_TAG = 10;
 const TARGET_ANALYSIS_PHOTOS = 2;
 const SCREENING_MODEL = "gpt-4o-mini";
 const ANALYSIS_MODEL = "gpt-4o-mini";

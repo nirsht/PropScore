@@ -161,6 +161,10 @@ const AI_SCORE: Stage = stage("ai-score", "ai-score:changed", ["--concurrency=10
 // rent roll via the normal extract → scoring chain.
 const EMAILS_POLL: Stage = stage("emails-poll", "emails:poll", [], { llm: true });
 
+// Per-stage OpenAI cost, harvested from each child's `[openai-cost]
+// total_usd=…` line (emitted by src/lib/openai-usage.ts at process exit).
+const costByStage = new Map<string, number>();
+
 function runStage(s: Stage): Promise<void> {
   return new Promise((resolve, reject) => {
     const started = Date.now();
@@ -171,6 +175,8 @@ function runStage(s: Stage): Promise<void> {
       const text = chunk.toString();
       for (const line of text.split("\n")) {
         if (line.length === 0) continue;
+        const m = line.match(/\[openai-cost\] total_usd=([0-9.]+)/);
+        if (m) costByStage.set(s.name, (costByStage.get(s.name) ?? 0) + Number(m[1]));
         const w = stream === "stderr" ? process.stderr : process.stdout;
         w.write(`[${s.name}] ${line}\n`);
       }
@@ -264,14 +270,34 @@ async function runLlm() {
   await runStage(EMAILS_POLL);
 }
 
+function printRunCost(mode: Mode) {
+  const entries = [...costByStage.entries()].filter(([, usd]) => usd > 0).sort((a, b) => b[1] - a[1]);
+  const total = entries.reduce((sum, [, usd]) => sum + usd, 0);
+  console.log(`[nightly] ── OpenAI cost this run (mode=${mode}) ──`);
+  if (entries.length === 0) {
+    console.log(`[nightly]   (no OpenAI calls — $0.00)`);
+  } else {
+    for (const [name, usd] of entries) {
+      console.log(`[nightly]   ${name.padEnd(18)} $${usd.toFixed(4)}`);
+    }
+  }
+  console.log(`[nightly]   TOTAL              $${total.toFixed(4)}`);
+}
+
 async function main() {
   const mode = parseMode(process.argv.slice(2));
   const overallStart = Date.now();
   console.log(`[nightly] mode=${mode}`);
 
-  if (mode === "all") await runAll();
-  else if (mode === "base") await runBase();
-  else await runLlm();
+  try {
+    if (mode === "all") await runAll();
+    else if (mode === "base") await runBase();
+    else await runLlm();
+  } finally {
+    // Print cost even on partial failure so we still account for what was
+    // spent before the run aborted.
+    printRunCost(mode);
+  }
 
   const total = ((Date.now() - overallStart) / 1000).toFixed(1);
   console.log(`[nightly] all stages succeeded in ${total}s (mode=${mode})`);

@@ -6,7 +6,11 @@ import { BEST_PHOTO_SYSTEM_PROMPT, BUILDING_ANALYSIS_SYSTEM_PROMPT } from "./pro
 import { BuildingVisionOutput, RenovationLevelEnum, StoriesEvidence, type BuildingVisionOutput as Output } from "./schema";
 import type { BridgeMediaItem } from "@/server/etl/bridge-client";
 
-const MAX_PHOTOS_TO_RANK = 12;
+// 8 is enough candidates to find a facade among Bridge's Order-sorted photos
+// (the exterior is almost always in the first few) while cutting selector image
+// tokens by a third. gpt-4o-mini bills each low-detail image at a high token
+// multiplier, so photo count — not model — is the main cost lever here.
+const MAX_PHOTOS_TO_RANK = 8;
 const SELECTOR_MODEL = "gpt-4o-mini";
 const ANALYSIS_MODEL = "gpt-4o";
 
