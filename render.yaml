@@ -89,11 +89,14 @@ services:
     #   etl:sync                       — self-healing incremental pull
     #   enrich:vision → vision-interior — gpt-4o(-mini) photo analysis
     #   enrich:listings                — gpt-5-mini text extract
+    #   enrich:contacts                — agent phone/email: Bridge → LLM
+    #                                    agent (web_search) → Apollo fallback
     #   recompute:scores               — refresh heuristic for ai-score
     #   ai-score:changed               — gpt-5-mini, delta-only via hash
     #   emails:poll                    — gpt-5 rent-roll parser on inbox
-    # Note: enrich:contacts (RentCast) is paused — too expensive. Run
-    # manually via `pnpm enrich:contacts` if the key is restored.
+    # enrich:contacts sources self-skip when their key is absent; the 30-day
+    # freshness window bounds per-run cost. Needs APOLLO_API_KEY + TAVILY_API_KEY
+    # in the cron env to use the paid steps.
     startCommand: pnpm nightly:llm
     envVars:
       - key: NODE_ENV

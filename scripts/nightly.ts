@@ -18,7 +18,7 @@
  *     1. etl:sync                                      (self-healing if the
  *                                                       daily base failed
  *                                                       earlier in the day)
- *     2. parallel: [vision → vision-interior], [extract]
+ *     2. parallel: [vision → vision-interior], [extract], [contacts]
  *     3. recompute:scores                              (so AI score sees the
  *                                                       fresh heuristic
  *                                                       baseline from new
@@ -30,9 +30,10 @@
  *     The original pre-split pipeline. Kept as the default for `pnpm nightly`
  *     without args so ad-hoc local runs are unchanged.
  *
- * Note: `enrich:contacts` (RentCast) is paused — the API is too expensive at
- * scale. Run it manually if/when re-enabled, or wait for a free replacement
- * (CalDRE scrape / Tavily search). See enrich-contacts.ts.
+ * Note: `enrich:contacts` runs in mode=llm — it resolves agent phone/email
+ * via the Bridge → LLM agent → Apollo fallback chain (see
+ * contact-enrichment.ts). Each source self-skips when its key is absent, and
+ * the 30-day freshness window keeps per-run cost bounded.
  *
  * Each stage is a child process so it gets a fresh Prisma client / cursor;
  * we stream each one's stdout/stderr line-tagged into the parent log so
@@ -114,6 +115,10 @@ const HOUSING_INV = stage("housing-inventory", "enrich:housing-inventory", ["--c
 const RENT_CONTROL = stage("rent-control", "compute:rent-control");
 
 const EXTRACT = stage("extract", "enrich:listings", ["--concurrency=8"], { llm: true });
+// Agent contact enrichment — Bridge → LLM agent → Apollo. Its own lane: it
+// writes only ListingContact, disjoint from the vision/extract columns.
+// Concurrency 3 keeps LLM + Apollo call volume modest.
+const CONTACTS = stage("contacts", "enrich:contacts", ["--concurrency=3"], { llm: true });
 const RENT_COMPS = stage("rent-comps", "enrich:rent-comps", ["--concurrency=3"]);
 const WALKSCORE = stage("walkscore", "refresh:walkscore");
 const CRIME = stage("crime", "refresh:crime");
@@ -142,6 +147,7 @@ const PARALLEL_LANES_BASE: Stage[][] = [
 const PARALLEL_LANES_LLM: Stage[][] = [
   [VISION, VISION_INTERIOR],
   [EXTRACT],
+  [CONTACTS],
 ];
 
 // Neighborhood comp medians depend on assessor data being populated, so

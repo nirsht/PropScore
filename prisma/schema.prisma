@@ -377,17 +377,18 @@ model BuildingPermit {
 // `ListAgentDirectPhone`, `ListAgentEmail`, `ListOfficePhone`, etc., so the
 // drawer's "Listed by" / Brokerage rows have nothing to render. We hydrate
 // this table from the RentCast API (`listingAgent` + `listingOffice` blobs)
-// keyed by listing address — see scripts/enrich-contacts.ts.
+// resolved via the fallback chain in contact-enrichment.ts.
 //
-// `source` lets us swap to a future Bridge VOW/BBO feed without renaming
-// columns. `fetchedAt + miss` together drive the refresh policy:
+// `source` records which chain steps contributed, joined with "+" in priority
+// order (e.g. "bridge+agent_llm"). `fetchedAt + miss` together drive the
+// refresh policy:
 //   - hit  → refresh every 30d (catches agent moves)
-//   - miss → retry monthly (RentCast may not have the address yet)
+//   - miss → retry monthly (a source may resolve the agent next time)
 model ListingContact {
   id            String   @id @default(cuid())
   listingMlsId  String   @unique
   listing       Listing  @relation(fields: [listingMlsId], references: [mlsId], onDelete: Cascade)
-  source        String // "rentcast" | "rentcast_miss" | "bridge_vow" | "manual"
+  source        String // "bridge" | "agent_llm" | "apollo" (joined with "+") | "contact_miss" | "manual"
   agentName     String?
   agentPhone    String?
   agentEmail    String?
