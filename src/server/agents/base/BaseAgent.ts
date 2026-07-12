@@ -33,6 +33,13 @@ export type BaseAgentConfig<TIn, TOut> = {
   tools?: ToolDef[];
   /** Max LLM round-trips (each may include tool calls). Default 6. */
   maxSteps?: number;
+  /**
+   * When true, a run that reaches maxSteps while still calling tools makes one
+   * final tools-disabled completion to coerce the structured answer out of what
+   * it already gathered, instead of throwing. Useful for tool-happy models
+   * (e.g. reasoning models that keep searching and never finalize on their own).
+   */
+  finalizeOnMaxSteps?: boolean;
 };
 
 /**
@@ -149,6 +156,37 @@ export class BaseAgent<TIn, TOut> {
 
         // No tool calls — the model has produced the final structured answer.
         const parsed = this.parseFinal(msg.content ?? "");
+        const finishedAt = Date.now();
+        await db.agentTrace.update({
+          where: { id: trace.id },
+          data: {
+            output: parsed as object,
+            steps: steps as object,
+            tokens: totalTokens,
+            latencyMs: finishedAt - started,
+          },
+        });
+        return { output: parsed, steps, tokens: totalTokens, latencyMs: finishedAt - started };
+      }
+
+      if (this.cfg.finalizeOnMaxSteps) {
+        // The model kept calling tools until it ran out of steps. Force a final
+        // answer from what it has: one completion with tools disabled so it
+        // must return schema-shaped content rather than another tool call.
+        messages.push({
+          role: "user",
+          content:
+            "Stop using tools. Using only the information already gathered above, output your final answer now as JSON matching the required schema. Use null for anything you could not verify.",
+        });
+        const completion = await openai.chat.completions.create({
+          model: this.cfg.model ?? OPENAI_MODEL,
+          messages,
+          response_format: responseFormat,
+        });
+        totalTokens += completion.usage?.total_tokens ?? 0;
+        const content = completion.choices[0]?.message.content ?? "";
+        steps.push({ type: "model", content });
+        const parsed = this.parseFinal(content);
         const finishedAt = Date.now();
         await db.agentTrace.update({
           where: { id: trace.id },

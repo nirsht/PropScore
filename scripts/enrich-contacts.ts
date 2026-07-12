@@ -1,9 +1,9 @@
 /**
  * Enrich every active SF Listing with the listing-agent + brokerage contact
- * details from the RentCast API. Bridge `sfar` (IDX) strips agent
- * phone/email, so this is the source until/unless we get a Bridge VOW feed.
- * Idempotent + resumable: skips listings whose ListingContact row is
- * younger than the refresh window (see contact-enrichment.ts).
+ * details via the fallback chain in contact-enrichment.ts (Bridge → LLM agent
+ * → Apollo). Each source self-skips when its key is missing, so no single key
+ * is required to run. Idempotent + resumable: skips listings whose
+ * ListingContact row is younger than the refresh window.
  *
  * Usage:
  *   pnpm tsx scripts/enrich-contacts.ts                  # full sweep, concurrency 5
@@ -11,6 +11,7 @@
  *   pnpm tsx scripts/enrich-contacts.ts --concurrency=3  # back off
  *   pnpm tsx scripts/enrich-contacts.ts --force          # re-fetch even if fresh
  */
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { mapWithConcurrency } from "@/lib/concurrency";
 import { enrichListingContact } from "@/server/etl/contact-enrichment";
@@ -23,21 +24,37 @@ const concurrency = concurrencyArg
   ? Math.max(1, Math.min(10, Number(concurrencyArg.split("=")[1])))
   : 5;
 const force = args.includes("--force");
+// --missing-only: process just the Active listings that still lack BOTH agent
+// phone and email (no contact row, or a row with neither filled). Implies
+// force so a recent `*_miss` row is retried now instead of waiting out its
+// freshness window. This is the "fill the gaps" run — it never touches the
+// listings that already have a phone/email.
+const missingOnly = args.includes("--missing-only");
 
 async function main() {
-  if (!process.env.RENTCAST_API_KEY) {
-    console.error(
-      "[contacts] RENTCAST_API_KEY missing. Sign up at https://www.rentcast.io/api and set it in .env.",
-    );
-    process.exit(1);
-  }
+  const providers = [
+    "bridge (raw)",
+    process.env.OPENAI_API_KEY && process.env.TAVILY_API_KEY ? "agent_llm" : null,
+    process.env.APOLLO_API_KEY ? "apollo" : null,
+  ].filter(Boolean);
+  console.log(`[contacts] providers active: ${providers.join(", ")}`);
 
-  // Active listings only — there's no point spending RentCast credits on
-  // sold/expired records the user can't act on.
-  const where = { status: "Active" as const };
+  // Active listings only — there's no point spending LLM/Apollo credits on
+  // sold/expired records the user can't act on. In --missing-only mode we
+  // further restrict to listings with no usable agent phone/email yet.
+  const where: Prisma.ListingWhereInput = missingOnly
+    ? {
+        status: "Active",
+        OR: [
+          { contact: { is: null } },
+          { contact: { is: { agentPhone: null, agentEmail: null } } },
+        ],
+      }
+    : { status: "Active" };
+  const effectiveForce = force || missingOnly;
   const total = await db.listing.count({ where });
   console.log(
-    `[contacts] candidates: ${total}${limit ? ` (limited to ${limit})` : ""}${force ? " (force)" : ""} concurrency=${concurrency}`,
+    `[contacts] candidates: ${total}${limit ? ` (limited to ${limit})` : ""}${missingOnly ? " (missing-only)" : ""}${effectiveForce ? " (force)" : ""} concurrency=${concurrency}`,
   );
 
   let processed = 0;
@@ -62,13 +79,14 @@ async function main() {
         city: true,
         state: true,
         postalCode: true,
+        raw: true,
       },
     });
     if (batch.length === 0) break;
 
     const started = Date.now();
     const results = await mapWithConcurrency(batch, concurrency, (l) =>
-      enrichListingContact(l, { force }),
+      enrichListingContact(l, { force: effectiveForce }),
     );
 
     for (const settled of results) {

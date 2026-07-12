@@ -45,6 +45,14 @@ const schema = z.object({
     .url()
     .default("https://api.rentcast.io/v1"),
 
+  // Apollo — last resort in the contact-enrichment chain (Bridge → LLM agent →
+  // Apollo). People-Match lookups by agent name + brokerage return the agent's
+  // email; phone reveal is credit-gated + async (webhook) so we run email-only.
+  // Optional: when the key is missing the Apollo step short-circuits to null and
+  // the chain simply stops one source earlier.
+  APOLLO_API_KEY: z.string().optional().or(z.literal("")),
+  APOLLO_BASE_URL: z.string().url().default("https://api.apollo.io/api/v1"),
+
   // Gmail integration — per-user OAuth via NextAuth Google provider.
   // Tokens land in the existing Account table. Used for creating
   // rent-roll request drafts and polling agent replies.

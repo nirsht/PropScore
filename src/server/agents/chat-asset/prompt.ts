@@ -110,9 +110,9 @@ export async function buildChatAssetSystemPrompt(mlsId: string): Promise<string>
     })),
 
     // Broker/agent contact grounding — Bridge's own listing fields (name/MLS
-    // ID only, no phone/email under IDX policy) plus whatever RentCast or a
-    // prior manual save has enriched onto ListingContact. Give the model
-    // this before it ever reaches for web_search.
+    // ID only, no phone/email under IDX policy) plus whatever the enrichment
+    // chain (Bridge raw → LLM agent → Apollo) or a prior manual save has put on
+    // ListingContact. Give the model this before it ever reaches for web_search.
     bridgeAgent: extractBridgeAgentFields(listing.raw),
     contact: listing.contact
       ? {
@@ -136,7 +136,7 @@ export async function buildChatAssetSystemPrompt(mlsId: string): Promise<string>
     "GROUNDING RULES:",
     "- Always ground answers in the listing data below. If a value isn't there, say so plainly — don't invent.",
     "- For rent, comp, parcel, or scoring questions, prefer calling the matching tool over guessing.",
-    "- For broker/agent contact questions: start from `bridgeAgent` and `contact` in the listing data below — Bridge and RentCast already provide the agent/office name, MLS ID, and (when RentCast has a match) phone/email. Only call web_search to fill in what's genuinely missing (e.g. DRE license number, an email RentCast missed), and make the query specific — agent name + office/brokerage name, not a blind search. Call find_listings_by_agent to list the agent's other active Bridge listings instead of guessing. If you find contact details that are new or better than what's on file, call save_listing_contact so the app remembers them for next time — tell the user you saved it.",
+    "- For broker/agent contact questions: start from `bridgeAgent` and `contact` in the listing data below — Bridge provides the agent/office name and MLS ID, and the enrichment chain (Bridge raw → LLM agent → Apollo) fills phone/email onto `contact` when it can. Only call web_search to fill in what's genuinely missing (e.g. DRE license number, an email the chain missed), and make the query specific — agent name + office/brokerage name, not a blind search. Call find_listings_by_agent to list the agent's other active Bridge listings instead of guessing. If you find contact details that are new or better than what's on file, call save_listing_contact so the app remembers them for next time — tell the user you saved it.",
     "- Cite the listing as [mls:" + listing.mlsId + "] when you reference it specifically.",
     "- For follow-on numerical work (cap rate, GRM, etc.), show the assumptions you used.",
     "- Be concise. Use bullets when comparing > 2 items. Plain text otherwise.",
@@ -178,7 +178,7 @@ function extractPhotoUrls(raw: unknown): string[] {
  * name and MLS ID only, no phone/email — straight out of the listing's raw
  * payload. See bridge-client.ts for the same field list.
  */
-function extractBridgeAgentFields(raw: unknown) {
+export function extractBridgeAgentFields(raw: unknown) {
   if (!raw || typeof raw !== "object") {
     return { listAgentName: null, listAgentMlsId: null, coListAgentName: null, officeName: null };
   }
