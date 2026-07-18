@@ -65,7 +65,7 @@ Output schema fields:
    rationale: one short clause anchoring the post-reno number (e.g. "renovated SF/Mission 2BR pulls $5,000–$5,400 in 2026").
    Set to null only when both rentRoll and unitMix are null.
 
-5. totalMonthlyRent — sum of rentRoll rents, OR an explicit total stated in the remarks (e.g. "gross monthly rent $14,200"). Otherwise null.
+5. totalMonthlyRent — the building's gross in-place rent: sum of rentRoll rents across ALL units (residential AND commercial), OR an explicit total stated in the remarks (e.g. "gross monthly rent $14,200"). Otherwise null.
 
 6. occupancy — float 0..1 describing how leased the property is RIGHT NOW.
    Set 1.0 when remarks say so directly:
