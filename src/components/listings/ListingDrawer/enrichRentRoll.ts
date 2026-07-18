@@ -22,6 +22,9 @@ type Row = {
   moveInDate: string | null;
   sourceIndex: number;
   isGrouped: boolean;
+  // Retail/office/market space. We render it as a "Commercial" row and skip
+  // residential market/reno estimates for it (no residential comp applies).
+  isCommercial: boolean;
 };
 
 export type EnrichedRow = Row & {
@@ -69,6 +72,7 @@ export function enrichRentRoll(args: {
         moveInDate: r.moveInDate ?? null,
         sourceIndex: i,
         isGrouped: false,
+        isCommercial: r.kind === "commercial",
       }))
     : (unitMix ?? []).map((u, i) => ({
         weight: u.count,
@@ -80,9 +84,14 @@ export function enrichRentRoll(args: {
         moveInDate: null,
         sourceIndex: i,
         isGrouped: true,
+        isCommercial: u.kind === "commercial",
       }));
 
   const enriched: EnrichedRow[] = rows.map((row) => {
+    // Commercial space has no residential comp — leave market/reno blank.
+    if (row.isCommercial) {
+      return { ...row, market: null, postReno: null };
+    }
     const matchKey = {
       beds: row.beds,
       baths: row.baths,
@@ -131,6 +140,11 @@ export function enrichRentRoll(args: {
     return { ...row, market, postReno };
   });
 
+  // Current rent is gross — it includes any commercial row's actual rent, since
+  // that's real in-place income. Market/reno upside, however, is residential-
+  // only (we don't estimate commercial rent), so the market/reno totals and the
+  // upside baseline both exclude commercial rows. With no commercial row present
+  // `residential === enriched`, so this is a no-op for the common case.
   const currentTotal = (() => {
     if (rentRoll?.length) {
       const sum = enriched.reduce((s, r) => s + (r.actualRent ?? 0), 0);
@@ -138,22 +152,29 @@ export function enrichRentRoll(args: {
     }
     return extractedTotalMonthlyRent ?? null;
   })();
+  const residential = enriched.filter((r) => !r.isCommercial);
   const marketTotal =
-    enriched.length > 0 && enriched.every((r) => r.market != null)
-      ? enriched.reduce((s, r) => s + r.market!.rent * r.weight, 0)
+    residential.length > 0 && residential.every((r) => r.market != null)
+      ? residential.reduce((s, r) => s + r.market!.rent * r.weight, 0)
       : null;
   const renoTotal =
-    enriched.length > 0 && enriched.every((r) => r.postReno != null)
-      ? enriched.reduce((s, r) => s + r.postReno!.rent * r.weight, 0)
+    residential.length > 0 && residential.every((r) => r.postReno != null)
+      ? residential.reduce((s, r) => s + r.postReno!.rent * r.weight, 0)
       : null;
 
+  // Upside baseline = residential in-place rent only (matches marketTotal's
+  // residential scope). Falls back to gross currentTotal when no per-unit
+  // residential rents are itemized.
+  const residentialCurrentTotal = rentRoll?.length
+    ? residential.reduce((s, r) => s + (r.actualRent ?? 0), 0)
+    : (currentTotal ?? 0);
   const monthlyUpside =
-    currentTotal != null && marketTotal != null
-      ? Math.round(marketTotal - currentTotal)
+    marketTotal != null && residentialCurrentTotal > 0
+      ? Math.round(marketTotal - residentialCurrentTotal)
       : null;
   const upsidePercent =
-    monthlyUpside != null && currentTotal != null && currentTotal > 0
-      ? Math.round((monthlyUpside / currentTotal) * 100)
+    monthlyUpside != null && residentialCurrentTotal > 0
+      ? Math.round((monthlyUpside / residentialCurrentTotal) * 100)
       : null;
   const compsBased = enriched.some((r) => r.market?.source === "comps");
   const totalUnitCount = rows.reduce((s, r) => s + r.weight, 0);

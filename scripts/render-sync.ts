@@ -13,7 +13,10 @@
  * Optional in `.env`:
  *   - NEXT_PUBLIC_MAP_STYLE_URL  (web-only)
  *   - WALKSCORE_API_KEY          (web + daily cron)
- *   - TAVILY_API_KEY             (web-only — chat search)
+ *   - TAVILY_API_KEY             (web + LLM cron — chat search AND the
+ *                                 contact-finder web_search step in enrich:contacts)
+ *   - APOLLO_API_KEY             (LLM cron — Apollo People-Match, last resort
+ *                                 in the contact-enrichment chain)
  *   - RENTCAST_API_KEY           (web + daily cron — paused)
  *   - GOOGLE_CLIENT_ID/SECRET    (web + LLM cron — Gmail integration)
  *
@@ -186,9 +189,14 @@ async function main() {
   const OPENAI_API_KEY = envOrDie("OPENAI_API_KEY");
   const NEXT_PUBLIC_MAP_STYLE_URL = envOptional("NEXT_PUBLIC_MAP_STYLE_URL");
   const WALKSCORE_API_KEY = envOptional("WALKSCORE_API_KEY");
-  // Chat — optional. The web_search tool errors explicitly when invoked
-  // without a key; the rest of chat works regardless.
+  // Chat + contact enrichment — optional. Powers the web_search tool: chat's
+  // ad-hoc search on the web service, and the contact-finder step (step 2 of
+  // the Bridge → LLM agent → Apollo chain) in the LLM cron. When absent,
+  // findContactViaAgent() short-circuits and that step no-ops.
   const TAVILY_API_KEY = envOptional("TAVILY_API_KEY");
+  // Apollo People-Match — last resort (step 3) in the contact-enrichment
+  // chain, LLM cron only. When absent, apollo-client no-ops.
+  const APOLLO_API_KEY = envOptional("APOLLO_API_KEY");
   // Listing-agent contact enrichment. Optional: when missing,
   // contact-enrichment.ts no-ops and the drawer's "Listed by" / Brokerage
   // rows render empty (Bridge `sfar` IDX feed strips contact fields).
@@ -240,8 +248,12 @@ async function main() {
     },
     CRON_DAILY_NAME,
   );
-  // LLM cron: vision/extract/ai-score/emails-poll. Needs Gmail OAuth
-  // creds for the emails-poll stage.
+  // LLM cron: vision/extract/ai-score/emails-poll + enrich:contacts. Needs
+  // Gmail OAuth creds for the emails-poll stage, and TAVILY_API_KEY +
+  // APOLLO_API_KEY for the contact-enrichment chain's LLM-agent and Apollo
+  // steps (without them the chain collapses to Bridge-only, and Bridge `sfar`
+  // strips agent phone/email under IDX — so every listing resolves to
+  // contact_miss).
   await setEnvVars(
     cronLlmId,
     {
@@ -249,6 +261,8 @@ async function main() {
       NEXTAUTH_SECRET,
       BRIDGE_SERVER_TOKEN,
       OPENAI_API_KEY,
+      ...(TAVILY_API_KEY ? { TAVILY_API_KEY } : {}),
+      ...(APOLLO_API_KEY ? { APOLLO_API_KEY } : {}),
       ...(GOOGLE_CLIENT_ID ? { GOOGLE_CLIENT_ID } : {}),
       ...(GOOGLE_CLIENT_SECRET ? { GOOGLE_CLIENT_SECRET } : {}),
     },

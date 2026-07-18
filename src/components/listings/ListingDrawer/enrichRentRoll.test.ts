@@ -213,3 +213,78 @@ describe("enrichRentRoll unitMix vs rentRoll null distinction", () => {
     expect(result.rows[1]!.actualRent).toBe(2000);
   });
 });
+
+describe("enrichRentRoll commercial units", () => {
+  it("labels a commercial row, skips its residential estimate, and keeps residential totals", () => {
+    // 33-Precita-shaped: two 2BR/1BA residential flats + one ground-floor
+    // commercial market. Only the residential units get a market estimate.
+    const rentRoll: RentRollEntryUI[] = [
+      { rent: 2800, beds: 2, baths: 1, sqft: null, unitLabel: "Upper flat" },
+      { rent: 2600, beds: 2, baths: 1, sqft: null, unitLabel: "Lower flat" },
+      {
+        rent: 3500,
+        beds: null,
+        baths: null,
+        sqft: null,
+        unitLabel: "Storefront",
+        kind: "commercial",
+      },
+    ];
+    const aiRentEstimate: RentEstimateEntryUI[] = [
+      { beds: 2, baths: 1, estimatedRent: 3800, rationale: "ai" },
+      { beds: 2, baths: 1, estimatedRent: 3800, rationale: "ai" },
+    ];
+
+    const result = enrichRentRoll({
+      ...baseArgs,
+      rentRoll,
+      aiRentEstimate,
+      postRenoEstimate: null,
+      compsOutput: null,
+    });
+
+    // Commercial row is flagged and gets no residential market estimate.
+    expect(result.enriched[2]!.isCommercial).toBe(true);
+    expect(result.enriched[2]!.market).toBeNull();
+    // The two residential units still resolve a market estimate — the
+    // commercial row must not null out the whole market column.
+    expect(result.enriched[0]!.market!.rent).toBe(3800);
+    expect(result.marketTotal).toBe(7600);
+    // Current total is gross (includes the $3,500 commercial rent)…
+    expect(result.currentTotal).toBe(2800 + 2600 + 3500);
+    // …but upside is residential-only: 7600 market − 5400 residential current.
+    expect(result.monthlyUpside).toBe(7600 - 5400);
+    // All three units count toward the building's unit total.
+    expect(result.totalUnitCount).toBe(3);
+  });
+});
+
+describe("enrichRentRoll unitMix commercial", () => {
+  it("flags a commercial unitMix entry and gives it no residential estimate", () => {
+    const unitMix: UnitMixEntryUI[] = [
+      { count: 2, beds: 2, baths: 1, kind: "residential" },
+      { count: 1, beds: null, baths: null, kind: "commercial" },
+    ];
+    const aiRentEstimate: RentEstimateEntryUI[] = [
+      { beds: 2, baths: 1, estimatedRent: 3800, rationale: "ai" },
+    ];
+
+    const result = enrichRentRoll({
+      rentRoll: null,
+      unitMix,
+      aiRentEstimate,
+      postRenoEstimate: null,
+      compsOutput: null,
+      extractedTotalMonthlyRent: null,
+    });
+
+    // Residential unitMix row keeps its estimate; commercial row is flagged
+    // and blank. Both are grouped (unitMix-derived).
+    expect(result.enriched[0]!.isCommercial).toBe(false);
+    expect(result.enriched[0]!.market!.rent).toBe(3800);
+    expect(result.enriched[1]!.isCommercial).toBe(true);
+    expect(result.enriched[1]!.market).toBeNull();
+    // Building unit count still includes the commercial unit (2 + 1).
+    expect(result.totalUnitCount).toBe(3);
+  });
+});

@@ -20,7 +20,14 @@ export function vacancyScore(
   }
 
   const remarks = String(l.raw.PublicRemarks ?? "").toLowerCase();
-  let s = 40;
+  // Default to a low (occupied-leaning) base. Vacancy materially raises a
+  // multifamily asset's value — an empty building can be renovated/repositioned
+  // and re-leased at market — so a listing agent stresses it when it exists
+  // ("delivered vacant", "tenant-free"). Silence therefore means occupied: if
+  // neither the remarks nor the photos flag vacancy, assume tenants are in
+  // place and keep the score low. Explicit vacancy language (VACANT_RE, +45)
+  // is what lifts a listing back into the vacant band.
+  let s = 20;
 
   // Strong VACANT signal: clear current/at-close vacancy. Bare "vacant"
   // intentionally excluded — it matched past-tense / photo-context mentions
@@ -35,7 +42,7 @@ export function vacancyScore(
   const VALUE_ADD_RE =
     /\b(rental upside|below[- ]market rents?|under[- ]market rents?|below market rents?|value[- ]add|upside in rents?|rent (growth )?upside|rent[- ]controlled tenants?)\b/;
 
-  if (VACANT_RE.test(remarks)) s += 30;
+  if (VACANT_RE.test(remarks)) s += 45;
   if (OCCUPIED_RE.test(remarks)) s -= 25;
   if (VALUE_ADD_RE.test(remarks)) s -= 15;
 

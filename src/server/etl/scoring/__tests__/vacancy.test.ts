@@ -51,7 +51,17 @@ describe("vacancyScore heuristic", () => {
     const score = vacancyScore(
       baseListing({ raw: { PublicRemarks: remarks }, daysOnMls: 30 }),
     );
-    // 40 baseline − 15 (value-add) = 25.
+    // 20 occupied-leaning baseline − 15 (value-add) = 5.
+    expect(score).toBeLessThanOrEqual(25);
+  });
+
+  it("defaults to a low (occupied-leaning) score when nothing signals vacancy", () => {
+    // No occupancy field, no vacant/occupied/value-add language, fresh DOM.
+    // A listing agent stresses vacancy when it exists (it adds value), so
+    // silence means occupied — keep the score low rather than middling.
+    const remarks =
+      "Two spacious 2BR/1BA residential units plus a ground-floor commercial space leased to a long-time neighborhood market. Great Bernal-adjacent location.";
+    const score = vacancyScore(baseListing({ raw: { PublicRemarks: remarks } }));
     expect(score).toBeLessThanOrEqual(25);
   });
 

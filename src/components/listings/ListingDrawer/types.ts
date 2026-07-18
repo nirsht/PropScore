@@ -91,6 +91,9 @@ export type RentRollEntryUI = {
   rent: number | null;
   beds: number | null;
   baths: number | null;
+  // "commercial" flags a retail/office/market space. Absent/undefined =
+  // residential (rows extracted before this field existed have no value).
+  kind?: "residential" | "commercial";
   sqft?: number | null;
   unitLabel?: string | null;
   moveInDate?: string | null;
@@ -100,6 +103,7 @@ export type UnitMixEntryUI = {
   count: number;
   beds: number | null;
   baths: number | null;
+  kind?: "residential" | "commercial";
 };
 
 export type RentEstimateEntryUI = {

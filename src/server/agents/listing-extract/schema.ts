@@ -4,12 +4,21 @@ export const ListingExtractInput = z.object({
   mlsId: z.string(),
 });
 
+// Residential vs commercial space. A mixed-use building (e.g. two flats over a
+// ground-floor market) has both. `kind` is optional for backward-compat: rows
+// extracted before this field existed have no value, and consumers MUST treat
+// a missing/undefined `kind` as "residential" — only an explicit "commercial"
+// flags a retail/office/market space.
+export const UnitKind = z.enum(["residential", "commercial"]);
+
 export const UnitMixEntry = z.object({
   count: z.number().int().positive(),
   // beds/baths nullable: remarks like "5 unit building" don't always specify
   // per-unit bed/bath counts. The agent emits null rather than guessing.
+  // Commercial spaces have no beds/baths — leave both null and set kind.
   beds: z.number().int().min(0).nullable(),
   baths: z.number().min(0).nullable(),
+  kind: UnitKind.optional(),
 });
 
 export const RentRollEntry = z.object({
@@ -29,6 +38,10 @@ export const RentRollEntry = z.object({
   // "04/15/2025", "MTM", "Vacant"); the UI parses for display/age.
   // Drives buyout assessment in rent-controlled markets.
   moveInDate: z.string().max(40).nullable().optional(),
+  // "commercial" flags a retail/office/market row so the UI can label it a
+  // "commercial unit" and the rent estimator can skip it (no residential
+  // comp applies). Absent/undefined = residential. See UnitKind.
+  kind: UnitKind.optional(),
 });
 
 // AI-estimated market-rate rent for one unit. Emitted alongside `unitMix`
@@ -108,6 +121,7 @@ export const ListingExtractOutput = z.object({
 
 export type ListingExtractInput = z.infer<typeof ListingExtractInput>;
 export type ListingExtractOutput = z.infer<typeof ListingExtractOutput>;
+export type UnitKind = z.infer<typeof UnitKind>;
 export type UnitMixEntry = z.infer<typeof UnitMixEntry>;
 export type RentRollEntry = z.infer<typeof RentRollEntry>;
 export type RentEstimateEntry = z.infer<typeof RentEstimateEntry>;

@@ -4,17 +4,25 @@ Be precise and conservative — only emit fields you can ground in the text. Use
 
 Output schema fields:
 
-1. unitMix — array of {count, beds, baths} when remarks describe the unit composition.
+1. unitMix — array of {count, beds, baths, kind} when remarks describe the unit composition.
    beds and baths may each be null when not specified. count must always be a positive integer.
+   kind is "residential" or "commercial" — set it on EVERY entry. Default "residential".
+   Mark an entry "commercial" when it's a retail/office/store/restaurant/market
+   space, a "ground-floor commercial unit", a "storefront", or otherwise not a
+   dwelling. Commercial entries have beds:null and baths:null.
    Examples that MUST be parsed:
      "one 2bd-1ba, two 2bd-2ba, four 3bd-2ba, and two 4bd-2ba"
-       → [{count:1,beds:2,baths:1},{count:2,beds:2,baths:2},{count:4,beds:3,baths:2},{count:2,beds:4,baths:2}]
+       → [{count:1,beds:2,baths:1,kind:"residential"},{count:2,beds:2,baths:2,kind:"residential"},{count:4,beds:3,baths:2,kind:"residential"},{count:2,beds:4,baths:2,kind:"residential"}]
      "(2) 1BR/1BA + (3) 2BR/1BA"
-       → [{count:2,beds:1,baths:1},{count:3,beds:2,baths:1}]
+       → [{count:2,beds:1,baths:1,kind:"residential"},{count:3,beds:2,baths:1,kind:"residential"}]
+     "two 2BR/1BA residential units and one ground-floor commercial space leased to a market"
+       → [{count:2,beds:2,baths:1,kind:"residential"},{count:1,beds:null,baths:null,kind:"commercial"}]
+       (the commercial space IS a unit — include it, don't drop it, and don't
+        count it as residential)
      "5 unit building, mix of 1BR and 2BR" (no per-line counts)
        → null   (count is unknown for each entry — don't fabricate)
      "8 unit building" (no beds/baths)
-       → [{count:8,beds:null,baths:null}]   (we know count but nothing else)
+       → [{count:8,beds:null,baths:null,kind:"residential"}]   (we know count but nothing else)
      If only total beds/baths are given (e.g. "8 bed, 4 bath"), set unitMix to null.
 
    unitMixEvidence — when unitMix is non-null, copy the EXACT substring of the
@@ -26,7 +34,10 @@ Output schema fields:
      (total 5 beds/3 baths not split by unit)..."  →  unitMixEvidence:
      {sourceQuote: "Two-unit property that lives like an SFR (total 5 beds/3 baths not split by unit)", sourceField: "publicRemarks"}
 
-2. rentRoll — array of {rent, beds, baths, sqft?, unitLabel?, moveInDate?} when actual rents are listed PER UNIT.
+2. rentRoll — array of {rent, beds, baths, kind, sqft?, unitLabel?, moveInDate?} when actual rents are listed PER UNIT.
+   Set kind ("residential" | "commercial") on every row, same rule as unitMix — a
+   ground-floor store/retail/office/market row is "commercial" (keep its rent;
+   leave beds/baths null unless stated). Default "residential".
    Tabular form to parse:
      "current rent  unit type
       1,284         3bd/2ba
@@ -43,13 +54,14 @@ Output schema fields:
      moveInDate — verbatim move-in / lease-start text when the row lists it ("12/1/1992", "04/15/2025", "Vacant", "MTM", "2021"). Drives buyout assessment for rent-controlled tenancies — longer tenancies are harder/more expensive to buy out. Null when absent.
 
 3. aiRentEstimate — array of {beds, baths, estimatedRent, rationale, sqft?, unitLabel?} estimating CURRENT market-rate monthly rent in the unit's CURRENT condition (no renovation assumed).
-   When rentRoll is non-empty: emit ONE entry per rentRoll entry, in the SAME order. Mirror sqft and unitLabel from the matching rentRoll entry so the consumer can match by index. This lets two same-(beds,baths) units of different sizes get distinct estimates.
-   When rentRoll is empty but unitMix is non-empty: emit one entry per unitMix entry; sqft/unitLabel may be null.
+   RESIDENTIAL UNITS ONLY — skip any commercial (kind:"commercial") entry; a residential rent comp does not apply to retail/office space, so estimating it would be misleading. Do not emit a placeholder for it.
+   When rentRoll is non-empty: emit ONE entry per RESIDENTIAL rentRoll entry, in the SAME order (skip commercial rows). Mirror sqft and unitLabel from the matching rentRoll entry so the consumer can match by index. This lets two same-(beds,baths) units of different sizes get distinct estimates.
+   When rentRoll is empty but unitMix is non-empty: emit one entry per RESIDENTIAL unitMix entry; sqft/unitLabel may be null.
    Use the supplied city, address (neighborhood), bed/bath count, sqft (when present), and your knowledge of that local market in 2026 to ground a single dollar figure. Round to the nearest $50. When sqft is known, scale the estimate appropriately — a 1,200 sf 2BR pulls more than a 700 sf 2BR in the same neighborhood.
    rationale: one short clause ≤ 25 words anchoring the estimate (e.g. "SF/Mission 2BR ~$3,800 base; +$300 for 1,100 sf vs neighborhood median 750 sf").
    Set to null only when both rentRoll and unitMix are null.
 
-4. postRenovationRentEstimate — same shape and rules as aiRentEstimate, but estimating market rent AFTER a moderate cosmetic renovation: kitchen/bath refresh, fresh paint, modernized fixtures (not a gut remodel). MUST be strictly higher than the matching aiRentEstimate entry by at least 5% — a moderate cosmetic remodel realistically lifts rent 5–20% in SF/Bay Area markets. Use top-of-market comps for renovated units in the same neighborhood. Round to the nearest $50. Mirror sqft/unitLabel from the matching aiRentEstimate entry.
+4. postRenovationRentEstimate — same shape and rules as aiRentEstimate (RESIDENTIAL UNITS ONLY — skip commercial entries), but estimating market rent AFTER a moderate cosmetic renovation: kitchen/bath refresh, fresh paint, modernized fixtures (not a gut remodel). MUST be strictly higher than the matching aiRentEstimate entry by at least 5% — a moderate cosmetic remodel realistically lifts rent 5–20% in SF/Bay Area markets. Use top-of-market comps for renovated units in the same neighborhood. Round to the nearest $50. Mirror sqft/unitLabel from the matching aiRentEstimate entry.
    rationale: one short clause anchoring the post-reno number (e.g. "renovated SF/Mission 2BR pulls $5,000–$5,400 in 2026").
    Set to null only when both rentRoll and unitMix are null.
 
