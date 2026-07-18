@@ -1,4 +1,5 @@
-import type { RenovationLevel } from "@prisma/client";
+import type { DealStatus, RenovationLevel } from "@prisma/client";
+import type { ChipColor } from "@/components/common/MultiSelectFilter";
 import type { useFilter } from "../filterStore";
 
 export const RENO_OPTIONS: Array<{
@@ -12,12 +13,37 @@ export const RENO_OPTIONS: Array<{
   { value: "RENOVATED", label: "Renovated", color: "success" },
 ];
 
+/**
+ * Deal-workspace pipeline statuses, in pipeline order. Shared by the filter
+ * multi-select, the grid's inline status dropdown, and the drawer selector so
+ * the label + color for each stage is defined once.
+ */
+export const STATUS_OPTIONS: Array<{
+  value: DealStatus;
+  label: string;
+  color: ChipColor;
+}> = [
+  { value: "NEW", label: "New", color: "info" },
+  { value: "IN_REVIEW", label: "In review", color: "warning" },
+  { value: "SUBMIT_OFFER", label: "Submit offer", color: "success" },
+  { value: "PASS", label: "Pass", color: "default" },
+];
+
+export const STATUS_OPTION_BY_VALUE: Record<
+  DealStatus,
+  (typeof STATUS_OPTIONS)[number]
+> = Object.fromEntries(STATUS_OPTIONS.map((o) => [o.value, o])) as Record<
+  DealStatus,
+  (typeof STATUS_OPTIONS)[number]
+>;
+
 export function countActive(s: ReturnType<typeof useFilter>["state"]): number {
   let n = 0;
   if (s.q) n++;
   if (s.city?.length) n++;
   if (s.propertyTypes?.length) n++;
   if (s.renovationLevel?.length) n++;
+  if (s.dealStatus?.length) n++;
   for (const k of [
     "price",
     "pricePerSqft",

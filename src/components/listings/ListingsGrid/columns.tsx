@@ -3,6 +3,7 @@ import type { ListingRow } from "@/server/api/listings-search";
 import {
   addressColumn,
   daysOnMlsColumn,
+  dealStatusColumn,
   listingUpdatedAtColumn,
   postDateColumn,
   priceColumn,
@@ -33,6 +34,7 @@ export { FIELD_TO_SORT_KEY, SORT_KEY_TO_FIELD } from "./columnSortMapping";
 
 export const columns: GridColDef<ListingRow>[] = [
   starredColumn,
+  dealStatusColumn,
   valueAddColumn,
   aiValueAddColumn,
   addressColumn,

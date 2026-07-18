@@ -24,6 +24,7 @@ import { MeasureLotModal } from "./MeasureLotModal";
 import { AIInsightsCard } from "./ListingDrawer/AIInsightsCard";
 import { DocumentsSection } from "./ListingDrawer/DocumentsSection";
 import { BuildingDetailsCard } from "./ListingDrawer/BuildingDetailsCard";
+import { DealWorkspaceCard } from "./ListingDrawer/DealWorkspaceCard";
 import { GisToolsSection } from "./ListingDrawer/GisToolsSection";
 import { HeaderAndContacts } from "./ListingDrawer/HeaderAndContacts";
 import { LotAndExtrasCard } from "./ListingDrawer/LotAndExtrasCard";
@@ -48,6 +49,10 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
   const photosQuery = trpc.listings.getPhotos.useQuery(
     { mlsId: mlsId ?? "" },
     { enabled: open, staleTime: 5 * 60_000 },
+  );
+  const reviewQuery = trpc.listingReviews.get.useQuery(
+    { mlsId: mlsId ?? "" },
+    { enabled: open },
   );
   const utils = trpc.useUtils();
   const refreshPhotos = React.useCallback(() => {
@@ -83,7 +88,8 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
     .filter(Boolean)
     .join(", ");
 
-  const contact = useListingContact(listing?.contact, raw);
+  const review = reviewQuery.data ?? null;
+  const contact = useListingContact(listing?.contact, raw, review);
 
   return (
     <Drawer
@@ -182,8 +188,21 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
             address={address}
             contact={contact}
             contactFetchedAt={listing.contact?.fetchedAt ?? null}
+            review={
+              review
+                ? {
+                    agentName: review.agentName,
+                    agentEmail: review.agentEmail,
+                    agentPhone: review.agentPhone,
+                    officeName: review.officeName,
+                  }
+                : null
+            }
             onClose={onClose}
           />
+
+          {/* Deal workspace — pipeline status + review notes. */}
+          <DealWorkspaceCard mlsId={listing.mlsId} />
 
           {/* Building Details — 3-column MLS / Assessor / AI grid. */}
           <BuildingDetailsCard listing={listing} />

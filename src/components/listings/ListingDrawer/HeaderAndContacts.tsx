@@ -10,6 +10,7 @@ import {
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import { StarCell } from "../ListingsGrid/gridCells";
 import { ContactCard } from "./ContactCard";
+import { ContactOverrideEditor } from "./ContactOverrideEditor";
 import { DataFreshness } from "./DataFreshness";
 import { Metric } from "./Metric";
 import { deriveRatio, fmtDate, fmtMoney } from "./formatters";
@@ -36,17 +37,27 @@ type ListingLike = {
   auctionDate?: Date | string | null;
 };
 
+export type ContactOverrideFields = {
+  agentName: string | null;
+  agentEmail: string | null;
+  agentPhone: string | null;
+  officeName: string | null;
+} | null;
+
 export function HeaderAndContacts({
   listing,
   address,
   contact,
   contactFetchedAt,
+  review,
   onClose,
 }: {
   listing: ListingLike;
   address: string;
   contact: ListingContactFields;
   contactFetchedAt: Date | string | null;
+  /** Manual contact overrides from the ListingReview row (edit-form prefill). */
+  review: ContactOverrideFields;
   onClose: () => void;
 }) {
   const {
@@ -142,6 +153,17 @@ export function HeaderAndContacts({
               <Divider />
             </>
           )}
+          <ContactOverrideEditor
+            mlsId={listing.mlsId}
+            review={review}
+            resolved={{
+              agentName,
+              agentEmail,
+              agentPhone,
+              officeName,
+            }}
+          />
+          <Divider />
           <Stack
             direction="row"
             spacing={2.5}

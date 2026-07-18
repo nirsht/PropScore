@@ -83,6 +83,23 @@ export function buildWhere(
     }
   }
 
+  // Deal-workspace status filter (multi-select). A listing matches if its
+  // ListingReview row carries one of the selected statuses. Because a missing
+  // review row means NEW, selecting NEW additionally pulls in listings that
+  // have no review row at all.
+  if (input.dealStatus?.length) {
+    const statuses = input.dealStatus;
+    const clauses: Prisma.Sql[] = [
+      Prisma.sql`"mlsId" IN (SELECT "listingMlsId" FROM "ListingReview" WHERE "dealStatus" = ANY(${statuses}::"DealStatus"[]))`,
+    ];
+    if (statuses.includes("NEW")) {
+      clauses.push(
+        Prisma.sql`"mlsId" NOT IN (SELECT "listingMlsId" FROM "ListingReview")`,
+      );
+    }
+    where.push(Prisma.sql`(${Prisma.join(clauses, " OR ")})`);
+  }
+
   // Hide offboarded listings unless the caller explicitly opts in. The MV
   // exposes `deletedAt` as a column so this is a plain column predicate;
   // the partial index `mv_listing_search_deletedAt_null_idx` covers the

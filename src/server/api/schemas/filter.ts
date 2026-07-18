@@ -16,6 +16,17 @@ export const RenovationLevelSchema = z.enum([
 ]);
 export type RenovationLevelFilter = z.infer<typeof RenovationLevelSchema>;
 
+// Deal-workspace pipeline status (see prisma DealStatus). Mirrored as a plain
+// zod enum (rather than z.nativeEnum) so the filter schema stays free of a
+// Prisma import and the string values match the DB enum labels 1:1.
+export const DealStatusSchema = z.enum([
+  "NEW",
+  "IN_REVIEW",
+  "SUBMIT_OFFER",
+  "PASS",
+]);
+export type DealStatusFilter = z.infer<typeof DealStatusSchema>;
+
 export const SortKey = z.enum([
   "valueAdd",
   "price",
@@ -93,6 +104,11 @@ export const FilterInput = z.object({
   // Per-user favorites filter. When true, restricts to listings the current
   // user has starred (joined against StarredListing in the SQL builder).
   starredOnly: z.boolean().optional(),
+
+  // Deal-workspace pipeline status (multi-select, any match). Listings with no
+  // ListingReview row count as NEW, so selecting NEW also surfaces untouched
+  // listings (handled in the SQL builder). Empty/undefined = all statuses.
+  dealStatus: z.array(DealStatusSchema).optional(),
 
   // Offboarded visibility. Default behavior (false / undefined) hides
   // listings whose ListingKey is no longer in Bridge (soft-deleted by the

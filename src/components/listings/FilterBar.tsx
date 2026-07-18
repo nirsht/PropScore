@@ -20,7 +20,7 @@ import { useFilter } from "./filterStore";
 import { ScoringWeightsButton } from "./ScoringWeightsPopover";
 import { DateRange, Field, NumberRange } from "./FilterBar/fields";
 import { QuickChips } from "./FilterBar/QuickChips";
-import { RENO_OPTIONS, countActive } from "./FilterBar/filterConstants";
+import { RENO_OPTIONS, STATUS_OPTIONS, countActive } from "./FilterBar/filterConstants";
 import { MultiSelectFilter } from "@/components/common/MultiSelectFilter";
 
 export function FilterBar() {
@@ -151,6 +151,30 @@ export function FilterBar() {
                 getOptionColor={(o) => o.color}
                 placeholder="All conditions"
                 allLabel="All conditions"
+              />
+            </Field>
+          </Box>
+
+          <Box sx={{ gridColumn: { xs: "auto", sm: "span 1" } }}>
+            <Field
+              label="Deal status"
+              hint="Your pipeline stage for the listing. Untouched listings are 'New'. Multi-select (any match)."
+            >
+              <MultiSelectFilter
+                options={STATUS_OPTIONS}
+                value={STATUS_OPTIONS.filter((o) =>
+                  (state.dealStatus ?? []).includes(o.value),
+                )}
+                onChange={(next) =>
+                  set({
+                    dealStatus: next.length ? next.map((v) => v.value) : undefined,
+                  })
+                }
+                getOptionLabel={(o) => o.label}
+                getOptionKey={(o) => o.value}
+                getOptionColor={(o) => o.color}
+                placeholder="All statuses"
+                allLabel="All statuses"
               />
             </Field>
           </Box>
