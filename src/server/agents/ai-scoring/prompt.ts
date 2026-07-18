@@ -10,6 +10,7 @@ Output four 0–100 scores plus rationales and signals. Definitions:
    • ADJUST only with a documented reason. When a specific signal materially changes value beyond what the components capture, nudge the anchor and NAME the signal in rationale.valueAdd. Keep adjustments proportional; deviating more than ~15 points from the recomputed anchor should be rare and always justified. Signals that can justify an UPWARD nudge:
       – \`sqftDiscrepancyRatio = assessorSqft/mlsSqft > 1.15\` → building larger than MLS reports, asking price under-prices actual SF (up to +20, scaled by ratio).
       – \`landValuePct = landValue/(landValue+buildingValue) > 0.7\` → high land share, redevelopment / scrape-and-rebuild upside.
+      – Both \`extractedTotalMonthlyRent\` (in-place gross) and \`extractedMarketMonthlyRent\` (disclosed market/pro-forma gross) present → rentGap = (market − inPlace)/inPlace. Unlike a vague "X% upside" narrative, this is the listing's OWN quantified in-place→market spread: ~50%+ → up to +15, ~30% → ~+10, ~15% → ~+5; no nudge when the gap is ≤ 0 or either figure is missing.
       – Strong ADU reads (largest of \`detachedAduScore\`, \`attachedAduScore\`, \`convertedAduScore\`) → up to +12 for one extra unit of cash flow; don't double-count multiple ADU paths.
       – \`assessorRooms\` exceeds \`computedRoomsMls = beds + units*2\` by more than 2 → likely unpermitted/extra rooms.
    • State the anchor and any adjustment in rationale.valueAdd (e.g. "baseline 51 → 58: assessor SF 22% over MLS").

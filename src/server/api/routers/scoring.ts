@@ -71,6 +71,8 @@ export const scoringRouter = router({
         if (!normalized) continue;
         const score = computeHeuristicScore(normalized, {
           locationScore: l.locationScore,
+          extractedTotalMonthlyRent: l.extractedTotalMonthlyRent,
+          extractedMarketMonthlyRent: l.extractedMarketMonthlyRent,
           detachedAduScore: l.detachedAduScore,
           attachedAduScore: l.attachedAduScore,
           convertedAduScore: l.convertedAduScore,

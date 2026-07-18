@@ -50,6 +50,10 @@ export type AIScoringSlim = {
   extractedUnitMix: unknown;
   extractedRentRoll: unknown;
   extractedTotalMonthlyRent: number | null;
+  /** Disclosed market/pro-forma gross rent, monthly. Paired with
+   *  extractedTotalMonthlyRent, this is the listing's own in-place→market
+   *  rent-upside story (e.g. $22,083/mo in-place → $40,833/mo market). */
+  extractedMarketMonthlyRent: number | null;
   extractedOccupancy: number | null;
   recentCapex: unknown;
   detachedAduScore: number | null;
@@ -155,6 +159,7 @@ export function buildAIScoringInput(listing: AIScoringListing): AIScoringSlim {
     extractedUnitMix: listing.extractedUnitMix,
     extractedRentRoll: listing.extractedRentRoll,
     extractedTotalMonthlyRent: listing.extractedTotalMonthlyRent,
+    extractedMarketMonthlyRent: listing.extractedMarketMonthlyRent,
     extractedOccupancy: listing.extractedOccupancy,
     recentCapex: listing.recentCapex,
     detachedAduScore: listing.detachedAduScore,
