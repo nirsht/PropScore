@@ -17,7 +17,8 @@ import ReplayRoundedIcon from "@mui/icons-material/ReplayRounded";
 import { trpc } from "@/lib/trpc/client";
 
 type RentRollEntryUI = {
-  rent: number;
+  // null when the unit is vacant — the parser keeps the row and nulls the rent.
+  rent: number | null;
   beds: number | null;
   baths: number | null;
   sqft?: number | null;
@@ -191,7 +192,7 @@ export function ThreadDetail({ threadId }: { threadId: string }) {
           >
             Parsed rent roll · {parsedRoll.length} units · $
             {parsedRoll
-              .reduce((s, r) => s + r.rent, 0)
+              .reduce((s, r) => s + (r.rent ?? 0), 0)
               .toLocaleString()}{" "}
             / mo
           </Typography>
@@ -231,7 +232,7 @@ export function ThreadDetail({ threadId }: { threadId: string }) {
                     <Box component="td">{r.baths ?? "—"}</Box>
                     <Box component="td">{r.sqft ?? "—"}</Box>
                     <Box component="td" sx={{ textAlign: "right !important" }}>
-                      ${r.rent.toLocaleString()}
+                      {r.rent != null ? `$${r.rent.toLocaleString()}` : "Vacant"}
                     </Box>
                   </Box>
                 ))}
