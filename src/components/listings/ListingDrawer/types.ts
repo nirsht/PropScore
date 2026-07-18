@@ -68,6 +68,11 @@ export type ListingForAI = {
   aiRentEstimate: unknown;
   postRenovationRentEstimate: unknown;
   extractedTotalMonthlyRent: number | null;
+  /** Disclosed aggregate MARKET / pro-forma gross rent, monthly (annual figures
+   *  in the remarks are converted to monthly at extraction). Pairs with
+   *  extractedTotalMonthlyRent (in-place) to show the disclosed upside story
+   *  in RentRollSection when the building isn't itemized per unit. */
+  extractedMarketMonthlyRent: number | null;
   extractedOccupancy: number | null;
   recentCapex: unknown;
   detachedAduScore: number | null;

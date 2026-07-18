@@ -93,20 +93,49 @@ export function RentRollSection({ listing }: { listing: ListingForAI }) {
 
   const hasUnits = !!rentRoll?.length || !!unitMix?.length;
 
-  // No unit-level data — fall back to a one-line gross/occupancy summary.
+  // Disclosed building-level income story: in-place vs market gross rent as
+  // stated in the remarks (e.g. "$265K/yr in-place → $490K/yr market"), both
+  // already normalized to monthly at extraction. This is the listing agent's
+  // own upside number — preferred over the coarse per-unit AI estimate when
+  // present. Null unless both sides are disclosed and market exceeds in-place.
+  const inPlaceMonthly = listing.extractedTotalMonthlyRent;
+  const marketMonthly = listing.extractedMarketMonthlyRent;
+  const disclosedUpside =
+    inPlaceMonthly != null &&
+    marketMonthly != null &&
+    marketMonthly > inPlaceMonthly
+      ? {
+          monthly: marketMonthly - inPlaceMonthly,
+          percent: Math.round(
+            ((marketMonthly - inPlaceMonthly) / inPlaceMonthly) * 100,
+          ),
+        }
+      : null;
+
+  // No unit-level data — fall back to a one-line gross/market/occupancy summary.
   if (!hasUnits) {
     if (
-      listing.extractedTotalMonthlyRent == null &&
+      inPlaceMonthly == null &&
+      marketMonthly == null &&
       listing.extractedOccupancy == null
     ) {
       return null;
     }
     return (
       <Stack direction="row" spacing={3} sx={{ mb: 1.5 }}>
-        {listing.extractedTotalMonthlyRent != null && (
+        {inPlaceMonthly != null && (
+          <Metric label="Gross monthly rent" value={fmtMoney(inPlaceMonthly)} />
+        )}
+        {marketMonthly != null && (
           <Metric
-            label="Gross monthly rent"
-            value={fmtMoney(listing.extractedTotalMonthlyRent)}
+            label="Market rent (disclosed)"
+            value={fmtMoney(marketMonthly)}
+          />
+        )}
+        {disclosedUpside != null && (
+          <Metric
+            label="Upside"
+            value={`+$${disclosedUpside.monthly.toLocaleString()}/mo · +${disclosedUpside.percent}%`}
           />
         )}
         {listing.extractedOccupancy != null && (
@@ -205,21 +234,37 @@ export function RentRollSection({ listing }: { listing: ListingForAI }) {
             totalMonthlyRent={listing.extractedTotalMonthlyRent}
           />
         ) : null}
-        {monthlyUpside != null && monthlyUpside > 0 && (
+        {disclosedUpside != null ? (
           <Tooltip
             arrow
             placement="top"
-            title="Monthly upside = market rent total − current rent total. Source: SFAR closed-lease comps when available, AI estimate as fallback."
+            title={`Disclosed in the listing remarks: ${fmtMoney(inPlaceMonthly!)}/mo in-place vs ${fmtMoney(marketMonthly!)}/mo market. This is the listing's stated upside, not a per-unit AI estimate.`}
           >
             <Chip
               size="small"
               color="success"
-              label={`+$${monthlyUpside.toLocaleString()}/mo${
-                upsidePercent != null ? ` · +${upsidePercent}%` : ""
-              }`}
+              label={`+$${disclosedUpside.monthly.toLocaleString()}/mo · +${disclosedUpside.percent}% (disclosed)`}
               sx={{ height: 20, cursor: "help" }}
             />
           </Tooltip>
+        ) : (
+          monthlyUpside != null &&
+          monthlyUpside > 0 && (
+            <Tooltip
+              arrow
+              placement="top"
+              title="Monthly upside = market rent total − current rent total. Source: SFAR closed-lease comps when available, AI estimate as fallback."
+            >
+              <Chip
+                size="small"
+                color="success"
+                label={`+$${monthlyUpside.toLocaleString()}/mo${
+                  upsidePercent != null ? ` · +${upsidePercent}%` : ""
+                }`}
+                sx={{ height: 20, cursor: "help" }}
+              />
+            </Tooltip>
+          )
         )}
         <Box sx={{ flex: 1 }} />
         <DataFreshness updatedAt={listing.extractFetchedAt} label="Extract" />
