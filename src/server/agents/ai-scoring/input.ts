@@ -1,9 +1,26 @@
 import { createHash } from "node:crypto";
 import type { Listing, Score } from "@prisma/client";
+import {
+  VALUE_ADD_WEIGHTS,
+  weightedValueAdd,
+  type WeightedComponents,
+} from "@/server/etl/scoring/valueAdd";
 
 export type AIScoringListing = Listing & { score: Score | null };
 
+/**
+ * Bump when the scoring prompt or its input contract changes in a way that
+ * should invalidate every cached `Score.aiInputHash` and trigger a one-shot
+ * full re-score on the next nightly. It's the ONE field allowed to churn the
+ * hash without a raw-data change.
+ *   v2 — anchor `valueAddWeightedAvg` to the weighted `baselineValueAdd`
+ *        instead of free-scoring the composite (2026-07-18).
+ */
+export const AI_SCORING_INPUT_VERSION = 2;
+
 export type AIScoringSlim = {
+  /** Scoring-contract version — participates in the hash so a bump re-scores all. */
+  scoringVersion: number;
   mlsId: string;
   address: string | null;
   city: string | null;
@@ -44,6 +61,21 @@ export type AIScoringSlim = {
   occupancy: number | null;
   publicRemarks: string | null;
   previousScore: unknown;
+  /** The canonical component weights the composite must respect. */
+  valueAddWeights: typeof VALUE_ADD_WEIGHTS;
+  /**
+   * Current per-component heuristic scores. The AI re-scores density /
+   * vacancy / motivation; location / rehab / adu have no AI counterpart and
+   * are carried through unchanged into the composite baseline.
+   */
+  heuristicComponents: WeightedComponents;
+  /**
+   * Weighted average of `heuristicComponents` under `valueAddWeights` — the
+   * default the AI anchors its `valueAddWeightedAvg` to (after substituting
+   * its own density / vacancy / motivation reads). Null before any heuristic
+   * score exists.
+   */
+  baselineValueAdd: number | null;
 };
 
 /**
@@ -76,7 +108,22 @@ export function buildAIScoringInput(listing: AIScoringListing): AIScoringSlim {
   const publicRemarks =
     (listing.raw as { PublicRemarks?: string } | null)?.PublicRemarks ?? null;
 
+  const s = listing.score;
+  const heuristicComponents: WeightedComponents = {
+    vacancyScore: s?.vacancyScore ?? null,
+    locationScore: s?.locationScore ?? null,
+    densityScore: s?.densityScore ?? null,
+    rehabScore: s?.rehabScore ?? null,
+    aduScore: s?.aduScore ?? null,
+    motivationScore: s?.motivationScore ?? null,
+  };
+  const hasAnyComponent = Object.values(heuristicComponents).some((v) => v != null);
+  const baselineValueAdd = hasAnyComponent
+    ? Math.round(weightedValueAdd(heuristicComponents) * 10) / 10
+    : null;
+
   return {
+    scoringVersion: AI_SCORING_INPUT_VERSION,
     mlsId: listing.mlsId,
     address: listing.address,
     city: listing.city,
@@ -119,6 +166,9 @@ export function buildAIScoringInput(listing: AIScoringListing): AIScoringSlim {
     occupancy: listing.occupancy,
     publicRemarks,
     previousScore: listing.score,
+    valueAddWeights: VALUE_ADD_WEIGHTS,
+    heuristicComponents,
+    baselineValueAdd,
   };
 }
 
@@ -136,11 +186,21 @@ function stableStringify(value: unknown): string {
 }
 
 /**
- * Stable sha256 of the slim payload — used as `Score.aiInputHash`. Drop
- * `previousScore` from the hash since it reflects the agent's own prior
- * write and would force a re-score every time the agent runs.
+ * Stable sha256 of the slim payload — used as `Score.aiInputHash`. Drop the
+ * heuristic-derived fields (`previousScore`, `heuristicComponents`,
+ * `baselineValueAdd`, and the constant `valueAddWeights`) from the hash:
+ * they reflect the nightly heuristic recompute / the agent's own prior write
+ * and would force a re-score on every heuristic drift. The underlying raw
+ * inputs (occupancy, remarks, ADU reads, …) already capture every change
+ * that should trigger a fresh AI score.
  */
 export function hashAIScoringInput(slim: AIScoringSlim): string {
-  const { previousScore: _previousScore, ...rest } = slim;
+  const {
+    previousScore: _previousScore,
+    heuristicComponents: _heuristicComponents,
+    baselineValueAdd: _baselineValueAdd,
+    valueAddWeights: _valueAddWeights,
+    ...rest
+  } = slim;
   return createHash("sha256").update(stableStringify(rest)).digest("hex");
 }
