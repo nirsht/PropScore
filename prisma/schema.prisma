@@ -32,6 +32,7 @@ model User {
   starredListings StarredListing[]
   emailThreads    EmailThread[]
   listingDocuments ListingDocument[]
+  listingReviews  ListingReview[]
 }
 
 model Account {
@@ -317,6 +318,7 @@ model Listing {
   enrichments   AIEnrichment[]
   conversations ChatConversation[]
   contact       ListingContact?
+  review        ListingReview?
   starredBy     StarredListing[]
   emailThreads  EmailThread[]
   documents     ListingDocument[]
@@ -631,6 +633,45 @@ model StarredListing {
 
   @@id([userId, listingMlsId])
   @@index([userId, createdAt(sort: Desc)])
+}
+
+// -------------------- DEAL WORKSPACE --------------------
+
+/// Pipeline stage the user assigns to a listing as they work it. Absence of a
+/// ListingReview row is treated as NEW everywhere (the default), so rows are
+/// only created once the user first touches a listing.
+enum DealStatus {
+  NEW
+  IN_REVIEW
+  SUBMIT_OFFER
+  PASS
+}
+
+/// One shared review row per listing (keyed on the listing, not the user) —
+/// this is a single-desk deal tracker, so status/notes/contact-corrections
+/// belong to the deal itself rather than to each viewer. Holds the pipeline
+/// `dealStatus`, free-text `note`, and manual contact overrides that WIN over
+/// the Bridge/ListingContact values in the drawer (see useListingContact).
+model ListingReview {
+  listingMlsId String     @id
+  listing      Listing    @relation(fields: [listingMlsId], references: [mlsId], onDelete: Cascade)
+  dealStatus   DealStatus @default(NEW)
+  note         String?
+
+  // Manual contact corrections. Any non-null field overrides the resolved
+  // Bridge/enrichment contact for display + the rent-roll email draft. Lets
+  // the user drop in an agent email Bridge never carried, or fix a stale one.
+  agentName  String?
+  agentEmail String?
+  agentPhone String?
+  officeName String?
+
+  updatedByUserId String?
+  updatedBy       User?   @relation(fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([dealStatus])
 }
 
 // -------------------- CHAT --------------------

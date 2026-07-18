@@ -31,23 +31,37 @@ export type ListingContactFields = {
  * RentCast doesn't expose a co-listing-agent field. Co-agent contact stays
  * Bridge-only until/unless we upgrade to a VOW feed.
  */
+/** Manual corrections from the deal-workspace ListingReview row. Any non-null
+ *  field wins over the resolved Bridge/enrichment value below. */
+export type ContactOverride = {
+  agentName?: string | null;
+  agentEmail?: string | null;
+  agentPhone?: string | null;
+  officeName?: string | null;
+};
+
 export function useListingContact(
   contact: Contact | null | undefined,
   raw: Record<string, unknown>,
+  override?: ContactOverride | null,
 ): ListingContactFields {
   return {
-    agentName: contact?.agentName ?? strField(raw.ListAgentFullName),
+    agentName:
+      override?.agentName ?? contact?.agentName ?? strField(raw.ListAgentFullName),
     agentPhone:
+      override?.agentPhone ??
       contact?.agentPhone ??
       strField(raw.ListAgentDirectPhone) ??
       strField(raw.ListAgentOfficePhone),
-    agentEmail: contact?.agentEmail ?? strField(raw.ListAgentEmail),
+    agentEmail:
+      override?.agentEmail ?? contact?.agentEmail ?? strField(raw.ListAgentEmail),
 
     coAgentName: strField(raw.CoListAgentFullName),
     coAgentPhone: strField(raw.CoListAgentDirectPhone),
     coAgentEmail: strField(raw.CoListAgentEmail),
 
-    officeName: contact?.officeName ?? strField(raw.ListOfficeName),
+    officeName:
+      override?.officeName ?? contact?.officeName ?? strField(raw.ListOfficeName),
     officePhone: contact?.officePhone ?? strField(raw.ListOfficePhone),
     officeEmail: contact?.officeEmail ?? null,
   };

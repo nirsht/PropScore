@@ -2,7 +2,7 @@ import { Tooltip } from "@mui/material";
 import { type GridColDef } from "@mui/x-data-grid";
 import type { ListingRow } from "@/server/api/listings-search";
 import { fmtMoney } from "../gridFormatters";
-import { FallbackCell, HeaderTooltip, StarCell } from "../gridCells";
+import { FallbackCell, HeaderTooltip, StarCell, StatusCell } from "../gridCells";
 
 export const starredColumn: GridColDef<ListingRow> = {
   field: "__starred",
@@ -12,6 +12,22 @@ export const starredColumn: GridColDef<ListingRow> = {
   filterable: false,
   disableColumnMenu: true,
   renderCell: ({ row }) => <StarCell mlsId={row.mlsId} />,
+};
+
+export const dealStatusColumn: GridColDef<ListingRow> = {
+  field: "__dealStatus",
+  headerName: "Status",
+  width: 130,
+  sortable: false,
+  filterable: false,
+  disableColumnMenu: true,
+  renderHeader: () => (
+    <HeaderTooltip
+      label="Status"
+      hint="Your pipeline stage for this listing. Click to change. Untouched listings are 'New'."
+    />
+  ),
+  renderCell: ({ row }) => <StatusCell mlsId={row.mlsId} />,
 };
 
 export const addressColumn: GridColDef<ListingRow> = {

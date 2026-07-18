@@ -1,7 +1,18 @@
 "use client";
 
 import { Chip, Stack } from "@mui/material";
+import type { DealStatus } from "@prisma/client";
 import { useFilter } from "../filterStore";
+
+/** Order-independent set equality for two DealStatus arrays. */
+function sameStatusSet(a: DealStatus[] | undefined, b: DealStatus[]): boolean {
+  if (!a || a.length !== b.length) return false;
+  const set = new Set(a);
+  return b.every((s) => set.has(s));
+}
+
+// "Hide passed" preset = every status except PASS.
+const NOT_PASSED: DealStatus[] = ["NEW", "IN_REVIEW", "SUBMIT_OFFER"];
 
 export function QuickChips() {
   const { state, set } = useFilter();
@@ -107,6 +118,28 @@ export function QuickChips() {
               : undefined;
         set({ softStoryRedFlag: next });
       },
+    },
+    {
+      key: "status-new",
+      label: "New only",
+      active: sameStatusSet(state.dealStatus, ["NEW"]),
+      apply: () =>
+        set({
+          dealStatus: sameStatusSet(state.dealStatus, ["NEW"])
+            ? undefined
+            : ["NEW"],
+        }),
+    },
+    {
+      key: "status-hide-passed",
+      label: "Hide passed",
+      active: sameStatusSet(state.dealStatus, NOT_PASSED),
+      apply: () =>
+        set({
+          dealStatus: sameStatusSet(state.dealStatus, NOT_PASSED)
+            ? undefined
+            : [...NOT_PASSED],
+        }),
     },
     {
       key: "starred-only",

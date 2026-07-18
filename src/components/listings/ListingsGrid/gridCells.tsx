@@ -1,11 +1,27 @@
 "use client";
 
-import { Box, IconButton, Stack, Tooltip, Typography } from "@mui/material";
+import * as React from "react";
+import {
+  Box,
+  Chip,
+  IconButton,
+  Menu,
+  MenuItem,
+  Stack,
+  Tooltip,
+  Typography,
+} from "@mui/material";
+import ArrowDropDownRoundedIcon from "@mui/icons-material/ArrowDropDownRounded";
 import HelpOutlineRoundedIcon from "@mui/icons-material/HelpOutlineRounded";
 import StarRounded from "@mui/icons-material/StarRounded";
 import StarBorderRounded from "@mui/icons-material/StarBorderRounded";
+import type { DealStatus } from "@prisma/client";
 import { trpc } from "@/lib/trpc/client";
 import { getDiscrepancyTone } from "@/lib/diff";
+import {
+  STATUS_OPTIONS,
+  STATUS_OPTION_BY_VALUE,
+} from "../FilterBar/filterConstants";
 
 export function HeaderTooltip({ label, hint }: { label: string; hint: string }) {
   return (
@@ -144,5 +160,90 @@ export function StarCell({ mlsId }: { mlsId: string }) {
         )}
       </IconButton>
     </Tooltip>
+  );
+}
+
+/**
+ * Inline deal-status dropdown. Reads the shared review map from a single
+ * cached query (listings absent from the map are NEW) and writes via an
+ * optimistic mutation, invalidating the listing search so an active status
+ * filter re-runs. Rendered as a compact colored chip that opens a menu;
+ * stops click propagation so changing status doesn't also open the drawer.
+ */
+export function StatusCell({ mlsId }: { mlsId: string }) {
+  const utils = trpc.useUtils();
+  const reviewsQuery = trpc.listingReviews.list.useQuery(undefined, {
+    staleTime: 60_000,
+  });
+  const status: DealStatus = reviewsQuery.data?.[mlsId] ?? "NEW";
+  const opt = STATUS_OPTION_BY_VALUE[status];
+  const [anchor, setAnchor] = React.useState<null | HTMLElement>(null);
+
+  const setStatus = trpc.listingReviews.setStatus.useMutation({
+    onMutate: async ({ status: next }) => {
+      await utils.listingReviews.list.cancel();
+      const prev = utils.listingReviews.list.getData();
+      utils.listingReviews.list.setData(undefined, {
+        ...(prev ?? {}),
+        [mlsId]: next,
+      });
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) utils.listingReviews.list.setData(undefined, ctx.prev);
+    },
+    onSettled: () => {
+      utils.listingReviews.list.invalidate();
+      utils.listingReviews.get.invalidate({ mlsId });
+      utils.listings.search.invalidate();
+      utils.listings.count.invalidate();
+    },
+  });
+
+  return (
+    <>
+      <Chip
+        size="small"
+        label={opt.label}
+        color={opt.color !== "default" ? opt.color : undefined}
+        variant={opt.color !== "default" ? "filled" : "outlined"}
+        deleteIcon={<ArrowDropDownRoundedIcon />}
+        onDelete={(e) => {
+          e.stopPropagation();
+          setAnchor(e.currentTarget.parentElement as HTMLElement);
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          setAnchor(e.currentTarget);
+        }}
+        sx={{ cursor: "pointer", fontWeight: 500, maxWidth: "100%" }}
+      />
+      <Menu
+        anchorEl={anchor}
+        open={!!anchor}
+        onClose={() => setAnchor(null)}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {STATUS_OPTIONS.map((o) => (
+          <MenuItem
+            key={o.value}
+            selected={o.value === status}
+            onClick={(e) => {
+              e.stopPropagation();
+              setAnchor(null);
+              if (o.value !== status) setStatus.mutate({ mlsId, status: o.value });
+            }}
+          >
+            <Chip
+              size="small"
+              label={o.label}
+              color={o.color !== "default" ? o.color : undefined}
+              variant={o.color !== "default" ? "filled" : "outlined"}
+              sx={{ pointerEvents: "none" }}
+            />
+          </MenuItem>
+        ))}
+      </Menu>
+    </>
   );
 }
