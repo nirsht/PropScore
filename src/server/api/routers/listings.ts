@@ -105,6 +105,8 @@ export const listingsRouter = router({
             assessedValueTotal,
             extractedOccupancy: listing.extractedOccupancy,
             extractedUnitsTotal,
+            extractedTotalMonthlyRent: listing.extractedTotalMonthlyRent,
+            extractedMarketMonthlyRent: listing.extractedMarketMonthlyRent,
             detachedAduScore: listing.detachedAduScore,
             attachedAduScore: listing.attachedAduScore,
             convertedAduScore: listing.convertedAduScore,

@@ -39,6 +39,9 @@ type Props = {
   // Zoning inputs
   zoningDistrict: string | null;
   zoningMaxUnits: number | null;
+  // Rental upside inputs — disclosed in-place vs market gross rent (monthly).
+  inPlaceMonthlyRent: number | null;
+  marketMonthlyRent: number | null;
 };
 
 function tierColor(score: number): "error" | "warning" | "success" {
@@ -61,7 +64,19 @@ export function MarketUpsideCard(props: Props) {
     compsUpdatedAt,
     zoningDistrict,
     zoningMaxUnits,
+    inPlaceMonthlyRent,
+    marketMonthlyRent,
   } = props;
+
+  const rentGapPct =
+    inPlaceMonthlyRent != null &&
+    inPlaceMonthlyRent > 0 &&
+    marketMonthlyRent != null &&
+    marketMonthlyRent > inPlaceMonthlyRent
+      ? Math.round(
+          ((marketMonthlyRent - inPlaceMonthlyRent) / inPlaceMonthlyRent) * 100,
+        )
+      : null;
 
   const assessedTotal =
     (assessorBuildingValue ?? 0) + (assessorLandValue ?? 0) || null;
@@ -114,7 +129,7 @@ export function MarketUpsideCard(props: Props) {
         <Tooltip
           arrow
           placement="top"
-          title="Combined signal: how far the parcel's assessed value sits below neighborhood comps, and how many more units the lot's base zoning would allow. Computed but not yet folded into the value-add weighted average — surfacing only."
+          title="Combined signal: how far the parcel's assessed value sits below neighborhood comps, how many more units the lot's base zoning would allow, and the listing's disclosed in-place→market rent spread. Computed but not yet folded into the value-add weighted average — surfacing only."
         >
           <HelpOutlineRoundedIcon
             sx={{ fontSize: 16, opacity: 0.55, cursor: "help" }}
@@ -208,6 +223,41 @@ export function MarketUpsideCard(props: Props) {
                 Base zoning only — state-law overlays (SB-9, AB-2011, density
                 bonuses) not applied.
               </Typography>
+            </>
+          )}
+        </Row>
+
+        <Row
+          label="Rental upside"
+          empty={
+            inPlaceMonthlyRent == null || marketMonthlyRent == null
+              ? "Listing doesn't disclose both in-place and market rent."
+              : rentGapPct == null
+                ? "Disclosed market rent doesn't exceed in-place rent."
+                : null
+          }
+        >
+          {rentGapPct != null && (
+            <>
+              <Stack direction="row" justifyContent="space-between">
+                <Typography variant="body2" color="text.secondary">
+                  In-place → market (mo)
+                </Typography>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {fmtMoney(inPlaceMonthlyRent!)} → {fmtMoney(marketMonthlyRent!)}
+                </Typography>
+              </Stack>
+              <Stack direction="row" justifyContent="space-between">
+                <Typography variant="body2" color="text.secondary">
+                  Disclosed upside
+                </Typography>
+                <Typography
+                  variant="body2"
+                  sx={{ fontWeight: 700, color: "success.main" }}
+                >
+                  +{rentGapPct}%
+                </Typography>
+              </Stack>
             </>
           )}
         </Row>

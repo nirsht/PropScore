@@ -38,6 +38,7 @@ function listing(overrides: Partial<AIScoringListing> = {}): AIScoringListing {
     extractedUnitMix: null,
     extractedRentRoll: null,
     extractedTotalMonthlyRent: null,
+    extractedMarketMonthlyRent: null,
     extractedOccupancy: null,
     recentCapex: null,
     detachedAduScore: null,
