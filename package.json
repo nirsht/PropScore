@@ -46,6 +46,7 @@
     "refresh:neighborhood-comps": "tsx -r ./scripts/load-env.cjs scripts/refresh-neighborhood-comps.ts",
     "backfill:rent-estimates": "tsx -r ./scripts/load-env.cjs scripts/backfill-rent-estimates.ts",
     "emails:poll": "tsx -r ./scripts/load-env.cjs scripts/poll-gmail-replies.ts",
+    "emails:cleanup-orphans": "tsx -r ./scripts/load-env.cjs scripts/cleanup-gmail-orphan-users.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
