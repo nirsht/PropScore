@@ -211,6 +211,7 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
               DataSF crime incidents (70%). Independent of the value-add
               opportunity scoring above. */}
           <LocationRatingCard
+            mlsId={listing.mlsId}
             walkScore={listing.walkScore ?? null}
             neighborhood={listing.neighborhood ?? null}
             neighborhoodScore={listing.neighborhoodRel?.crimeScore ?? null}

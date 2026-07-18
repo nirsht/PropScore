@@ -795,3 +795,27 @@ model ListingDocument {
   @@index([listingMlsId, createdAt(sort: Desc)])
   @@index([userId, createdAt(sort: Desc)])
 }
+
+/// User calibration of a location score at a physical point. Anchored to
+/// lat/lng — NOT an MLS id — because listings churn but the place persists.
+/// An exact calibration hard-overrides that address's location score; nearby
+/// listings within ~0.3mi get a distance-decaying nudge (see `blendCalibration`
+/// in src/server/etl/scoring/location.ts). `pointKey` is the rounded lat/lng
+/// (~1m) so re-calibrating the same spot upserts instead of duplicating. The
+/// PostGIS `geom` geography(Point,4326) column + GiST index are added by raw
+/// SQL migration and queried via $queryRaw (Prisma can't model PostGIS types).
+model LocationCalibration {
+  id              String   @id @default(cuid())
+  lat             Float
+  lng             Float
+  pointKey        String   @unique
+  calibratedScore Float
+  label           String?
+  listingMlsId    String?
+  note            String?
+  createdBy       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([listingMlsId])
+}

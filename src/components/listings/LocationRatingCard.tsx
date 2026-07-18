@@ -1,14 +1,31 @@
 "use client";
 
 import * as React from "react";
-import { Box, LinearProgress, Paper, Stack, Tooltip, Typography } from "@mui/material";
+import {
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  IconButton,
+  LinearProgress,
+  Paper,
+  Popover,
+  Stack,
+  TextField,
+  Tooltip,
+  Typography,
+} from "@mui/material";
 import HelpOutlineRoundedIcon from "@mui/icons-material/HelpOutlineRounded";
 import LocationOnRoundedIcon from "@mui/icons-material/LocationOnRounded";
 import DirectionsWalkRoundedIcon from "@mui/icons-material/DirectionsWalkRounded";
 import ShieldRoundedIcon from "@mui/icons-material/ShieldRounded";
+import TuneRoundedIcon from "@mui/icons-material/TuneRounded";
+import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 import { LOCATION_WEIGHTS, locationScore } from "@/server/etl/scoring/location";
+import { trpc } from "@/lib/trpc/client";
 
 type Props = {
+  mlsId: string;
   walkScore: number | null;
   neighborhood: string | null;
   neighborhoodScore: number | null;
@@ -29,6 +46,7 @@ function tierColor(score: number): "error" | "warning" | "success" {
 }
 
 export function LocationRatingCard({
+  mlsId,
   walkScore,
   neighborhood,
   neighborhoodScore,
@@ -41,6 +59,40 @@ export function LocationRatingCard({
 
   const unavailable = computed == null;
 
+  const utils = trpc.useUtils();
+  const calibration = trpc.scoring.getLocationCalibration.useQuery({ mlsId });
+  const exact = calibration.data?.exact ?? null;
+  const nearbyCount = calibration.data?.nearbyCount ?? 0;
+
+  const invalidate = React.useCallback(() => {
+    void utils.listings.getById.invalidate({ mlsId });
+    void utils.listings.search.invalidate();
+    void utils.scoring.getLocationCalibration.invalidate({ mlsId });
+  }, [utils, mlsId]);
+
+  const setCalibration = trpc.scoring.setLocationCalibration.useMutation({
+    onSuccess: () => {
+      invalidate();
+      setAnchorEl(null);
+    },
+  });
+  const clearCalibration = trpc.scoring.clearLocationCalibration.useMutation({
+    onSuccess: invalidate,
+  });
+
+  const [anchorEl, setAnchorEl] = React.useState<HTMLElement | null>(null);
+  const [scoreInput, setScoreInput] = React.useState("");
+  const [noteInput, setNoteInput] = React.useState("");
+
+  function openEditor(e: React.MouseEvent<HTMLElement>) {
+    setScoreInput(String(exact ? Math.round(exact.calibratedScore) : Math.round(computed ?? 50)));
+    setNoteInput(exact?.note ?? "");
+    setAnchorEl(e.currentTarget);
+  }
+
+  const parsedScore = Number(scoreInput);
+  const scoreValid = scoreInput.trim() !== "" && Number.isFinite(parsedScore) && parsedScore >= 0 && parsedScore <= 100;
+
   return (
     <Paper variant="outlined" sx={{ p: 2 }}>
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
@@ -51,9 +103,43 @@ export function LocationRatingCard({
           placement="top"
           title={`Total = ${Math.round(LOCATION_WEIGHTS.walk * 100)}% Walk Score + ${Math.round(
             LOCATION_WEIGHTS.neighborhood * 100,
-          )}% neighborhood safety. Safety is percentile-ranked across SF from DataSF crime incidents (last 12 months). When one input is missing, the other is used at 100%.`}
+          )}% neighborhood safety. Safety is percentile-ranked across SF from DataSF crime incidents (last 12 months). When one input is missing, the other is used at 100%. A manual calibration overrides this address's total and nudges nearby listings.`}
         >
           <HelpOutlineRoundedIcon sx={{ fontSize: 16, opacity: 0.55, cursor: "help" }} />
+        </Tooltip>
+
+        <Box sx={{ flex: 1 }} />
+
+        {exact ? (
+          <Chip
+            size="small"
+            color="info"
+            label={`Calibrated ${Math.round(exact.calibratedScore)}`}
+            onDelete={() => clearCalibration.mutate({ mlsId })}
+            disabled={clearCalibration.isPending}
+          />
+        ) : nearbyCount > 0 ? (
+          <Tooltip
+            arrow
+            placement="top"
+            title={`Adjusted by ${nearbyCount} nearby calibration${nearbyCount > 1 ? "s" : ""} (within ~0.3mi, fading with distance).`}
+          >
+            <Chip
+              size="small"
+              variant="outlined"
+              color="info"
+              icon={<AutoAwesomeRoundedIcon />}
+              label="Adjusted from nearby"
+            />
+          </Tooltip>
+        ) : null}
+
+        <Tooltip title="Calibrate this address's location score" arrow>
+          <span>
+            <IconButton size="small" onClick={openEditor}>
+              <TuneRoundedIcon fontSize="small" />
+            </IconButton>
+          </span>
         </Tooltip>
       </Stack>
 
@@ -83,9 +169,73 @@ export function LocationRatingCard({
               weightLabel={`${Math.round(LOCATION_WEIGHTS.neighborhood * 100)}%`}
               missingHint={neighborhood ? "Crime data not refreshed yet" : "Outside SF polygons"}
             />
+            {exact && (
+              <Typography variant="caption" color="text.secondary">
+                Total is a manual calibration; it overrides the walk/safety blend above.
+              </Typography>
+            )}
           </Stack>
         </Stack>
       )}
+
+      <Popover
+        open={!!anchorEl}
+        anchorEl={anchorEl}
+        onClose={() => setAnchorEl(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        transformOrigin={{ vertical: "top", horizontal: "right" }}
+      >
+        <Box sx={{ p: 2, width: 280 }}>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            Calibrate location score
+          </Typography>
+          <TextField
+            label="Score (0–100)"
+            type="number"
+            size="small"
+            fullWidth
+            value={scoreInput}
+            onChange={(e) => setScoreInput(e.target.value)}
+            inputProps={{ min: 0, max: 100 }}
+            error={scoreInput.trim() !== "" && !scoreValid}
+            sx={{ mb: 1.5 }}
+          />
+          <TextField
+            label="Note (optional)"
+            size="small"
+            fullWidth
+            multiline
+            minRows={2}
+            value={noteInput}
+            onChange={(e) => setNoteInput(e.target.value)}
+            sx={{ mb: 1.5 }}
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
+            Overrides this exact address and nudges nearby listings (within ~0.3mi) on their next
+            recompute.
+          </Typography>
+          <Stack direction="row" spacing={1} justifyContent="flex-end">
+            <Button size="small" onClick={() => setAnchorEl(null)}>
+              Cancel
+            </Button>
+            <Button
+              size="small"
+              variant="contained"
+              disabled={!scoreValid || setCalibration.isPending}
+              startIcon={setCalibration.isPending ? <CircularProgress size={14} /> : undefined}
+              onClick={() =>
+                setCalibration.mutate({
+                  mlsId,
+                  calibratedScore: parsedScore,
+                  note: noteInput.trim() || undefined,
+                })
+              }
+            >
+              Save
+            </Button>
+          </Stack>
+        </Box>
+      </Popover>
     </Paper>
   );
 }
