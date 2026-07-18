@@ -16,8 +16,10 @@ export const EmailRentRollOutput = z.object({
   totalMonthlyRent: z.number().nullable(),
   occupancy: z.number().min(0).max(1).nullable(),
   // One-sentence summary of what was found / why it was empty. Surfaced in
-  // EmailHistorySection so the user can audit a no-op parse.
-  rationale: z.string().min(1).max(400),
+  // EmailHistorySection so the user can audit a no-op parse. Cap is generous
+  // and the parser clamps the model's text to it (see runRentRollLlm) — a
+  // verbose rationale must never discard an otherwise-valid rent roll.
+  rationale: z.string().min(1).max(800),
 });
 export type EmailRentRollOutput = z.infer<typeof EmailRentRollOutput>;
 
@@ -51,9 +53,11 @@ Rules:
 - "moveInDate" — verbatim move-in / lease-start text when the row lists it
   ("12/1/1992", "04/15/2025", "Vacant", "MTM", "2021"). Drives buyout
   assessment for rent-controlled tenancies. Null when absent.
-- "totalMonthlyRent" — sum of rent across all rentRoll entries (residential),
-  treating null/vacant as 0. Round to a whole dollar.
-- "occupancy" — fraction in [0,1]. occupied_units / total_units.
+- "totalMonthlyRent" — the building's gross in-place rent: sum of "rent" across
+  ALL rentRoll entries, residential AND commercial, treating null/vacant as 0.
+  Round to a whole dollar.
+- "occupancy" — fraction in [0,1]. occupied_units / total_units (count the
+  commercial unit in both when it's leased).
 - If you cannot find a rent roll at all, return rentRoll=null and write a
   rationale explaining what you saw instead (e.g. "Agent declined to share").
 - NEVER fabricate rents. If a value is illegible, omit that field, not the row.
@@ -234,7 +238,7 @@ function buildResponseSchema(): Record<string, unknown> {
       },
       totalMonthlyRent: { anyOf: [{ type: "number" }, { type: "null" }] },
       occupancy: { anyOf: [{ type: "number" }, { type: "null" }] },
-      rationale: { type: "string" },
+      rationale: { type: "string", maxLength: 800 },
     },
     required: ["rentRoll", "totalMonthlyRent", "occupancy", "rationale"],
   };
@@ -274,6 +278,13 @@ export async function runRentRollLlm(args: {
   });
   const text = completion.choices[0]?.message?.content ?? "";
   const json = JSON.parse(text);
+  // Defensive clamp: the rationale is a human-readable note, but a verbose
+  // model occasionally overshoots the schema cap — and a rent roll is far too
+  // valuable to throw away over a long sentence. Trim to the schema max so a
+  // good parse always survives.
+  if (json && typeof json.rationale === "string" && json.rationale.length > 800) {
+    json.rationale = json.rationale.slice(0, 797).trimEnd() + "…";
+  }
   return EmailRentRollOutput.parse(json);
 }
 
