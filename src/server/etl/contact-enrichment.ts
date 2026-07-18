@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { lookupAgentContact } from "@/server/etl/apollo-client";
+import { fetchMember, type BridgeMember } from "@/server/etl/bridge-client";
 import {
   findContactViaAgent,
   type ContactGrounding,
@@ -10,11 +11,21 @@ import { extractBridgeAgentFields } from "@/server/agents/chat-asset/prompt";
  * Contact enrichment — resolves the listing agent's phone + email through an
  * ordered fallback chain, merging what each source can supply:
  *
- *   1. bridge     — phone/email already on the listing's synced Bridge `raw`
- *                   (free; `sfar` IDX usually strips these, a future VOW feed
- *                   would light them up).
- *   2. agent_llm  — headless LLM contact-finder (web_search + Bridge lookup).
- *   3. apollo     — Apollo People-Match by agent name + brokerage (email-only).
+ *   1. bridge        — phone/email already on the listing's synced Bridge `raw`
+ *                      Property payload (free; `sfar` IDX strips these, so this
+ *                      almost always yields names only).
+ *   2. bridge_member — the agent's own Bridge `/Member` record, looked up by
+ *                      the listing's agent id (ListAgentKey/ListAgentMlsId).
+ *                      Authoritative: the Member resource carries the real
+ *                      phone/email even under IDX, matched on id so there's no
+ *                      name-collision risk. Primary source for MLS agents.
+ *   3. apollo        — Apollo People-Match by agent name + brokerage
+ *                      (email-only; for agents not in the SFAR Member table).
+ *   4. agent_llm     — last-resort headless LLM contact-finder (web_search).
+ *                      Only runs when the id-keyed sources miss, and its result
+ *                      is rejected unless the name matches the listing agent —
+ *                      a web search for a common name must not attach a
+ *                      different same-named agent's phone.
  *
  * We advance to the next source only while the agent phone OR email is still
  * missing, and stop once both are filled. Fields any source found along the
@@ -28,7 +39,7 @@ const HIT_REFRESH_MS = 30 * 24 * 60 * 60 * 1000;
 const MISS_REFRESH_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** Source priority — also the display order in the joined `source` tag. */
-const SOURCE_ORDER = ["bridge", "agent_llm", "apollo"] as const;
+const SOURCE_ORDER = ["bridge", "bridge_member", "apollo", "agent_llm"] as const;
 type Source = (typeof SOURCE_ORDER)[number];
 
 export type EnrichResult =
@@ -135,6 +146,82 @@ function fromBridge(raw: unknown): Partial<ContactFields> {
   };
 }
 
+/** The listing agent's Bridge id(s), used to look up their Member record. */
+function bridgeAgentKeys(raw: unknown): {
+  memberKey: string | null;
+  memberMlsId: string | null;
+} {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  return {
+    memberKey: str(r.ListAgentKey),
+    memberMlsId: str(r.ListAgentMlsId),
+  };
+}
+
+/**
+ * Best contact phone off a Member record. Prefer a mobile/direct line, then
+ * the MLS "preferred" number, then the office line. The SFAR extension only
+ * applies to the office landline, so append it only when the chosen number is
+ * that office line.
+ */
+function memberPhone(m: BridgeMember): string | null {
+  const office = str(m.MemberOfficePhone);
+  const phone =
+    str(m.MemberMobilePhone) ??
+    str(m.MemberDirectPhone) ??
+    str(m.MemberPreferredPhone) ??
+    office;
+  if (!phone) return null;
+  const ext = str(m.SFAR_PhoneExtension);
+  return ext && phone === office ? `${phone} x${ext}` : phone;
+}
+
+/** Step 2 — map an authoritative Bridge Member record into contact fields. */
+function fromMember(m: BridgeMember): Partial<ContactFields> {
+  return {
+    agentName: str(m.MemberFullName),
+    agentPhone: memberPhone(m),
+    agentEmail: str(m.MemberEmail),
+    officeName: str(m.OfficeName),
+    officePhone: str(m.MemberOfficePhone),
+  };
+}
+
+/** Normalize a name for comparison: lowercase, drop punctuation, collapse ws. */
+function normName(n: string | null): string {
+  return (n ?? "")
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * True if `candidate` plausibly names the same person as the Bridge listing
+ * agent — same last name and same first initial. Guards the web/Apollo steps
+ * from attaching a *different* same-first-name agent's phone/email (the class
+ * of bug where "George Johnson" resolved to a prominent "George Limperis").
+ *
+ * Deliberately conservative: when we have no Bridge name to check against, or
+ * the candidate has no name, we can't verify and allow it (the id/grounding
+ * already scoped the lookup). A last-name or first-initial mismatch is a hard
+ * reject — better to fall through to the next source than persist a stranger.
+ */
+function nameMatchesAgent(
+  candidate: string | null,
+  agentName: string | null,
+): boolean {
+  const a = normName(agentName);
+  const c = normName(candidate);
+  if (!a || !c) return true;
+  const aParts = a.split(" ");
+  const cParts = c.split(" ");
+  const aLast = aParts[aParts.length - 1];
+  const cLast = cParts[cParts.length - 1];
+  if (aLast !== cLast) return false;
+  return (aParts[0]?.[0] ?? "") === (cParts[0]?.[0] ?? "");
+}
+
 export async function enrichListingContact(
   listing: ListingForEnrichment,
   opts: { force?: boolean } = {},
@@ -155,11 +242,56 @@ export async function enrichListingContact(
   const merged = emptyContact();
   const provenance: Record<string, Source> = {};
 
+  // The listing agent's name per Bridge — the identity the id-less fallback
+  // sources (Apollo, LLM) must match before we trust their phone/email.
+  const bridgeAgentName = str(
+    (listing.raw as Record<string, unknown> | null)?.ListAgentFullName,
+  );
+
   try {
-    // 1. Bridge (free — already-synced raw fields).
+    // 1. Bridge Property raw (free — already-synced fields; usually names only).
     fillFrom(merged, provenance, "bridge", fromBridge(listing.raw));
 
-    // 2. LLM contact-finder — only if we still lack phone or email.
+    // 2. Bridge Member — authoritative agent contact, keyed on the listing's
+    //    agent id, so there's no name-collision risk.
+    if (!hasBoth(merged)) {
+      const { memberKey, memberMlsId } = bridgeAgentKeys(listing.raw);
+      if (memberKey || memberMlsId) {
+        const member = await fetchMember({ memberKey, memberMlsId });
+        if (member) {
+          fillFrom(merged, provenance, "bridge_member", fromMember(member));
+        }
+      }
+    }
+
+    // 3. Apollo (email-only) — only if we still lack phone or email. Reject the
+    //    match when its name doesn't line up with the Bridge listing agent.
+    if (!hasBoth(merged)) {
+      const { firstName, lastName } = splitName(merged.agentName);
+      const apollo = await lookupAgentContact({
+        firstName,
+        lastName,
+        organizationName: merged.officeName,
+      });
+      if (apollo && nameMatchesAgent(apollo.agentName, bridgeAgentName)) {
+        fillFrom(merged, provenance, "apollo", {
+          agentName: apollo.agentName,
+          agentPhone: apollo.agentPhone,
+          agentEmail: apollo.agentEmail,
+          officeName: apollo.officeName,
+          officePhone: apollo.officePhone,
+        });
+      } else if (apollo) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[contacts] mlsId=${listing.mlsId} apollo name mismatch: "${apollo.agentName}" vs bridge "${bridgeAgentName}" — rejected`,
+        );
+      }
+    }
+
+    // 4. LLM contact-finder (last resort) — only when the id-keyed sources
+    //    missed. Same name guard: a web search for a common name must not
+    //    attach a different same-named agent's phone/email.
     if (!hasBoth(merged)) {
       const grounding: ContactGrounding = {
         mlsId: listing.mlsId,
@@ -177,7 +309,7 @@ export async function enrichListingContact(
         },
       };
       const llm = await findContactViaAgent(grounding);
-      if (llm) {
+      if (llm && nameMatchesAgent(str(llm.agentName), bridgeAgentName)) {
         fillFrom(merged, provenance, "agent_llm", {
           agentName: str(llm.agentName),
           agentPhone: str(llm.agentPhone),
@@ -186,25 +318,11 @@ export async function enrichListingContact(
           officePhone: str(llm.officePhone),
           officeEmail: str(llm.officeEmail),
         });
-      }
-    }
-
-    // 3. Apollo (email-only) — only if we still lack phone or email.
-    if (!hasBoth(merged)) {
-      const { firstName, lastName } = splitName(merged.agentName);
-      const apollo = await lookupAgentContact({
-        firstName,
-        lastName,
-        organizationName: merged.officeName,
-      });
-      if (apollo) {
-        fillFrom(merged, provenance, "apollo", {
-          agentName: apollo.agentName,
-          agentPhone: apollo.agentPhone,
-          agentEmail: apollo.agentEmail,
-          officeName: apollo.officeName,
-          officePhone: apollo.officePhone,
-        });
+      } else if (llm) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[contacts] mlsId=${listing.mlsId} agent_llm name mismatch: "${str(llm.agentName)}" vs bridge "${bridgeAgentName}" — rejected`,
+        );
       }
     }
   } catch (err) {

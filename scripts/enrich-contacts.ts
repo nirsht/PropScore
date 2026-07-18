@@ -1,9 +1,9 @@
 /**
  * Enrich every active SF Listing with the listing-agent + brokerage contact
- * details via the fallback chain in contact-enrichment.ts (Bridge → LLM agent
- * → Apollo). Each source self-skips when its key is missing, so no single key
- * is required to run. Idempotent + resumable: skips listings whose
- * ListingContact row is younger than the refresh window.
+ * details via the fallback chain in contact-enrichment.ts (Bridge Property →
+ * Bridge Member → Apollo → LLM agent). Each source self-skips when its key is
+ * missing, so no single key is required to run. Idempotent + resumable: skips
+ * listings whose ListingContact row is younger than the refresh window.
  *
  * Usage:
  *   pnpm tsx scripts/enrich-contacts.ts                  # full sweep, concurrency 5
