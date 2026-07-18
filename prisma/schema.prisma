@@ -148,6 +148,13 @@ model Listing {
   extractedUnitMix           Json?
   extractedRentRoll          Json?
   extractedTotalMonthlyRent  Int?
+  // Disclosed aggregate MARKET / pro-forma gross rent, MONTHLY. Set when the
+  // remarks state a building-level market income figure ("market of roughly
+  // $490,000/yr", "proforma $X") rather than a per-unit roll. Annual figures
+  // are divided by 12 at extraction. Pairs with extractedTotalMonthlyRent
+  // (in-place) so the drawer can show the disclosed rental-upside story even
+  // when units aren't itemized. Only the listing-extract agent writes this.
+  extractedMarketMonthlyRent Int?
   extractedOccupancy         Float?
   // AI-estimated market-rate rents per unit type — emitted alongside
   // unitMix even when actual rents are present in the listing, so the UI

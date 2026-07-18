@@ -110,6 +110,7 @@ export async function runListingExtract(mlsId: string, userId: string | null): P
       aiRentEstimate: null,
       postRenovationRentEstimate: null,
       totalMonthlyRent: null,
+      statedMarketMonthlyRent: null,
       occupancy: null,
       recentCapex: null,
       parkingNotes: null,
@@ -162,6 +163,10 @@ async function persist(mlsId: string, out: Output) {
         : Prisma.JsonNull,
       extractedTotalMonthlyRent:
         out.totalMonthlyRent != null ? Math.round(out.totalMonthlyRent) : null,
+      extractedMarketMonthlyRent:
+        out.statedMarketMonthlyRent != null
+          ? Math.round(out.statedMarketMonthlyRent)
+          : null,
       extractedOccupancy: out.occupancy,
       recentCapex: out.recentCapex
         ? (out.recentCapex as unknown as Prisma.InputJsonValue)

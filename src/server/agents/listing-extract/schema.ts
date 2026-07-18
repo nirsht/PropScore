@@ -78,6 +78,11 @@ export const ListingExtractOutput = z.object({
   // than aiRentEstimate for the same unit type.
   postRenovationRentEstimate: z.array(RentEstimateEntry).nullable(),
   totalMonthlyRent: z.number().nullable(),
+  // Disclosed aggregate MARKET / pro-forma gross rent, MONTHLY. Emitted when
+  // the remarks state a building-level market income figure ("market of
+  // ~$490,000/yr") rather than a per-unit roll. The model converts annual
+  // figures to monthly. Null when no market total is disclosed.
+  statedMarketMonthlyRent: z.number().nullable(),
   occupancy: z.number().min(0).max(1).nullable(),
   recentCapex: z.array(z.string()).nullable(),
   parkingNotes: z.string().nullable(),
