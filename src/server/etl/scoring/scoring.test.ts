@@ -67,9 +67,9 @@ describe("computeHeuristicScore", () => {
     expect(occ.vacancyScore).toBeLessThanOrEqual(5);
   });
 
-  it("emits breakdown version 8", () => {
+  it("emits breakdown version 9", () => {
     const score = computeHeuristicScore(baseListing());
-    expect((score.breakdown as { version: number }).version).toBe(8);
+    expect((score.breakdown as { version: number }).version).toBe(9);
   });
 
   it("market upside is null when neither sub-score fires", () => {
@@ -90,6 +90,34 @@ describe("computeHeuristicScore", () => {
     expect(score.zoningUpsideScore).toBe(100);
     expect(score.assessmentDeltaScore).toBeNull();
     expect(score.marketUpsideScore).toBe(100);
+  });
+
+  it("folds disclosed rental upside into market upside", () => {
+    // $22,083/mo in-place → $40,833/mo market = 85% gap → top band → 95.
+    // No zoning/assessment context, so rental upside is the only sub-score.
+    const score = computeHeuristicScore(baseListing(), {
+      extractedTotalMonthlyRent: 22_083,
+      extractedMarketMonthlyRent: 40_833,
+    });
+    expect(score.assessmentDeltaScore).toBeNull();
+    expect(score.zoningUpsideScore).toBeNull();
+    expect(score.marketUpsideScore).toBe(95);
+    expect(
+      (score.breakdown as { components: { rentalUpside: number | null } })
+        .components.rentalUpside,
+    ).toBe(95);
+  });
+
+  it("rental upside is null unless market exceeds in-place rent", () => {
+    const noMarket = computeHeuristicScore(baseListing(), {
+      extractedTotalMonthlyRent: 22_083,
+    });
+    expect(noMarket.marketUpsideScore).toBeNull();
+    const notAbove = computeHeuristicScore(baseListing(), {
+      extractedTotalMonthlyRent: 40_000,
+      extractedMarketMonthlyRent: 40_000,
+    });
+    expect(notAbove.marketUpsideScore).toBeNull();
   });
 
   it("market upside scores do NOT change valueAddWeightedAvg in v1", () => {

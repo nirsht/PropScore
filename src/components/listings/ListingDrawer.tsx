@@ -250,6 +250,8 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
             compsUpdatedAt={listing.neighborhoodRel?.compsUpdatedAt ?? null}
             zoningDistrict={listing.zoningDistrict ?? null}
             zoningMaxUnits={listing.zoningMaxUnits ?? null}
+            inPlaceMonthlyRent={listing.extractedTotalMonthlyRent ?? null}
+            marketMonthlyRent={listing.extractedMarketMonthlyRent ?? null}
           />
 
           <GisToolsSection

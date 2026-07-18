@@ -116,6 +116,8 @@ export async function recomputeListingScore(
     assessedValueTotal,
     extractedOccupancy: l.extractedOccupancy,
     extractedUnitsTotal,
+    extractedTotalMonthlyRent: l.extractedTotalMonthlyRent,
+    extractedMarketMonthlyRent: l.extractedMarketMonthlyRent,
     detachedAduScore: l.detachedAduScore,
     convertedAduScore: l.convertedAduScore,
     locationScore: newLocation,

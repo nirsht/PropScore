@@ -5,6 +5,7 @@ import { densityScore } from "./density";
 import { locationScore } from "./location";
 import { daysSincePost } from "./daysLive";
 import { motivationScore } from "./motivation";
+import { rentalUpsideScore } from "./rentalUpside";
 import { vacancyScore } from "./vacancy";
 import {
   RENOVATION_UPSIDE,
@@ -50,6 +51,11 @@ export type HeuristicContext = {
   assessedValueTotal?: number | null;
   extractedOccupancy?: number | null;
   extractedUnitsTotal?: number | null;
+  /** Disclosed in-place gross rent, monthly (Listing.extractedTotalMonthlyRent). */
+  extractedTotalMonthlyRent?: number | null;
+  /** Disclosed market/pro-forma gross rent, monthly (Listing.extractedMarketMonthlyRent).
+   *  Paired with extractedTotalMonthlyRent, drives the rental-upside sub-score. */
+  extractedMarketMonthlyRent?: number | null;
   /** AI-extracted detached-ADU score (vacant-yard play, 0–100). */
   detachedAduScore?: number | null;
   /** AI-extracted attached-ADU score (new addition sharing a wall, 0–100). */
@@ -125,9 +131,14 @@ export function computeHeuristicScore(
   const assessmentDelta = assessmentDeltaScore(l, ctx);
   const zoningUpside = zoningUpsideScore(l, ctx);
 
+  // Rental income upside — disclosed in-place vs market gross rent from the
+  // listing remarks ("$265K/yr in-place → $490K/yr market"). The listing
+  // agent's own stated spread; null when the remarks don't disclose both.
+  const rentalUpside = rentalUpsideScore(ctx);
+
   // Combined Market Upside: simple average of non-null sub-scores. Null
-  // when both sub-scores are null. NOT folded into VALUE_ADD_WEIGHTS in v1.
-  const upsideParts = [assessmentDelta, zoningUpside].filter(
+  // when all sub-scores are null. NOT folded into VALUE_ADD_WEIGHTS in v1.
+  const upsideParts = [assessmentDelta, zoningUpside, rentalUpside].filter(
     (x): x is number => x != null,
   );
   const marketUpside =
@@ -171,6 +182,8 @@ export function computeHeuristicScore(
         mlsSqft: ctx.mlsSqft ?? l.sqft,
         assessorSqft: ctx.assessorSqft,
         occupancy: ctx.extractedOccupancy ?? l.occupancy,
+        inPlaceMonthlyRent: ctx.extractedTotalMonthlyRent ?? null,
+        marketMonthlyRent: ctx.extractedMarketMonthlyRent ?? null,
         renovationLevel: ctx.renovationLevel ?? null,
         landValue: ctx.assessorLandValue,
         buildingValue: ctx.assessorBuildingValue,
@@ -198,6 +211,7 @@ export function computeHeuristicScore(
         aduFeasibility: aduResult.breakdown,
         assessmentDelta,
         zoningUpside,
+        rentalUpside,
         marketUpside,
         // Raw signals that feed into `rehab`. Surfaced for transparency.
         sizeDiscrepancy: sizeDiff,
@@ -211,7 +225,7 @@ export function computeHeuristicScore(
           rentControlCovered: ctx.rentControlCovered ?? null,
         },
       },
-      version: 8,
+      version: 9,
     },
   };
 }
