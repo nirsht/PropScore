@@ -1,13 +1,17 @@
 /**
- * Location Rating — combines Walk Score (30%) and a neighborhood-safety
- * percentile derived from DataSF crime incidents (70%) into a single
+ * Location Rating — combines Walk Score (50%) and a neighborhood-safety
+ * percentile derived from DataSF crime incidents (50%) into a single
  * 0–100 score per listing. Pure functions, no I/O — fed by
  * scripts/refresh-crime.ts and scripts/refresh-walkscore.ts.
+ *
+ * The base score can be adjusted by user calibrations (see blendCalibration):
+ * an exact per-address override, or a distance-decaying nudge from nearby
+ * calibrations — because safety varies block-by-block within a neighborhood.
  */
 
 export const LOCATION_WEIGHTS = {
-  walk: 0.3,
-  neighborhood: 0.7,
+  walk: 0.5,
+  neighborhood: 0.5,
 } as const;
 
 /** Per-category weights for the weighted incident count. */
@@ -38,6 +42,60 @@ export function locationScore(args: {
   if (!haveWalk && haveNbhd) return clamp(neighborhoodScore!);
   const w = LOCATION_WEIGHTS;
   return clamp(walkScore! * w.walk + neighborhoodScore! * w.neighborhood);
+}
+
+/**
+ * Proximity-learning constants for user calibrations. A calibration is a
+ * user-pinned "true" location score at a physical point (lat/lng). Its
+ * influence decays with distance so a correction on one block barely moves a
+ * listing three blocks away — the Mission swings 5→70 within a few hundred
+ * metres, so the falloff must be steep.
+ */
+export const CALIB_RADIUS_M = 482; // ~0.3 mi — beyond this a calibration has no pull.
+export const CALIB_SIGMA_M = 200; // Gaussian width — ~1 block gets a strong pull.
+export const CALIB_MAX_TRUST = 0.6; // Cap: neighbours are nudged, never fully overridden.
+
+export type NearbyCalibration = {
+  /** Metres from the listing to the calibrated point. */
+  distanceMeters: number;
+  /** The user-pinned 0–100 score at that point. */
+  calibratedScore: number;
+};
+
+/**
+ * Fold user calibrations into a base location score.
+ *
+ * - `exact` (a calibration on this exact address) is a hard override — the
+ *   user's number wins outright.
+ * - Otherwise `nearby` calibrations form a distance-weighted prior (Gaussian
+ *   falloff over CALIB_SIGMA_M). `confidence` — how far we lean toward that
+ *   prior — grows with the summed weights but is capped at CALIB_MAX_TRUST, so
+ *   a neighbour's correction only nudges this listing.
+ * - No calibrations (or a null base) → the base score is returned unchanged.
+ */
+export function blendCalibration(args: {
+  baseScore: number | null;
+  exact?: { calibratedScore: number } | null;
+  nearby?: ReadonlyArray<NearbyCalibration>;
+}): number | null {
+  const { baseScore, exact, nearby } = args;
+  if (exact != null) return clamp(exact.calibratedScore);
+  if (baseScore == null) return null;
+  if (!nearby || nearby.length === 0) return clamp(baseScore);
+
+  let weightSum = 0;
+  let weightedScore = 0;
+  for (const c of nearby) {
+    if (c.distanceMeters > CALIB_RADIUS_M) continue;
+    const w = Math.exp(-((c.distanceMeters / CALIB_SIGMA_M) ** 2));
+    weightSum += w;
+    weightedScore += w * c.calibratedScore;
+  }
+  if (weightSum === 0) return clamp(baseScore);
+
+  const prior = weightedScore / weightSum;
+  const confidence = Math.min(CALIB_MAX_TRUST, weightSum);
+  return clamp(baseScore * (1 - confidence) + prior * confidence);
 }
 
 /**
