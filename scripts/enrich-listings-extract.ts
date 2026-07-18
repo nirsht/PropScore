@@ -10,6 +10,7 @@
  *   pnpm tsx scripts/enrich-listings-extract.ts --limit=20      # cap rows this run
  *   pnpm tsx scripts/enrich-listings-extract.ts --concurrency=5 # back off if you hit 429s
  *   pnpm tsx scripts/enrich-listings-extract.ts --force         # re-parse even if already done
+ *   pnpm tsx scripts/enrich-listings-extract.ts --mlsId=<id>    # re-parse exactly one listing (implies --force)
  */
 import { db } from "@/lib/db";
 import { runListingExtract } from "@/server/agents/listing-extract/agent";
@@ -22,9 +23,13 @@ const concurrency = concurrencyArg
   ? Math.max(1, Math.min(50, Number(concurrencyArg.split("=")[1])))
   : 25;
 const force = args.includes("--force");
+const mlsIdArg = args.find((a) => a.startsWith("--mlsId="));
+const mlsId = mlsIdArg ? mlsIdArg.split("=")[1] : undefined;
 
 async function main() {
-  const where = force ? {} : { extractFetchedAt: null };
+  // --mlsId targets exactly one listing (implies --force — it always re-parses
+  // that row regardless of extractFetchedAt).
+  const where = mlsId ? { mlsId } : force ? {} : { extractFetchedAt: null };
 
   const total = await db.listing.count({ where });
   console.log(

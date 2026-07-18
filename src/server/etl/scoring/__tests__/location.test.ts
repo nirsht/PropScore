@@ -1,17 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
+  CALIB_MAX_TRUST,
+  CALIB_RADIUS_M,
   CRIME_CATEGORY_WEIGHTS,
   LOCATION_WEIGHTS,
+  blendCalibration,
   bucketIncidentCategory,
   locationScore,
   percentileRankCrimeScores,
 } from "../location";
 
 describe("locationScore", () => {
-  it("applies the documented 30/70 split when both inputs present", () => {
+  it("applies the documented 50/50 split when both inputs present", () => {
     const got = locationScore({ walkScore: 80, neighborhoodScore: 60 });
-    // 0.3 * 80 + 0.7 * 60 = 24 + 42 = 66
-    expect(got).toBe(66);
+    // 0.5 * 80 + 0.5 * 60 = 40 + 30 = 70
+    expect(got).toBe(70);
   });
 
   it("returns walk score alone when neighborhood is missing", () => {
@@ -35,6 +38,67 @@ describe("locationScore", () => {
 
   it("weights sum to 1.0", () => {
     expect(LOCATION_WEIGHTS.walk + LOCATION_WEIGHTS.neighborhood).toBeCloseTo(1, 10);
+  });
+});
+
+describe("blendCalibration", () => {
+  it("returns the base score untouched when there are no calibrations", () => {
+    expect(blendCalibration({ baseScore: 30 })).toBe(30);
+    expect(blendCalibration({ baseScore: 30, nearby: [] })).toBe(30);
+  });
+
+  it("passes through null base scores", () => {
+    expect(blendCalibration({ baseScore: null })).toBeNull();
+    expect(
+      blendCalibration({ baseScore: null, nearby: [{ distanceMeters: 10, calibratedScore: 70 }] }),
+    ).toBeNull();
+  });
+
+  it("lets an exact override win outright (even over the base and nearby)", () => {
+    const got = blendCalibration({
+      baseScore: 30,
+      exact: { calibratedScore: 70 },
+      nearby: [{ distanceMeters: 10, calibratedScore: 20 }],
+    });
+    expect(got).toBe(70);
+  });
+
+  it("clamps the exact override to [0, 100]", () => {
+    expect(blendCalibration({ baseScore: 30, exact: { calibratedScore: 150 } })).toBe(100);
+    expect(blendCalibration({ baseScore: 30, exact: { calibratedScore: -10 } })).toBe(0);
+  });
+
+  it("pulls strongly toward a very close calibration, capped at max trust", () => {
+    // At ~0m the Gaussian weight ≈ 1, so confidence ≈ CALIB_MAX_TRUST.
+    const got = blendCalibration({
+      baseScore: 30,
+      nearby: [{ distanceMeters: 1, calibratedScore: 70 }],
+    });
+    const expected = 30 * (1 - CALIB_MAX_TRUST) + 70 * CALIB_MAX_TRUST;
+    expect(got).toBeCloseTo(expected, 1);
+  });
+
+  it("decays with distance: a closer calibration moves the score more", () => {
+    const base = 30;
+    const near = blendCalibration({
+      baseScore: base,
+      nearby: [{ distanceMeters: 150, calibratedScore: 70 }],
+    })!;
+    const far = blendCalibration({
+      baseScore: base,
+      nearby: [{ distanceMeters: 450, calibratedScore: 70 }],
+    })!;
+    expect(near).toBeGreaterThan(far);
+    expect(far).toBeGreaterThan(base);
+    expect(near).toBeLessThan(70);
+  });
+
+  it("ignores calibrations beyond the radius", () => {
+    const got = blendCalibration({
+      baseScore: 30,
+      nearby: [{ distanceMeters: CALIB_RADIUS_M + 50, calibratedScore: 90 }],
+    });
+    expect(got).toBe(30);
   });
 });
 

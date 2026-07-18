@@ -67,6 +67,33 @@ describe("buildAIScoringInput", () => {
   it("pulls PublicRemarks out of raw", () => {
     expect(buildAIScoringInput(listing()).publicRemarks).toBe("Charming Edwardian.");
   });
+
+  it("carries the canonical weights and a null baseline when unscored", () => {
+    const slim = buildAIScoringInput(listing());
+    expect(slim.valueAddWeights.vacancy).toBe(0.3);
+    expect(slim.baselineValueAdd).toBeNull();
+    expect(slim.heuristicComponents.vacancyScore).toBeNull();
+  });
+
+  it("computes baselineValueAdd from present heuristic components", () => {
+    // Only vacancy + density present → weighted avg drops null components
+    // from the divisor: (10*.30 + 80*.15) / (.30 + .15) = 33.33.
+    const slim = buildAIScoringInput(
+      listing({
+        score: {
+          listingMlsId: "TEST-1",
+          vacancyScore: 10,
+          densityScore: 80,
+          locationScore: null,
+          rehabScore: null,
+          aduScore: null,
+          motivationScore: null,
+        } as unknown as AIScoringListing["score"],
+      }),
+    );
+    expect(slim.heuristicComponents.densityScore).toBe(80);
+    expect(slim.baselineValueAdd).toBeCloseTo(33.3, 1);
+  });
 });
 
 describe("hashAIScoringInput", () => {
@@ -88,6 +115,29 @@ describe("hashAIScoringInput", () => {
       buildAIScoringInput(listing({ assessorBuildingSqft: 5200 } as Partial<AIScoringListing>)),
     );
     expect(a).not.toBe(b);
+  });
+
+  it("ignores heuristic drift (baseline/components) so re-score isn't forced nightly", () => {
+    const a = hashAIScoringInput(buildAIScoringInput(listing()));
+    const b = hashAIScoringInput(
+      buildAIScoringInput(
+        listing({
+          score: {
+            listingMlsId: "TEST-1",
+            vacancyScore: 10,
+            densityScore: 80,
+          } as unknown as AIScoringListing["score"],
+        }),
+      ),
+    );
+    expect(a).toBe(b);
+  });
+
+  it("re-hashes when scoringVersion is bumped (forces one-shot full re-score)", () => {
+    const slim = buildAIScoringInput(listing());
+    const before = hashAIScoringInput(slim);
+    const after = hashAIScoringInput({ ...slim, scoringVersion: slim.scoringVersion + 1 });
+    expect(before).not.toBe(after);
   });
 
   it("ignores previousScore (would otherwise force re-score every run)", () => {

@@ -65,7 +65,15 @@ Output schema fields:
    rationale: one short clause anchoring the post-reno number (e.g. "renovated SF/Mission 2BR pulls $5,000–$5,400 in 2026").
    Set to null only when both rentRoll and unitMix are null.
 
-5. totalMonthlyRent — the building's gross in-place rent: sum of rentRoll rents across ALL units (residential AND commercial), OR an explicit total stated in the remarks (e.g. "gross monthly rent $14,200"). Otherwise null.
+5. totalMonthlyRent — the building's CURRENT / in-place gross rent, MONTHLY. Take the sum of rentRoll rents across ALL units (residential AND commercial), OR an explicit total stated in the remarks. Convert to monthly:
+   - Monthly figure ("gross monthly rent $14,200") → use as-is: 14200.
+   - Annual / yearly figure ("in-place rents of roughly $265,000 per year", "current gross annual income $318K", "scheduled income $265,000/yr") → divide by 12 and round: 265000 → 22083.
+   Only use in-place / current / actual / scheduled income here — NOT market/proforma/potential figures (those go in statedMarketMonthlyRent). Otherwise null.
+
+5b. statedMarketMonthlyRent — the building's disclosed MARKET / pro-forma / potential gross rent, MONTHLY, when the remarks state a building-level market income figure rather than a per-unit roll. Same annual→monthly conversion as totalMonthlyRent.
+   - "today's market of approximately $490,000 [per year]" → 490000 / 12 → 40833.
+   - "proforma gross $52,000/mo", "market rents would be ~$45K/month" → use monthly as-is.
+   This is the aggregate figure the LISTING states — distinct from your own per-unit aiRentEstimate. Emit it whenever the remarks disclose a market/proforma total, even if you also emit aiRentEstimate. Null when no market total is stated.
 
 6. occupancy — float 0..1 describing how leased the property is RIGHT NOW.
    Set 1.0 when remarks say so directly:
