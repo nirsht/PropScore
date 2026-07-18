@@ -58,7 +58,9 @@ export type BridgeProperty = Record<string, unknown> & {
   PrivateRemarks?: string;
   ListAgentFullName?: string;
   ListAgentMlsId?: string;
+  ListAgentKey?: string;
   ListOfficeName?: string;
+  ListOfficeMlsId?: string;
   CoListAgentFullName?: string;
   // RESO auction fields. SpecialListingConditions and ListingTerms are
   // multi-valued enums; Bridge may serialize them as a JSON array or a
@@ -125,10 +127,15 @@ const DEFAULT_SELECT = [
   "PostalCode",
   "PublicRemarks",
   // Listing agent + brokerage names. Bridge's sfar dataset doesn't permit
-  // selecting agent phone/email under IDX policy, so we only pull the names.
+  // selecting agent phone/email off the Property under IDX policy, so we only
+  // pull the names + ids here. The agent's real phone/email IS available on the
+  // separate /Member resource, keyed on ListAgentKey/ListAgentMlsId — see
+  // fetchMember() and the contact-enrichment chain.
   "ListAgentFullName",
   "ListAgentMlsId",
+  "ListAgentKey",
   "ListOfficeName",
+  "ListOfficeMlsId",
   "CoListAgentFullName",
   // Auction signals — Bridge `sfar` no longer permits selecting ListingTerms
   // or AuctionDate under IDX policy (rejected with 400 as of 2026-05). The
@@ -335,6 +342,79 @@ export async function fetchListingMedia(mlsId: string): Promise<MediaFetchResult
     attempts,
   );
   return { items: [], via: "none", attempts };
+}
+
+export type BridgeMember = Record<string, unknown> & {
+  MemberKey?: string;
+  MemberMlsId?: string;
+  MemberFullName?: string;
+  MemberFirstName?: string;
+  MemberLastName?: string;
+  MemberPreferredPhone?: string | null;
+  MemberDirectPhone?: string | null;
+  MemberMobilePhone?: string | null;
+  MemberOfficePhone?: string | null;
+  MemberEmail?: string | null;
+  MemberStateLicense?: string | null;
+  /** SFAR-specific: extension that applies to the office landline. */
+  SFAR_PhoneExtension?: string | null;
+  OfficeName?: string | null;
+  OfficeMlsId?: string | null;
+};
+
+const MEMBER_SELECT = [
+  "MemberKey",
+  "MemberMlsId",
+  "MemberFullName",
+  "MemberFirstName",
+  "MemberLastName",
+  "MemberPreferredPhone",
+  "MemberDirectPhone",
+  "MemberMobilePhone",
+  "MemberOfficePhone",
+  "MemberEmail",
+  "MemberStateLicense",
+  "SFAR_PhoneExtension",
+  "OfficeName",
+  "OfficeMlsId",
+];
+
+/**
+ * Look up one agent on Bridge's `/Member` resource by their MLS member id.
+ *
+ * Unlike the Property payload — where `sfar` IDX policy strips agent
+ * phone/email — the Member resource returns the agent's real direct/office
+ * phone and email. Because we match on the agent's own id (`ListAgentKey`, the
+ * exact PK hash, preferred; else `ListAgentMlsId`), there's no name-collision
+ * risk: we get the phone/email of *this* listing's agent, never a different
+ * same-named agent.
+ *
+ * Returns the first match, or null when neither id is provided / nothing
+ * matches. Throws only on a hard transport error (same retry policy as the
+ * Property client); callers in the contact chain treat that as "step found
+ * nothing" and move on.
+ */
+export async function fetchMember(params: {
+  memberKey?: string | null;
+  memberMlsId?: string | null;
+}): Promise<BridgeMember | null> {
+  const escape = (v: string) => v.replace(/'/g, "''");
+  const clause = params.memberKey
+    ? `MemberKey eq '${escape(params.memberKey)}'`
+    : params.memberMlsId
+      ? `MemberMlsId eq '${escape(params.memberMlsId)}'`
+      : null;
+  if (!clause) return null;
+
+  const p = new URLSearchParams();
+  p.set("access_token", env.BRIDGE_SERVER_TOKEN);
+  p.set("$filter", clause);
+  p.set("$select", MEMBER_SELECT.join(","));
+  p.set("$top", "1");
+
+  const url = `${env.BRIDGE_BASE_URL}/${env.BRIDGE_DATASET}/Member?${p.toString()}`;
+  const page = await request<{ value?: BridgeMember[] }>(url);
+  return page.value?.[0] ?? null;
 }
 
 /**
