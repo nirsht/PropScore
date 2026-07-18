@@ -1,6 +1,5 @@
 import NextAuth, { type NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
@@ -12,22 +11,13 @@ const credentialsSchema = z.object({
   password: z.string().min(1),
 });
 
-// Gmail scopes for the rent-roll outreach feature.
-//   gmail.compose  → create drafts (never sends, per product decision)
-//   gmail.modify   → read message threads + apply labels for reply tracking
-// Combined with openid/email/profile so we can match the Google email to the
-// existing Credentials user via account-linking.
-const GMAIL_SCOPES = [
-  "openid",
-  "email",
-  "profile",
-  "https://www.googleapis.com/auth/gmail.compose",
-  "https://www.googleapis.com/auth/gmail.modify",
-].join(" ");
-
-const googleConfigured = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
-
-export const googleAuthEnabled = googleConfigured;
+// Gmail is connected via a standalone OAuth flow (src/app/api/gmail/*), NOT as
+// a NextAuth login provider — the mailbox is an attachment on the logged-in
+// user, not a login identity. This flag just gates the Connect-Gmail UI on the
+// presence of Google credentials.
+export const googleAuthEnabled = Boolean(
+  env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET,
+);
 
 // NEXTAUTH_SECRET is optional in env.ts so ETL/CLI scripts that transitively
 // import `env` don't crash without it. The web server, however, must never
@@ -57,25 +47,6 @@ export const authConfig: NextAuthConfig = {
     signIn: "/sign-in",
   },
   providers: [
-    ...(googleConfigured
-      ? [
-          Google({
-            clientId: env.GOOGLE_CLIENT_ID,
-            clientSecret: env.GOOGLE_CLIENT_SECRET,
-            // Single-user dev/prod where the Gmail email matches the
-            // Credentials email — links the new Google Account row to the
-            // existing User instead of creating a duplicate.
-            allowDangerousEmailAccountLinking: true,
-            authorization: {
-              params: {
-                access_type: "offline",
-                prompt: "consent",
-                scope: GMAIL_SCOPES,
-              },
-            },
-          }),
-        ]
-      : []),
     Credentials({
       name: "Email + Password",
       credentials: {

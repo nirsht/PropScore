@@ -13,7 +13,6 @@ import {
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import LinkOffRoundedIcon from "@mui/icons-material/LinkOffRounded";
 import GoogleIcon from "@mui/icons-material/Google";
-import { signIn } from "next-auth/react";
 import { trpc } from "@/lib/trpc/client";
 
 export function ConnectGmailPill() {
@@ -52,7 +51,11 @@ export function ConnectGmailPill() {
         size="small"
         variant="contained"
         startIcon={<GoogleIcon />}
-        onClick={() => signIn("google", { callbackUrl: "/emails" })}
+        onClick={() => {
+          // Standalone mailbox-connect flow — NOT a NextAuth sign-in. Keeps the
+          // app login identity untouched and just attaches Gmail tokens to it.
+          window.location.assign("/api/gmail/connect");
+        }}
       >
         Connect Gmail
       </Button>
