@@ -33,8 +33,10 @@ PDF, photo, spreadsheet, etc.). Your job is to extract a clean rent roll for
 the building.
 
 Rules:
-- Emit one entry per RESIDENTIAL unit. Skip commercial / retail / parking
-  rows unless the building is mostly commercial.
+- Emit one entry per unit. Set "kind" on every row: "residential" for dwellings
+  (default), "commercial" for a retail / office / store / restaurant / market
+  space. Include a mixed-use building's commercial row (with its rent) marked
+  kind:"commercial" rather than dropping it. Skip parking-only rows.
 - "rent" = current actual monthly rent in dollars (numeric, no $ sign). If a
   unit is vacant (rent = $0, blank, or "vacant"), KEEP the row and set
   rent: null — preserve beds/baths/sqft/unitLabel/moveInDate so the consumer
@@ -220,6 +222,7 @@ function buildResponseSchema(): Record<string, unknown> {
                 rent: { anyOf: [{ type: "number" }, { type: "null" }] },
                 beds: { anyOf: [{ type: "integer" }, { type: "null" }] },
                 baths: { anyOf: [{ type: "number" }, { type: "null" }] },
+                kind: { type: "string", enum: ["residential", "commercial"] },
                 sqft: { anyOf: [{ type: "number" }, { type: "null" }] },
                 unitLabel: { anyOf: [{ type: "string" }, { type: "null" }] },
                 moveInDate: { anyOf: [{ type: "string" }, { type: "null" }] },

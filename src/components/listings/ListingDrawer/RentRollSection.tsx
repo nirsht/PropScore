@@ -297,11 +297,25 @@ export function RentRollSection({ listing }: { listing: ListingForAI }) {
         {enriched.map((row, key) => (
           <React.Fragment key={key}>
             <Box sx={{ display: "flex", flexDirection: "column" }}>
-              <Typography variant="body2">
-                {row.isGrouped
-                  ? unitTypeLabel(row.weight, row.beds, row.baths)
-                  : `${row.unitLabel ? row.unitLabel + " · " : ""}${bedsBathsLabel(row.beds, row.baths)}`}
-              </Typography>
+              <Stack direction="row" spacing={0.75} alignItems="center">
+                <Typography variant="body2">
+                  {row.isCommercial
+                    ? row.isGrouped
+                      ? `${row.weight} commercial ${row.weight === 1 ? "unit" : "units"}`
+                      : `${row.unitLabel ? row.unitLabel + " · " : ""}Commercial unit`
+                    : row.isGrouped
+                      ? unitTypeLabel(row.weight, row.beds, row.baths)
+                      : `${row.unitLabel ? row.unitLabel + " · " : ""}${bedsBathsLabel(row.beds, row.baths)}`}
+                </Typography>
+                {row.isCommercial && (
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    label="Commercial"
+                    sx={{ height: 18, fontSize: 10 }}
+                  />
+                )}
+              </Stack>
               {row.moveInDate && (
                 <Typography
                   variant="caption"
