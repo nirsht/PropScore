@@ -1,3 +1,5 @@
+import { bedsBathsLabel } from "./rentRollEstimators";
+
 export const fmtMoney = (n: number | null | undefined) =>
   n == null ? "—" : `$${Math.round(n).toLocaleString()}`;
 
@@ -8,8 +10,9 @@ export const fmtNum = (n: number | null | undefined) =>
   n == null ? "—" : n.toLocaleString();
 
 /**
- * Spell out a unit-mix entry the way an investor reads it — no MLS
- * shorthand. "4 x 3 Bedroom + 2 Bathroom" rather than "4× 3BR/2BA".
+ * Label a unit-mix entry in standard real-estate notation: "4 × 2 BD/1 Bath".
+ * Delegates to bedsBathsLabel() so the bed/bath format stays identical to the
+ * individual rent-roll rows.
  */
 export function unitTypeLabel(
   count: number,
@@ -19,16 +22,7 @@ export function unitTypeLabel(
   if (beds == null && baths == null) {
     return `${count} ${count === 1 ? "unit" : "units"}`;
   }
-  const parts: string[] = [];
-  if (beds === 0) {
-    parts.push("Studio");
-  } else if (beds != null) {
-    parts.push(`${beds} Bedroom`);
-  }
-  if (baths != null) {
-    parts.push(`${baths} Bathroom`);
-  }
-  return `${count} x ${parts.join(" + ")}`;
+  return `${count} × ${bedsBathsLabel(beds, baths)}`;
 }
 
 export function deriveRatio(

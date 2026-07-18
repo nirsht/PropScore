@@ -1,11 +1,16 @@
 import type { RentCompBucketUI } from "./types";
 
+/**
+ * Canonical bed/bath label in standard real-estate notation: "2 BD/1 Bath".
+ * The single source of truth — unitTypeLabel() delegates here so grouped
+ * unit-mix rows and individual rent-roll rows never drift apart.
+ */
 export function bedsBathsLabel(beds: number | null, baths: number | null): string {
   if (beds == null && baths == null) return "—";
-  if (beds === 0) return baths != null ? `Studio · ${baths}BA` : "Studio";
-  const b = beds != null ? `${beds}BR` : "?BR";
-  const ba = baths != null ? `${baths}BA` : "?BA";
-  return `${b} · ${ba}`;
+  const bath = baths != null ? `${baths} Bath` : null;
+  if (beds === 0) return bath ? `Studio/${bath}` : "Studio";
+  const bd = beds != null ? `${beds} BD` : "? BD";
+  return bath ? `${bd}/${bath}` : bd;
 }
 
 export function compEstimateFor(
