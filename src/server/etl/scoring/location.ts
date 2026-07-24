@@ -1,8 +1,17 @@
 /**
- * Location Rating — combines Walk Score (50%) and a neighborhood-safety
- * percentile derived from DataSF crime incidents (50%) into a single
+ * Location Rating — combines Walk Score (70%) and a neighborhood-safety
+ * percentile derived from DataSF crime incidents (30%) into a single
  * 0–100 score per listing. Pure functions, no I/O — fed by
  * scripts/refresh-crime.ts and scripts/refresh-walkscore.ts.
+ *
+ * Weighting (updated 2026-07-24): walk leads at 70%, safety trails at 30%.
+ * The prior 50/50 blend structurally capped prime, highly-walkable SF
+ * addresses (e.g. a Walk-99 Telegraph Hill block) at ~77 whenever the
+ * neighborhood crime percentile was merely average — which is true of
+ * nearly every dense, desirable SF neighborhood. For an investor, walk-up
+ * desirability drives rentability far more than a citywide-relative crime
+ * z-score, so we lean the blend toward walkability while still letting a
+ * genuinely unsafe area pull the score down.
  *
  * The base score can be adjusted by user calibrations (see blendCalibration):
  * an exact per-address override, or a distance-decaying nudge from nearby
@@ -10,8 +19,8 @@
  */
 
 export const LOCATION_WEIGHTS = {
-  walk: 0.5,
-  neighborhood: 0.5,
+  walk: 0.7,
+  neighborhood: 0.3,
 } as const;
 
 /** Per-category weights for the weighted incident count. */

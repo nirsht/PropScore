@@ -226,8 +226,8 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
             heuristic={listing.heuristicSnapshot ?? null}
           />
 
-          {/* Location rating — Walk Score (30%) + neighborhood safety from
-              DataSF crime incidents (70%). Independent of the value-add
+          {/* Location rating — Walk Score (70%) + neighborhood safety from
+              DataSF crime incidents (30%). Independent of the value-add
               opportunity scoring above. */}
           <LocationRatingCard
             mlsId={listing.mlsId}
