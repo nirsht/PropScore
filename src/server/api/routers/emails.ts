@@ -10,7 +10,9 @@ import {
   GmailNotConnectedError,
   gmailDraftUrl,
   gmailThreadUrl,
+  InvalidRecipientError,
 } from "@/lib/google/gmail";
+import { isValidEmailAddress } from "@/lib/email-address";
 import { rentRollRequestEmail } from "@/lib/emails/templates";
 import { syncThread } from "@/server/emails/sync";
 import { parseEmailRentRoll } from "@/server/agents/email-rent-roll/agent";
@@ -91,6 +93,13 @@ export const emailsRouter = router({
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
           message: "No agent email on file for this listing. Refresh contact enrichment first.",
+        });
+      }
+      if (!isValidEmailAddress(agentEmail)) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message:
+            "The agent contact on file isn't a valid email address. Refresh contact enrichment first.",
         });
       }
 
@@ -196,7 +205,11 @@ export const emailsRouter = router({
         include: { contact: true },
       });
       const agentEmail = listing?.contact?.agentEmail?.trim();
-      if (!listing || !agentEmail) {
+      // The candidate SQL only checks the email is non-empty, not that it's a
+      // real address. Contact enrichment often stores an agent name or a
+      // placeholder word here, which Gmail rejects with "Invalid To header".
+      // Skip those so one bad row doesn't abort the whole batch.
+      if (!listing || !agentEmail || !isValidEmailAddress(agentEmail)) {
         skipped += 1;
         continue;
       }
@@ -234,8 +247,9 @@ export const emailsRouter = router({
           });
         }
         if (
-          err instanceof Prisma.PrismaClientKnownRequestError &&
-          err.code === "P2002"
+          err instanceof InvalidRecipientError ||
+          (err instanceof Prisma.PrismaClientKnownRequestError &&
+            err.code === "P2002")
         ) {
           skipped += 1;
           continue;

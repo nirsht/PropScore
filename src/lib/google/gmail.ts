@@ -1,6 +1,7 @@
 import { google, type gmail_v1 } from "googleapis";
 import { db } from "../db";
 import { env } from "../env";
+import { isValidEmailAddress } from "../email-address";
 
 type OAuth2Client = InstanceType<typeof google.auth.OAuth2>;
 
@@ -19,6 +20,13 @@ export class GmailAuthError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "GmailAuthError";
+  }
+}
+
+export class InvalidRecipientError extends Error {
+  constructor(to: string) {
+    super(`Not a valid email address: ${JSON.stringify(to)}`);
+    this.name = "InvalidRecipientError";
   }
 }
 
@@ -134,6 +142,9 @@ export async function createDraft(params: {
   subject: string;
   body: string;
 }): Promise<{ gmailDraftId: string; gmailThreadId: string }> {
+  if (!isValidEmailAddress(params.to)) {
+    throw new InvalidRecipientError(params.to);
+  }
   const gmail = await getGmailClient(params.userId);
   const raw = encodeRfc2822({
     to: params.to,
