@@ -11,10 +11,17 @@ import {
 } from "../location";
 
 describe("locationScore", () => {
-  it("applies the documented 50/50 split when both inputs present", () => {
+  it("applies the documented 70/30 split when both inputs present", () => {
     const got = locationScore({ walkScore: 80, neighborhoodScore: 60 });
-    // 0.5 * 80 + 0.5 * 60 = 40 + 30 = 70
-    expect(got).toBe(70);
+    // 0.7 * 80 + 0.3 * 60 = 56 + 18 = 74
+    expect(got).toBe(74);
+  });
+
+  it("leans toward walkability so a prime walkable block isn't capped by average safety", () => {
+    // 280 Green-like: Walk 99, neighborhood safety 56.
+    // Old 50/50 → 77.5; new 70/30 → 69.3 + 16.8 = 86.1.
+    const got = locationScore({ walkScore: 99, neighborhoodScore: 56 });
+    expect(got).toBeCloseTo(86.1, 5);
   });
 
   it("returns walk score alone when neighborhood is missing", () => {
