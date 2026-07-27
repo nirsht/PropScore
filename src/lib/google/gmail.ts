@@ -108,6 +108,37 @@ export async function getConnectedEmail(userId: string): Promise<string | null> 
   }
 }
 
+// Display name of the connected mailbox (e.g. "Haim Levi"), read from the
+// `name` claim of the id_token captured at connect time. This is the mailbox
+// that actually sends the drafts, which — since mailbox connect is decoupled
+// from app login — can differ from the logged-in User.name. Returns null if
+// no Google account is linked or the token has no name claim.
+export async function getConnectedName(userId: string): Promise<string | null> {
+  const account = await db.account.findFirst({
+    where: { userId, provider: "google" },
+    select: { id_token: true },
+  });
+  const payload = account?.id_token ? decodeJwtPayload(account.id_token) : null;
+  const name = payload?.name;
+  return typeof name === "string" && name.trim() ? name.trim() : null;
+}
+
+// Reads a JWT's payload segment without verifying the signature — we only need
+// the display-name claim for email copy, never for authorization.
+function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
+  const segment = jwt.split(".")[1];
+  if (!segment) return null;
+  try {
+    const json = Buffer.from(
+      segment.replace(/-/g, "+").replace(/_/g, "/"),
+      "base64",
+    ).toString("utf8");
+    return JSON.parse(json) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
 // RFC-2822 message construction. base64url per Gmail API requirements.
 function encodeRfc2822({
   to,
