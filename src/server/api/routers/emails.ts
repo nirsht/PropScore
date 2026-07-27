@@ -7,6 +7,7 @@ import { env } from "@/lib/env";
 import {
   createDraft,
   getConnectedEmail,
+  getConnectedName,
   GmailNotConnectedError,
   gmailDraftUrl,
   gmailThreadUrl,
@@ -95,10 +96,13 @@ export const emailsRouter = router({
       }
 
       const user = await ctx.db.user.findUnique({ where: { id: ctx.user.id } });
+      // Sign off as the connected mailbox (the sender), falling back to the
+      // app-login name only if the token carries no display name.
+      const senderName = (await getConnectedName(ctx.user.id)) ?? user?.name ?? null;
       const { subject, body } = rentRollRequestEmail({
         listingAddress: listing.address,
         agentName: listing.contact?.agentName ?? null,
-        userName: user?.name ?? null,
+        userName: senderName,
       });
 
       let draft: { gmailDraftId: string; gmailThreadId: string };
@@ -168,6 +172,8 @@ export const emailsRouter = router({
   bulkDraftUnderThreshold: protectedProcedure.mutation(async ({ ctx }) => {
     const user = await ctx.db.user.findUnique({ where: { id: ctx.user.id } });
     if (!user) throw new TRPCError({ code: "UNAUTHORIZED" });
+    // Same sender identity for every draft in the batch.
+    const senderName = (await getConnectedName(ctx.user.id)) ?? user.name ?? null;
 
     const candidates = await ctx.db.$queryRaw<
       Array<{ mlsId: string; address: string; pricePerSqft: number }>
@@ -203,7 +209,7 @@ export const emailsRouter = router({
       const { subject, body } = rentRollRequestEmail({
         listingAddress: listing.address,
         agentName: listing.contact?.agentName ?? null,
-        userName: user.name ?? null,
+        userName: senderName,
       });
 
       try {
