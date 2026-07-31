@@ -28,6 +28,18 @@ export type EmailRentRollOutput = z.infer<typeof EmailRentRollOutput>;
 const MAX_ATTACHMENTS = 5;
 const MAX_TOTAL_BYTES = 25 * 1024 * 1024;
 
+// A born-digital rent roll extracts cleanly as text (cheap + precise). But an
+// image-heavy PDF — a scan, or a design-heavy Offering Memorandum whose rent
+// roll lives in a rendered table/image — yields little extractable text, so
+// text-only parsing silently finds no rent roll. When a PDF is bigger than
+// IMAGE_HEAVY_PDF_MIN_BYTES yet extracts fewer than one char per
+// IMAGE_HEAVY_BYTES_PER_CHAR bytes, we also hand the raw PDF to the model as a
+// `file` block so it can read the visual layer. Capped at PDF_FILE_BLOCK_MAX_BYTES
+// to stay within the OpenAI request/file-size limits.
+const IMAGE_HEAVY_PDF_MIN_BYTES = 500 * 1024;
+const IMAGE_HEAVY_BYTES_PER_CHAR = 400;
+const PDF_FILE_BLOCK_MAX_BYTES = 20 * 1024 * 1024;
+
 const SYSTEM_PROMPT = `You parse rent rolls out of real-estate broker emails.
 
 The user will share an email body and any attachments the broker sent (rent roll
@@ -156,25 +168,43 @@ async function buildAttachmentBlocks(
 
     if (mime === "application/pdf" || att.filename.toLowerCase().endsWith(".pdf")) {
       const text = await pdfToText(buf);
-      if (text && text.length > 60) {
+      const hasText = text.length > 60;
+      // Image-heavy when there's no usable text at all, or the file is large
+      // yet extracts very few chars per byte (a scan, or an OM whose rent roll
+      // is a rendered table). Such PDFs need the visual layer, not just text.
+      const imageHeavy =
+        !hasText ||
+        (buf.length > IMAGE_HEAVY_PDF_MIN_BYTES &&
+          text.length * IMAGE_HEAVY_BYTES_PER_CHAR < buf.length);
+
+      if (hasText) {
         out.push({
           type: "text",
           text: `# Attachment: ${att.filename} (PDF, text-extracted)\n\n${text.slice(0, 60_000)}`,
         });
-      } else {
-        // Scanned / image-only PDF (no extractable text) — hand the raw PDF
-        // to the model and let it read the pages directly. Chat Completions
-        // takes inline PDFs via a `file` content part (file_data data URI),
-        // NOT via image_url — image_url rejects any non-image MIME type with
-        // "Invalid MIME type. Only image types are supported."
+      }
+
+      if (imageHeavy && buf.length <= PDF_FILE_BLOCK_MAX_BYTES) {
+        // Hand the raw PDF to the model so it can read the pages/tables
+        // directly. Chat Completions takes inline PDFs via a `file` content
+        // part (file_data data URI), NOT via image_url — image_url rejects any
+        // non-image MIME type with "Invalid MIME type. Only image types are
+        // supported."
         const dataUrl = `data:application/pdf;base64,${buf.toString("base64")}`;
         out.push({
           type: "text",
-          text: `# Attachment: ${att.filename} (PDF, image — up to first ${PER_PDF_PAGE_CAP} pages)`,
+          text: hasText
+            ? `# Attachment: ${att.filename} (PDF pages attached below — read the rent-roll table from the page images, up to first ${PER_PDF_PAGE_CAP} pages)`
+            : `# Attachment: ${att.filename} (PDF, image — up to first ${PER_PDF_PAGE_CAP} pages)`,
         });
         out.push({
           type: "file",
           file: { filename: att.filename, file_data: dataUrl },
+        });
+      } else if (imageHeavy) {
+        out.push({
+          type: "text",
+          text: `[${att.filename}: image-only PDF too large (${buf.length} bytes) to send page images for parsing${hasText ? "; used extracted text only" : ""}]`,
         });
       }
       continue;
