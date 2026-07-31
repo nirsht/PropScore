@@ -126,11 +126,13 @@ function xlsxToText(buf: Buffer): string {
 }
 
 // Content block builder. We emit a text block per attachment with extracted
-// text where possible, and an image_url block for image attachments (and PDFs
-// that yielded no text). The user message is a single multimodal turn.
+// text where possible, an image_url block for image attachments, and a file
+// block for PDFs that yielded no text. The user message is a single
+// multimodal turn.
 type ContentBlock =
   | { type: "text"; text: string }
-  | { type: "image_url"; image_url: { url: string } };
+  | { type: "image_url"; image_url: { url: string } }
+  | { type: "file"; file: { filename: string; file_data: string } };
 
 async function buildAttachmentBlocks(
   attachments: RentRollAttachment[],
@@ -160,15 +162,20 @@ async function buildAttachmentBlocks(
           text: `# Attachment: ${att.filename} (PDF, text-extracted)\n\n${text.slice(0, 60_000)}`,
         });
       } else {
-        // Scanned PDF — pass as image to GPT vision. We send the raw PDF
-        // bytes inline; modern OpenAI vision endpoints accept PDF data URIs
-        // up to ~20 pages.
+        // Scanned / image-only PDF (no extractable text) — hand the raw PDF
+        // to the model and let it read the pages directly. Chat Completions
+        // takes inline PDFs via a `file` content part (file_data data URI),
+        // NOT via image_url — image_url rejects any non-image MIME type with
+        // "Invalid MIME type. Only image types are supported."
         const dataUrl = `data:application/pdf;base64,${buf.toString("base64")}`;
         out.push({
           type: "text",
-          text: `# Attachment: ${att.filename} (PDF, image — first ${PER_PDF_PAGE_CAP} pages)`,
+          text: `# Attachment: ${att.filename} (PDF, image — up to first ${PER_PDF_PAGE_CAP} pages)`,
         });
-        out.push({ type: "image_url", image_url: { url: dataUrl } });
+        out.push({
+          type: "file",
+          file: { filename: att.filename, file_data: dataUrl },
+        });
       }
       continue;
     }
