@@ -2,7 +2,13 @@ import { Box, Chip, Paper, Stack, Typography } from "@mui/material";
 import { arrField, numField, strField } from "./fieldGuards";
 import { Metric } from "./Metric";
 
-export function LotAndExtrasCard({ raw }: { raw: Record<string, unknown> }) {
+export function LotAndExtrasCard({
+  raw,
+  publicRemarks,
+}: {
+  raw: Record<string, unknown>;
+  publicRemarks?: string | null;
+}) {
   const lotFeatures = arrField(raw.LotFeatures);
   const view = arrField(raw.View);
   const parking = numField(raw.ParkingTotal);
@@ -10,9 +16,11 @@ export function LotAndExtrasCard({ raw }: { raw: Record<string, unknown> }) {
   const hoaFreq = strField(raw.AssociationFeeFrequency);
   const tax = numField(raw.TaxAnnualAmount);
   const taxYear = numField(raw.TaxYear);
+  const remarks = publicRemarks?.trim() || null;
 
-  const hasAny =
+  const hasLotData =
     lotFeatures.length || view.length || parking != null || hoa != null || tax != null;
+  const hasAny = hasLotData || remarks != null;
   if (!hasAny) return null;
 
   return (
@@ -63,6 +71,26 @@ export function LotAndExtrasCard({ raw }: { raw: Record<string, unknown> }) {
               <Chip key={i} size="small" variant="outlined" label={v} />
             ))}
           </Stack>
+        </Box>
+      )}
+      {remarks && (
+        <Box sx={{ mt: hasLotData ? 1.5 : 0 }}>
+          <Typography variant="caption" color="text.secondary">
+            Public remarks
+          </Typography>
+          <Typography
+            component="pre"
+            variant="body2"
+            sx={{
+              whiteSpace: "pre-wrap",
+              fontFamily: "inherit",
+              m: 0,
+              mt: 0.5,
+              color: "text.primary",
+            }}
+          >
+            {remarks}
+          </Typography>
         </Box>
       )}
     </Paper>

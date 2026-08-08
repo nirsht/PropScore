@@ -189,13 +189,17 @@ export async function runSync(opts: SyncOptions = {}): Promise<SyncSummary> {
 }
 
 function buildFilter(since: Date | null): string {
-  // Exclude lease/rental listings — their ListPrice is a monthly rent (e.g.
-  // $2,500/mo for a retail space) not a sale price, which corrupts every
+  // Ingest ALL listing statuses (Active, Pending, Contingent, Coming Soon,
+  // Sold, Withdrawn, …) so nothing the user sees in the MLS is missing from
+  // the system. We used to restrict to `StandardStatus eq 'Active'`, which is
+  // why some assets never appeared. Non-active listings still get heuristic
+  // scoring but are skipped by the nightly AI-scoring job (see
+  // scripts/ai-score-changed.ts) to avoid spending on inactive assets.
+  //
+  // We still exclude lease/rental listings — their ListPrice is a monthly rent
+  // (e.g. $2,500/mo for a retail space) not a sale price, which corrupts every
   // downstream ratio (price, $/Sqft, Value-Add) when treated as for-sale.
-  const parts = [
-    "StandardStatus eq 'Active'",
-    "not contains(PropertyType, 'Lease')",
-  ];
+  const parts = ["not contains(PropertyType, 'Lease')"];
   if (since) {
     parts.push(`BridgeModificationTimestamp gt ${since.toISOString()}`);
   }

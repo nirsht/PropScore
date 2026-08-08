@@ -10,6 +10,7 @@ export const SORT_COLUMN: Record<SortKey, string> = {
   pricePerUnit: '"pricePerUnit"',
   daysOnMls: '"daysOnMls"',
   postDate: '"postDate"',
+  updated: '"listingUpdatedAt"',
   yearBuilt: '"yearBuilt"',
   density: '"densityScore"',
   vacancy: '"vacancyScore"',
@@ -85,6 +86,8 @@ export function extractSortValue(row: ListingRow, key: SortKey): number | null {
       return row.daysOnMls;
     case "postDate":
       return row.postDate.getTime();
+    case "updated":
+      return row.listingUpdatedAt.getTime();
     case "yearBuilt":
       return row.yearBuilt;
     case "density":

@@ -34,6 +34,16 @@ export function QuickChips() {
       },
     },
     {
+      // Kept adjacent to "SF only" — both are dataset-scope toggles.
+      key: "include-offboarded",
+      label: "Show offboarded",
+      active: !!state.includeOffboarded,
+      apply: () =>
+        set({
+          includeOffboarded: state.includeOffboarded ? undefined : true,
+        }),
+    },
+    {
       key: "ppsf-600",
       label: "$/Sqft < $600",
       active: state.pricePerSqft?.max === 600,
@@ -146,15 +156,6 @@ export function QuickChips() {
       label: state.starredOnly ? "★ Saved" : "☆ Saved",
       active: !!state.starredOnly,
       apply: () => set({ starredOnly: state.starredOnly ? undefined : true }),
-    },
-    {
-      key: "include-offboarded",
-      label: "Show offboarded",
-      active: !!state.includeOffboarded,
-      apply: () =>
-        set({
-          includeOffboarded: state.includeOffboarded ? undefined : true,
-        }),
     },
   ];
 

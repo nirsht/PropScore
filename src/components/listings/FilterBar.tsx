@@ -71,7 +71,6 @@ export function FilterBar() {
 
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
           <QuickChips />
-          <ScoringWeightsButton />
           <Tooltip title="Reset all filters">
             <span>
               <Button
@@ -152,6 +151,18 @@ export function FilterBar() {
                 placeholder="All conditions"
                 allLabel="All conditions"
               />
+            </Field>
+          </Box>
+
+          <Box
+            sx={{
+              gridColumn: { xs: "auto", sm: "span 1" },
+              display: "flex",
+              alignItems: "flex-end",
+            }}
+          >
+            <Field label="Scoring weights">
+              <ScoringWeightsButton />
             </Field>
           </Box>
 

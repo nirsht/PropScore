@@ -10,10 +10,14 @@ import {
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import { StarCell } from "../ListingsGrid/gridCells";
 import { ContactCard } from "./ContactCard";
-import { ContactOverrideEditor } from "./ContactOverrideEditor";
+import {
+  ContactOverrideButtons,
+  ContactOverrideForm,
+  useContactOverride,
+} from "./ContactOverrideEditor";
 import { DataFreshness } from "./DataFreshness";
 import { Metric } from "./Metric";
-import { deriveRatio, fmtDate, fmtMoney } from "./formatters";
+import { fmtDate } from "./formatters";
 import type { ListingContactFields } from "./useListingContact";
 
 type ListingLike = {
@@ -83,6 +87,24 @@ export function HeaderAndContacts({
     officePhone ||
     officeEmail;
 
+  const overrideCtl = useContactOverride({
+    mlsId: listing.mlsId,
+    review,
+    resolved: { agentName, agentEmail, agentPhone, officeName },
+  });
+
+  // The address title sometimes already carries the full "Street, City ST ZIP"
+  // string (some MLS feeds cram it into UnparsedAddress). In that case the
+  // city/state/zip subtitle below just duplicates it, so hide it — but keep it
+  // for the normal case where the title is only the street line.
+  const locality = [listing.city, listing.state, listing.postalCode]
+    .filter(Boolean)
+    .join(", ");
+  const titleHasCity = listing.city
+    ? address.toLowerCase().includes(listing.city.toLowerCase())
+    : false;
+  const showLocality = locality.length > 0 && !titleHasCity;
+
   return (
     <>
       <Stack direction="row" alignItems="flex-start" spacing={1}>
@@ -101,9 +123,11 @@ export function HeaderAndContacts({
           <Typography variant="h5" sx={{ lineHeight: 1.2 }}>
             {address}
           </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {[listing.city, listing.state, listing.postalCode].filter(Boolean).join(", ")}
-          </Typography>
+          {showLocality && (
+            <Typography variant="body2" color="text.secondary">
+              {locality}
+            </Typography>
+          )}
         </Box>
         <StarCell mlsId={listing.mlsId} />
         <IconButton onClick={onClose} size="small">
@@ -113,56 +137,49 @@ export function HeaderAndContacts({
 
       <Paper variant="outlined" sx={{ p: 1.5 }}>
         <Stack spacing={1.25}>
+          {/* Top-right controls: contact freshness + edit/refresh actions. */}
+          <Stack direction="row" alignItems="center" spacing={0.75}>
+            <Box sx={{ flex: 1 }} />
+            {contactFetchedAt && (
+              <DataFreshness updatedAt={contactFetchedAt} label="Contact" />
+            )}
+            <ContactOverrideButtons ctl={overrideCtl} />
+          </Stack>
+
           {hasAnyContact && (
-            <>
-              <Stack spacing={0.25}>
-                {contactFetchedAt && (
-                  <Stack direction="row" alignItems="center" sx={{ mb: 0.25 }}>
-                    <Box sx={{ flex: 1 }} />
-                    <DataFreshness updatedAt={contactFetchedAt} label="Contact" />
-                  </Stack>
-                )}
-                {(agentName || agentPhone || agentEmail) && (
-                  <ContactCard
-                    role="Listed by"
-                    name={agentName}
-                    phone={agentPhone}
-                    email={agentEmail}
-                    listingMlsId={listing.mlsId}
-                  />
-                )}
-                {(coAgentName || coAgentPhone || coAgentEmail) && (
-                  <ContactCard
-                    role="Co-listed by"
-                    name={coAgentName}
-                    phone={coAgentPhone}
-                    email={coAgentEmail}
-                    listingMlsId={listing.mlsId}
-                  />
-                )}
-                {(officeName || officePhone || officeEmail) && (
-                  <ContactCard
-                    role="Brokerage"
-                    name={officeName}
-                    phone={officePhone}
-                    email={officeEmail}
-                    listingMlsId={listing.mlsId}
-                  />
-                )}
-              </Stack>
-              <Divider />
-            </>
+            <Stack spacing={0.25}>
+              {(agentName || agentPhone || agentEmail) && (
+                <ContactCard
+                  role="Listed by"
+                  name={agentName}
+                  phone={agentPhone}
+                  email={agentEmail}
+                  listingMlsId={listing.mlsId}
+                />
+              )}
+              {(coAgentName || coAgentPhone || coAgentEmail) && (
+                <ContactCard
+                  role="Co-listed by"
+                  name={coAgentName}
+                  phone={coAgentPhone}
+                  email={coAgentEmail}
+                  listingMlsId={listing.mlsId}
+                />
+              )}
+              {(officeName || officePhone || officeEmail) && (
+                <ContactCard
+                  role="Brokerage"
+                  name={officeName}
+                  phone={officePhone}
+                  email={officeEmail}
+                  listingMlsId={listing.mlsId}
+                />
+              )}
+            </Stack>
           )}
-          <ContactOverrideEditor
-            mlsId={listing.mlsId}
-            review={review}
-            resolved={{
-              agentName,
-              agentEmail,
-              agentPhone,
-              officeName,
-            }}
-          />
+
+          <ContactOverrideForm ctl={overrideCtl} />
+
           <Divider />
           <Stack
             direction="row"
@@ -187,31 +204,6 @@ export function HeaderAndContacts({
               />
             )}
           </Stack>
-        </Stack>
-      </Paper>
-
-      <Paper variant="outlined" sx={{ p: 2 }}>
-        <Stack direction="row" spacing={3} flexWrap="wrap" useFlexGap>
-          <Metric label="Price" value={fmtMoney(listing.price)} emphasis />
-          <Metric
-            label="$/Sqft"
-            value={fmtMoney(
-              deriveRatio(
-                listing.price,
-                listing.assessorBuildingSqft ?? listing.sqft,
-              ),
-            )}
-          />
-          <Metric
-            label="$/Unit"
-            value={fmtMoney(
-              deriveRatio(listing.price, listing.assessorUnits ?? listing.units),
-            )}
-          />
-          <Metric
-            label="DOM"
-            value={listing.daysOnMls != null ? listing.daysOnMls.toString() : "—"}
-          />
         </Stack>
       </Paper>
     </>
