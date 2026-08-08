@@ -7,13 +7,11 @@ import {
   Alert,
   Box,
   Button,
-  Link as MuiLink,
   Paper,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
-import Link from "next/link";
 import { Logo } from "@/components/Logo";
 
 export default function SignInPage() {
@@ -90,10 +88,7 @@ export default function SignInPage() {
         </Button>
 
         <Typography variant="caption" color="text.secondary">
-          New here?{" "}
-          <MuiLink component={Link} href="/sign-up">
-            Create an account
-          </MuiLink>
+          Accounts are created by an administrator.
         </Typography>
       </Stack>
     </Paper>

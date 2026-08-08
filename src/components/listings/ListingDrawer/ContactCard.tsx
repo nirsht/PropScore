@@ -178,9 +178,13 @@ function RequestRentRollButton({
       : threadId
         ? `https://mail.google.com/mail/u/0/#all/${threadId}`
         : undefined;
+    const ownerId = existing.data?.userId;
+    const ownedByMe = ownerId && ownerId === connection.data?.userId;
+    const ownerName = existing.data?.user?.name || existing.data?.user?.email;
+    const byLabel = ownedByMe ? "by you" : ownerName ? `by ${ownerName}` : "";
     return (
       <Tooltip
-        title={`Rent-roll outreach already exists (${existing.data?.status?.toLowerCase()}) — open in Gmail`}
+        title={`Rent-roll outreach already exists (${existing.data?.status?.toLowerCase()})${byLabel ? ` ${byLabel}` : ""} — open in Gmail`}
       >
         <IconButton
           size="small"
@@ -188,7 +192,7 @@ function RequestRentRollButton({
           href={href}
           target={href ? "_blank" : undefined}
           rel={href ? "noopener" : undefined}
-          sx={{ p: 0.25, color: "success.main" }}
+          sx={{ p: 0.25, color: ownedByMe ? "success.main" : "text.secondary" }}
         >
           <EmailRoundedIcon sx={{ fontSize: 16 }} />
         </IconButton>

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { Prisma } from "@prisma/client";
-import { protectedProcedure, router } from "../trpc";
+import { protectedProcedure, router, type TRPCContext } from "../trpc";
 import { googleAuthEnabled } from "@/lib/auth";
 import { env } from "@/lib/env";
 import {
@@ -30,7 +30,39 @@ const threadInclude = {
       neighborhood: true,
     },
   },
+  // Sender/owner of the thread — surfaced as the "sent by" column on the
+  // team-wide inbox.
+  user: { select: { id: true, name: true, email: true } },
 } satisfies Prisma.EmailThreadInclude;
+
+// Resolve who a draft should be created as. Defaults to the caller; a
+// different `senderUserId` lets you draft into a teammate's mailbox. Throws
+// PRECONDITION_FAILED if the chosen sender has no Gmail linked.
+async function resolveSender(
+  db: TRPCContext["db"],
+  callerId: string,
+  senderUserId: string | undefined,
+): Promise<{ id: string; name: string | null }> {
+  const targetId = senderUserId ?? callerId;
+  const user = await db.user.findUnique({
+    where: { id: targetId },
+    select: { id: true, name: true },
+  });
+  if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "Sender not found" });
+  if (targetId !== callerId) {
+    const account = await db.account.findFirst({
+      where: { userId: targetId, provider: "google" },
+      select: { id: true },
+    });
+    if (!account) {
+      throw new TRPCError({
+        code: "PRECONDITION_FAILED",
+        message: "The chosen sender hasn't connected Gmail.",
+      });
+    }
+  }
+  return user;
+}
 
 export const emailsRouter = router({
   // Is Gmail wired up at all (env) and does this user have a linked Google
@@ -47,6 +79,7 @@ export const emailsRouter = router({
         connected: false as const,
         email: null,
         name: user?.name ?? null,
+        userId: ctx.user.id,
       };
     }
     const email = await getConnectedEmail(ctx.user.id);
@@ -55,27 +88,33 @@ export const emailsRouter = router({
       connected: Boolean(email),
       email,
       name: user?.name ?? null,
+      userId: ctx.user.id,
     };
   }),
 
   // Manual click from ContactCard — creates a Gmail draft for the listing's
-  // agent. Idempotent: if a thread already exists for (user, listing) we
-  // return the existing draft URL instead of inserting a duplicate.
+  // agent. Idempotent AND team-wide: if a thread already exists for the
+  // listing (created by anyone), we return the existing draft URL and the
+  // owner instead of inserting a duplicate. `senderUserId` picks which
+  // teammate's mailbox the draft lands in (defaults to the caller).
   requestRentRoll: protectedProcedure
-    .input(z.object({ listingMlsId: z.string() }))
+    .input(
+      z.object({
+        listingMlsId: z.string(),
+        senderUserId: z.string().optional(),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       const existing = await ctx.db.emailThread.findUnique({
-        where: {
-          userId_listingMlsId: {
-            userId: ctx.user.id,
-            listingMlsId: input.listingMlsId,
-          },
-        },
+        where: { listingMlsId: input.listingMlsId },
+        include: { user: { select: { id: true, name: true, email: true } } },
       });
       if (existing) {
         return {
           threadId: existing.id,
           alreadyExisted: true as const,
+          owner: existing.user,
+          ownedByCaller: existing.userId === ctx.user.id,
           draftUrl: existing.gmailDraftId
             ? gmailDraftUrl(existing.gmailDraftId)
             : existing.gmailThreadId
@@ -83,6 +122,8 @@ export const emailsRouter = router({
               : null,
         };
       }
+
+      const sender = await resolveSender(ctx.db, ctx.user.id, input.senderUserId);
 
       const listing = await ctx.db.listing.findUnique({
         where: { mlsId: input.listingMlsId },
@@ -104,10 +145,9 @@ export const emailsRouter = router({
         });
       }
 
-      const user = await ctx.db.user.findUnique({ where: { id: ctx.user.id } });
       // Sign off as the connected mailbox (the sender), falling back to the
       // app-login name only if the token carries no display name.
-      const senderName = (await getConnectedName(ctx.user.id)) ?? user?.name ?? null;
+      const senderName = (await getConnectedName(sender.id)) ?? sender.name ?? null;
       const { subject, body } = rentRollRequestEmail({
         listingAddress: listing.address,
         agentName: listing.contact?.agentName ?? null,
@@ -117,7 +157,7 @@ export const emailsRouter = router({
       let draft: { gmailDraftId: string; gmailThreadId: string };
       try {
         draft = await createDraft({
-          userId: ctx.user.id,
+          userId: sender.id,
           to: agentEmail,
           subject,
           body,
@@ -135,7 +175,7 @@ export const emailsRouter = router({
       try {
         const thread = await ctx.db.emailThread.create({
           data: {
-            userId: ctx.user.id,
+            userId: sender.id,
             listingMlsId: input.listingMlsId,
             gmailDraftId: draft.gmailDraftId,
             gmailThreadId: draft.gmailThreadId,
@@ -151,21 +191,20 @@ export const emailsRouter = router({
           draftUrl: gmailDraftUrl(draft.gmailDraftId),
         };
       } catch (err) {
-        // Concurrent click — another draft was created between findUnique
-        // and create. Surface the existing one rather than 500ing.
+        // Concurrent click — another thread was created for this listing
+        // between findUnique and create. Surface the existing one rather
+        // than 500ing.
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
           const dup = await ctx.db.emailThread.findUnique({
-            where: {
-              userId_listingMlsId: {
-                userId: ctx.user.id,
-                listingMlsId: input.listingMlsId,
-              },
-            },
+            where: { listingMlsId: input.listingMlsId },
+            include: { user: { select: { id: true, name: true, email: true } } },
           });
           if (dup)
             return {
               threadId: dup.id,
               alreadyExisted: true as const,
+              owner: dup.user,
+              ownedByCaller: dup.userId === ctx.user.id,
               draftUrl: dup.gmailDraftId ? gmailDraftUrl(dup.gmailDraftId) : null,
             };
         }
@@ -175,14 +214,16 @@ export const emailsRouter = router({
 
   // Bulk-draft button on /emails — creates Gmail drafts for every Active SF
   // listing whose price/sqft is below EMAIL_AUTO_PRICE_PER_SQFT and that
-  // doesn't already have a thread for this user. The EmailThread unique
-  // constraint on (userId, listingMlsId) is the source of truth for dedup,
-  // so listings the user has already drafted/sent/replied to are skipped.
-  bulkDraftUnderThreshold: protectedProcedure.mutation(async ({ ctx }) => {
-    const user = await ctx.db.user.findUnique({ where: { id: ctx.user.id } });
-    if (!user) throw new TRPCError({ code: "UNAUTHORIZED" });
+  // doesn't already have a thread from ANYONE on the team. The per-listing
+  // EmailThread unique constraint is the source of truth for dedup, so
+  // listings the team has already drafted/sent/replied to are skipped.
+  // `senderUserId` picks which teammate's mailbox the batch drafts into.
+  bulkDraftUnderThreshold: protectedProcedure
+    .input(z.object({ senderUserId: z.string().optional() }).optional())
+    .mutation(async ({ ctx, input }) => {
+    const sender = await resolveSender(ctx.db, ctx.user.id, input?.senderUserId);
     // Same sender identity for every draft in the batch.
-    const senderName = (await getConnectedName(ctx.user.id)) ?? user.name ?? null;
+    const senderName = (await getConnectedName(sender.id)) ?? sender.name ?? null;
 
     const candidates = await ctx.db.$queryRaw<
       Array<{ mlsId: string; address: string; pricePerSqft: number }>
@@ -193,7 +234,7 @@ export const emailsRouter = router({
       FROM "Listing" l
       JOIN "ListingContact" c ON c."listingMlsId" = l."mlsId"
       LEFT JOIN "EmailThread" t
-             ON t."listingMlsId" = l."mlsId" AND t."userId" = ${ctx.user.id}
+             ON t."listingMlsId" = l."mlsId"
       WHERE l."status" = 'Active'
         AND c."agentEmail" IS NOT NULL
         AND c."agentEmail" != ''
@@ -227,14 +268,14 @@ export const emailsRouter = router({
 
       try {
         const draft = await createDraft({
-          userId: ctx.user.id,
+          userId: sender.id,
           to: agentEmail,
           subject,
           body,
         });
         await ctx.db.emailThread.create({
           data: {
-            userId: ctx.user.id,
+            userId: sender.id,
             listingMlsId: listing.mlsId,
             gmailDraftId: draft.gmailDraftId,
             gmailThreadId: draft.gmailThreadId,
@@ -272,22 +313,19 @@ export const emailsRouter = router({
     };
   }),
 
-  // Per-listing lookup for the EmailHistorySection in the drawer.
+  // Per-listing lookup for the EmailHistorySection in the drawer. Team-wide:
+  // returns the single thread for the listing whoever owns it.
   forListing: protectedProcedure
     .input(z.object({ listingMlsId: z.string() }))
     .query(async ({ ctx, input }) => {
       return ctx.db.emailThread.findUnique({
-        where: {
-          userId_listingMlsId: {
-            userId: ctx.user.id,
-            listingMlsId: input.listingMlsId,
-          },
-        },
+        where: { listingMlsId: input.listingMlsId },
         include: threadInclude,
       });
     }),
 
-  // Cross-listing inbox on the /emails page.
+  // Cross-listing, team-wide inbox on the /emails page. `senderUserId` filters
+  // to specific teammates' outreach.
   listThreads: protectedProcedure
     .input(
       z
@@ -296,6 +334,7 @@ export const emailsRouter = router({
             .array(z.enum(["DRAFT", "SENT", "REPLIED", "PARSED", "FAILED"]))
             .optional(),
           trigger: z.array(z.enum(["manual", "auto_under_450"])).optional(),
+          senderUserId: z.array(z.string()).optional(),
         })
         .optional(),
     )
@@ -304,39 +343,137 @@ export const emailsRouter = router({
       const triggerFilter = input?.trigger?.length
         ? { in: input.trigger }
         : undefined;
+      const senderFilter = input?.senderUserId?.length
+        ? { in: input.senderUserId }
+        : undefined;
       return ctx.db.emailThread.findMany({
         where: {
-          userId: ctx.user.id,
           ...(statusFilter ? { status: statusFilter } : {}),
           ...(triggerFilter ? { trigger: triggerFilter } : {}),
+          ...(senderFilter ? { userId: senderFilter } : {}),
         },
         include: threadInclude,
         orderBy: { createdAt: "desc" },
-        take: 200,
+        take: 500,
       });
     }),
 
   getThread: protectedProcedure
     .input(z.object({ threadId: z.string() }))
     .query(async ({ ctx, input }) => {
-      const thread = await ctx.db.emailThread.findFirst({
-        where: { id: input.threadId, userId: ctx.user.id },
+      const thread = await ctx.db.emailThread.findUnique({
+        where: { id: input.threadId },
         include: threadInclude,
       });
       if (!thread) throw new TRPCError({ code: "NOT_FOUND" });
       return thread;
     }),
 
-  // Manual sync — used by the "Sync now" button on the EmailsView. The same
-  // logic runs nightly via scripts/poll-gmail-replies.ts.
+  // Connected teammate mailboxes — drives the "send from" picker and the
+  // sender filter. Only users with a linked Google account can be a sender.
+  connectedMailboxes: protectedProcedure.query(async ({ ctx }) => {
+    const users = await ctx.db.user.findMany({
+      where: { accounts: { some: { provider: "google" } } },
+      select: { id: true, name: true, email: true },
+      orderBy: { name: "asc" },
+    });
+    return users;
+  }),
+
+  // Team-wide aggregate for the /emails dashboard. Reply rate, status funnel,
+  // per-user breakdown, and how many under-threshold opportunities are still
+  // un-contacted by anyone.
+  teamStats: protectedProcedure.query(async ({ ctx }) => {
+    const [byStatus, byUser, uncontacted] = await Promise.all([
+      ctx.db.emailThread.groupBy({
+        by: ["status"],
+        _count: { _all: true },
+      }),
+      ctx.db.emailThread.groupBy({
+        by: ["userId", "status"],
+        _count: { _all: true },
+      }),
+      ctx.db.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+        SELECT COUNT(*)::bigint AS count
+        FROM "Listing" l
+        JOIN "ListingContact" c ON c."listingMlsId" = l."mlsId"
+        LEFT JOIN "EmailThread" t ON t."listingMlsId" = l."mlsId"
+        WHERE l."status" = 'Active'
+          AND c."agentEmail" IS NOT NULL
+          AND c."agentEmail" != ''
+          AND l."pricePerSqft" IS NOT NULL
+          AND l."pricePerSqft" < ${env.EMAIL_AUTO_PRICE_PER_SQFT}
+          AND t."id" IS NULL
+      `),
+    ]);
+
+    const statusCounts = {
+      DRAFT: 0,
+      SENT: 0,
+      REPLIED: 0,
+      PARSED: 0,
+      FAILED: 0,
+    };
+    for (const row of byStatus) statusCounts[row.status] = row._count._all;
+
+    const total = Object.values(statusCounts).reduce((a, b) => a + b, 0);
+    // "Sent" for rate purposes = anything that left the draft stage.
+    const sent =
+      statusCounts.SENT + statusCounts.REPLIED + statusCounts.PARSED;
+    const replied = statusCounts.REPLIED + statusCounts.PARSED;
+    const replyRate = sent > 0 ? replied / sent : 0;
+
+    // Fold the (userId, status) groups into one row per user.
+    const perUserMap = new Map<
+      string,
+      { userId: string; total: number; drafted: number; sent: number; replied: number; parsed: number }
+    >();
+    for (const row of byUser) {
+      const entry =
+        perUserMap.get(row.userId) ??
+        { userId: row.userId, total: 0, drafted: 0, sent: 0, replied: 0, parsed: 0 };
+      const n = row._count._all;
+      entry.total += n;
+      if (row.status === "DRAFT") entry.drafted += n;
+      if (row.status === "SENT") entry.sent += n;
+      if (row.status === "REPLIED") entry.replied += n;
+      if (row.status === "PARSED") entry.parsed += n;
+      perUserMap.set(row.userId, entry);
+    }
+    const userIds = [...perUserMap.keys()];
+    const users = userIds.length
+      ? await ctx.db.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, name: true, email: true },
+        })
+      : [];
+    const userById = new Map(users.map((u) => [u.id, u]));
+    const perUser = [...perUserMap.values()]
+      .map((e) => ({
+        ...e,
+        name: userById.get(e.userId)?.name ?? null,
+        email: userById.get(e.userId)?.email ?? "",
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    return {
+      total,
+      statusCounts,
+      replyRate,
+      uncontacted: Number(uncontacted[0]?.count ?? 0),
+      threshold: env.EMAIL_AUTO_PRICE_PER_SQFT,
+      perUser,
+    };
+  }),
+
+  // Manual sync — used by the "Sync now" button on the EmailsView. Team-wide:
+  // each thread syncs via its own owner's Gmail token (see syncThread). The
+  // same logic runs nightly via scripts/poll-gmail-replies.ts.
   syncNow: protectedProcedure
     .input(z.object({ threadId: z.string().optional() }).optional())
     .mutation(async ({ ctx, input }) => {
       const threads = await ctx.db.emailThread.findMany({
-        where: {
-          userId: ctx.user.id,
-          id: input?.threadId,
-        },
+        where: { id: input?.threadId },
       });
       let syncedCount = 0;
       let newInboundCount = 0;
@@ -349,15 +486,15 @@ export const emailsRouter = router({
     }),
 
   // Re-run the GPT-5 parser on a specific inbound message (e.g. after first
-  // attempt errored or a new model becomes available).
+  // attempt errored or a new model becomes available). Team-wide — any member
+  // can reparse any thread's messages.
   parseMessage: protectedProcedure
     .input(z.object({ messageId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const msg = await ctx.db.emailMessage.findUnique({
         where: { id: input.messageId },
-        include: { thread: true },
       });
-      if (!msg || msg.thread.userId !== ctx.user.id) {
+      if (!msg) {
         throw new TRPCError({ code: "NOT_FOUND" });
       }
       const result = await parseEmailRentRoll(msg.id);

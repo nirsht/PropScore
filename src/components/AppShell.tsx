@@ -28,17 +28,19 @@ const NAV = [
   { href: "/listings", label: "Opportunities", icon: TableRowsRoundedIcon },
   { href: "/map", label: "Map", icon: MapOutlinedIcon },
   { href: "/emails", label: "Emails", icon: MailOutlineRoundedIcon },
-  { href: "/admin/sync", label: "Admin", icon: SettingsOutlinedIcon },
+  { href: "/admin/sync", label: "Admin", icon: SettingsOutlinedIcon, adminOnly: true },
 ];
 
 type Props = {
   children: React.ReactNode;
   userEmail: string;
+  role: "USER" | "ADMIN";
 };
 
-export function AppShell({ children, userEmail }: Props) {
+export function AppShell({ children, userEmail, role }: Props) {
   const pathname = usePathname();
   const [chatOpen, setChatOpen] = React.useState(false);
+  const nav = NAV.filter((item) => !item.adminOnly || role === "ADMIN");
 
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
@@ -62,7 +64,7 @@ export function AppShell({ children, userEmail }: Props) {
           </Box>
 
           <Stack direction="row" spacing={0.5}>
-            {NAV.map((item) => {
+            {nav.map((item) => {
               const active = pathname?.startsWith(item.href);
               const Icon = item.icon;
               return (
