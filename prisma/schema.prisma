@@ -759,9 +759,12 @@ enum EmailDirection {
   INBOUND
 }
 
-/// One outreach thread per (user, listing). Dedup is enforced by the
-/// composite unique — both manual click and the under-$450/sqft auto-trigger
-/// no-op if a row already exists.
+/// One outreach thread per LISTING, shared across the whole team. Dedup is
+/// enforced by the unique on `listingMlsId` — once anyone (manual click or the
+/// under-$450/sqft auto-trigger) has a thread for a listing, nobody drafts a
+/// second one. `userId` is the sender/owner of the thread (the mailbox the
+/// draft was created in), which may differ from whoever clicked when a
+/// different sender is picked.
 model EmailThread {
   id            String            @id @default(cuid())
   userId        String
@@ -783,7 +786,7 @@ model EmailThread {
   listing  Listing        @relation(fields: [listingMlsId], references: [mlsId], onDelete: Cascade)
   messages EmailMessage[]
 
-  @@unique([userId, listingMlsId])
+  @@unique([listingMlsId])
   @@index([status])
   @@index([userId, createdAt(sort: Desc)])
 }

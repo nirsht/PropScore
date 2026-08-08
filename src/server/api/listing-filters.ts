@@ -14,18 +14,21 @@ export function buildWhere(
   const where: Prisma.Sql[] = [];
 
   if (input.q && input.q.length >= 2) {
-    // Fuzzy match: pg_trgm's `<%` (word similarity, indexed by the GIN we
-    // built on `address` and `city`) catches typos like "misson" → "Mission",
-    // while ILIKE with leading-wildcard pattern matching also rides the same
-    // GIN index for substring matches like "mission" → "1234 Mission St".
+    // Fuzzy match: pg_trgm's `%>` (word-similarity commutator, indexed by the
+    // GIN on `address`/`city`) measures how well the *query* matches a word
+    // inside the target — the right direction for typo tolerance on short
+    // queries against long address strings (e.g. "bridgewey" → "Bridgeway",
+    // "misson" → "Mission"). `col %> q` is equivalent to `q <% col`. ILIKE
+    // with `%q%` still handles exact substring matches ("mission" →
+    // "1234 Mission St") and is the only path for the opaque `mlsId` hash.
     const ilike = `%${input.q}%`;
     where.push(
       Prisma.sql`(
         "address" ILIKE ${ilike}
         OR "city" ILIKE ${ilike}
         OR "mlsId" ILIKE ${ilike}
-        OR "address" <% ${input.q}
-        OR "city" <% ${input.q}
+        OR "address" %> ${input.q}
+        OR "city" %> ${input.q}
       )`,
     );
   }

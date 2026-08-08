@@ -133,6 +133,9 @@ export function EmailHistorySection({ listingMlsId }: { listingMlsId: string }) 
               To: {t.toEmail}
             </Typography>
             <Typography variant="caption" color="text.secondary">
+              · Sent by: {t.user?.name || t.user?.email || "—"}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
               · Trigger: {t.trigger}
             </Typography>
             {t.parseError && (

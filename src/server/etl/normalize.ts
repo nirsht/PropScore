@@ -117,8 +117,16 @@ export function normalizeListing(p: BridgeProperty): NormalizedListing | null {
   const rawPropertyType = String(p.PropertyType ?? "");
   if (/lease/i.test(rawPropertyType)) return null;
 
-  const price = int(p.ListPrice);
-  if (price == null || price <= 0) return null;
+  const status = String(p.StandardStatus ?? "Unknown");
+  const isActive = status === "Active";
+
+  // Active for-sale listings must carry a real price — a missing/zero ListPrice
+  // there is junk data that corrupts every downstream ratio, so we drop it.
+  // Non-active listings (Sold/Withdrawn/Coming Soon/…) are kept even without a
+  // price so they still appear in the system; a missing price is stored as 0.
+  const rawPrice = int(p.ListPrice);
+  if (isActive && (rawPrice == null || rawPrice <= 0)) return null;
+  const price = rawPrice != null && rawPrice > 0 ? rawPrice : 0;
 
   const postDate = date(p.ListingContractDate) ?? date(p.ModificationTimestamp);
   if (!postDate) return null;
@@ -168,7 +176,7 @@ export function normalizeListing(p: BridgeProperty): NormalizedListing | null {
     daysOnMls,
     postDate,
     listingUpdatedAt,
-    status: String(p.StandardStatus ?? "Unknown"),
+    status,
     propertyType: String(p.PropertySubType ?? p.PropertyType ?? "Unknown"),
     sqft,
     lotSizeSqft,

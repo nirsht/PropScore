@@ -34,12 +34,15 @@ type Resolved = {
 };
 
 /**
- * Inline editor for the manual contact corrections stored on the listing's
- * ListingReview row, plus a "Re-pull from Bridge" button that force-refreshes
- * the enrichment chain. Overrides win over Bridge in the display (see
- * useListingContact); clearing a field reverts to the Bridge/enrichment value.
+ * Shared state/mutations for the manual contact-override editor. Split into a
+ * hook so the trigger buttons can render in the broker card's top-right corner
+ * while the collapsible edit form renders lower in the card body — both driven
+ * by a single source of truth (see ContactOverrideButtons / ContactOverrideForm).
+ *
+ * Overrides win over Bridge in the display (see useListingContact); clearing a
+ * field reverts to the Bridge/enrichment value.
  */
-export function ContactOverrideEditor({
+export function useContactOverride({
   mlsId,
   review,
   resolved,
@@ -97,15 +100,31 @@ export function ContactOverrideEditor({
     onError: (e) => setToast({ severity: "error", msg: e.message }),
   });
 
+  return {
+    mlsId,
+    resolved,
+    open,
+    setOpen,
+    toast,
+    setToast,
+    fields: { agentName, agentEmail, agentPhone, officeName },
+    setters: { setAgentName, setAgentEmail, setAgentPhone, setOfficeName },
+    save,
+    repull,
+  };
+}
+
+export type ContactOverrideCtl = ReturnType<typeof useContactOverride>;
+
+/**
+ * The edit (pencil) + re-pull (refresh) icon buttons, plus the shared toast.
+ * Designed to sit in the broker card header row (top-right).
+ */
+export function ContactOverrideButtons({ ctl }: { ctl: ContactOverrideCtl }) {
+  const { open, setOpen, repull, toast, setToast } = ctl;
   return (
-    <Box>
-      <Stack
-        direction="row"
-        spacing={0.5}
-        justifyContent="flex-end"
-        alignItems="center"
-        sx={{ mt: 0.25 }}
-      >
+    <>
+      <Stack direction="row" spacing={0.5} alignItems="center">
         <Tooltip title={open ? "Close editor" : "Edit contact"}>
           <IconButton
             size="small"
@@ -120,7 +139,7 @@ export function ContactOverrideEditor({
             <IconButton
               size="small"
               disabled={repull.isPending}
-              onClick={() => repull.mutate({ mlsId })}
+              onClick={() => repull.mutate({ mlsId: ctl.mlsId })}
               sx={{ p: 0.5, color: "text.secondary" }}
             >
               {repull.isPending ? (
@@ -132,67 +151,6 @@ export function ContactOverrideEditor({
           </span>
         </Tooltip>
       </Stack>
-
-      <Collapse in={open} unmountOnExit>
-        <Stack spacing={1.25} sx={{ mt: 1 }}>
-          <TextField
-            label="Agent name"
-            size="small"
-            value={agentName}
-            placeholder={resolved.agentName ?? "—"}
-            onChange={(e) => setAgentName(e.target.value)}
-            fullWidth
-          />
-          <TextField
-            label="Agent email"
-            size="small"
-            value={agentEmail}
-            placeholder={resolved.agentEmail ?? "—"}
-            onChange={(e) => setAgentEmail(e.target.value)}
-            fullWidth
-          />
-          <TextField
-            label="Agent phone"
-            size="small"
-            value={agentPhone}
-            placeholder={resolved.agentPhone ?? "—"}
-            onChange={(e) => setAgentPhone(e.target.value)}
-            fullWidth
-          />
-          <TextField
-            label="Brokerage"
-            size="small"
-            value={officeName}
-            placeholder={resolved.officeName ?? "—"}
-            onChange={(e) => setOfficeName(e.target.value)}
-            fullWidth
-          />
-          <Stack direction="row" spacing={1} justifyContent="flex-end">
-            <Button size="small" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              size="small"
-              variant="contained"
-              disabled={save.isPending}
-              onClick={() =>
-                save.mutate({
-                  mlsId,
-                  agentName,
-                  agentEmail,
-                  agentPhone,
-                  officeName,
-                })
-              }
-            >
-              Save
-            </Button>
-          </Stack>
-          <Box sx={{ color: "text.secondary", fontSize: 12 }}>
-            Leave a field blank to fall back to the Bridge/enrichment value.
-          </Box>
-        </Stack>
-      </Collapse>
 
       <Snackbar
         open={!!toast}
@@ -206,6 +164,80 @@ export function ContactOverrideEditor({
           </Alert>
         ) : undefined}
       </Snackbar>
-    </Box>
+    </>
+  );
+}
+
+/**
+ * The collapsible contact-override edit form (Agent name/email/phone +
+ * Brokerage). Renders in the broker card body; visibility is driven by the
+ * shared `open` state so the header pencil button toggles it.
+ */
+export function ContactOverrideForm({ ctl }: { ctl: ContactOverrideCtl }) {
+  const { open, setOpen, save, resolved, fields, setters, mlsId } = ctl;
+  const { agentName, agentEmail, agentPhone, officeName } = fields;
+  const { setAgentName, setAgentEmail, setAgentPhone, setOfficeName } = setters;
+
+  return (
+    <Collapse in={open} unmountOnExit>
+      <Stack spacing={1.25} sx={{ mt: 1 }}>
+        <TextField
+          label="Agent name"
+          size="small"
+          value={agentName}
+          placeholder={resolved.agentName ?? "—"}
+          onChange={(e) => setAgentName(e.target.value)}
+          fullWidth
+        />
+        <TextField
+          label="Agent email"
+          size="small"
+          value={agentEmail}
+          placeholder={resolved.agentEmail ?? "—"}
+          onChange={(e) => setAgentEmail(e.target.value)}
+          fullWidth
+        />
+        <TextField
+          label="Agent phone"
+          size="small"
+          value={agentPhone}
+          placeholder={resolved.agentPhone ?? "—"}
+          onChange={(e) => setAgentPhone(e.target.value)}
+          fullWidth
+        />
+        <TextField
+          label="Brokerage"
+          size="small"
+          value={officeName}
+          placeholder={resolved.officeName ?? "—"}
+          onChange={(e) => setOfficeName(e.target.value)}
+          fullWidth
+        />
+        <Stack direction="row" spacing={1} justifyContent="flex-end">
+          <Button size="small" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            size="small"
+            variant="contained"
+            disabled={save.isPending}
+            onClick={() =>
+              save.mutate({
+                mlsId,
+                agentName,
+                agentEmail,
+                agentPhone,
+                officeName,
+              })
+            }
+          >
+            Save
+          </Button>
+        </Stack>
+        <Box sx={{ color: "text.secondary", fontSize: 12 }}>
+          Leave a field blank to fall back to the Bridge/enrichment value.
+        </Box>
+      </Stack>
+    </Collapse>
   );
 }

@@ -150,26 +150,36 @@ export function ChatPanel({
     setDraft(null);
     void stream.send({ conversationId: cid, userMessage: text });
     // Locally extend the cached `get` result so the user sees their msg now.
+    // On a brand-new thread `get.data` is still undefined (the query only just
+    // got enabled), so seed a minimal cache entry instead of bailing —
+    // otherwise the user's own message doesn't appear until the post-stream
+    // refetch, which reads as a flash/pop-in of their message.
     utils.chat.get.setData({ conversationId: cid }, (prev) => {
-      if (!prev) return prev;
+      const userRow = {
+        id: optimistic.id,
+        conversationId: cid,
+        role: "USER",
+        content: optimistic.content,
+        toolCalls: null,
+        toolName: null,
+        toolCallId: null,
+        citedMlsIds: [],
+        tokensIn: null,
+        tokensOut: null,
+        errored: false,
+        createdAt: new Date(),
+      };
+      if (!prev) {
+        return {
+          id: cid,
+          messages: [userRow],
+        } as unknown as NonNullable<typeof prev>;
+      }
       return {
         ...prev,
         messages: [
           ...prev.messages,
-          {
-            id: optimistic.id,
-            conversationId: cid,
-            role: "USER",
-            content: optimistic.content,
-            toolCalls: null,
-            toolName: null,
-            toolCallId: null,
-            citedMlsIds: [],
-            tokensIn: null,
-            tokensOut: null,
-            errored: false,
-            createdAt: new Date(),
-          } as unknown as (typeof prev.messages)[number],
+          userRow as unknown as (typeof prev.messages)[number],
         ],
       };
     });
@@ -267,7 +277,7 @@ export function ChatPanel({
                     onCitationClick={onCitationClick}
                   />
                 ))}
-                <ScrollAnchor key={messages.length} />
+                <ScrollAnchor dep={messages.length + (draft?.content?.length ?? 0)} />
               </Stack>
             )}
           </Box>
@@ -372,11 +382,17 @@ function EmptyState({
   );
 }
 
-function ScrollAnchor() {
+// Auto-scrolls to the newest content. The effect is gated on `dep` (message
+// count + streaming draft length) so it only fires when there's actually new
+// content, and it uses an instant (non-smooth) jump: a `behavior: "smooth"`
+// call on every render restarts the animation dozens of times a second during
+// token streaming, which is the visible "blink"/jitter. `dep`-gating also lets
+// us drop the `key={messages.length}` remount that churned the DOM node.
+function ScrollAnchor({ dep }: { dep: number }) {
   const ref = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
-    ref.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  });
+    ref.current?.scrollIntoView({ block: "end" });
+  }, [dep]);
   return <div ref={ref} />;
 }
 

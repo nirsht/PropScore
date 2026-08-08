@@ -117,7 +117,11 @@ export function BuildingDetailsCard({ listing }: { listing: ListingForDetails })
         <Box sx={{ flex: 1 }} />
         <DataFreshness updatedAt={listing.assessorFetchedAt} label="Assessor" />
       </Stack>
-      {!listing.assessorFetchedAt && (
+      {/* The SF Assessor (SFPIM) dataset only covers San Francisco parcels, so
+          only prompt for it on SF listings — a Hercules/Oakland/etc. listing
+          would otherwise show this alert forever since the enrichment sweep
+          never selects non-SF rows. */}
+      {listing.city === "San Francisco" && !listing.assessorFetchedAt && (
         <Alert severity="info" sx={{ mb: 1.5, py: 0.5 }}>
           SF Assessor record not yet fetched. Run{" "}
           <code>pnpm enrich:sfpim</code> to populate.
