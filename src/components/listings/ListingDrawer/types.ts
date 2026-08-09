@@ -20,6 +20,7 @@ export type ScoreLike = {
 };
 
 export type ListingForDetails = {
+  mlsId: string;
   city: string | null;
   // MLS-side
   sqft: number | null;

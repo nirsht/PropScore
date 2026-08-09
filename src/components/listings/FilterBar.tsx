@@ -101,8 +101,7 @@ export function FilterBar() {
             rowGap: 2.25,
           }}
         >
-          {/* Address spans 2 columns when there's space */}
-          <Box sx={{ gridColumn: { xs: "auto", sm: "span 2" } }}>
+          <Box sx={{ gridColumn: { xs: "auto", sm: "span 1" } }}>
             <Field label="Address / city / MLS ID">
               <TextField
                 placeholder="Mission, 24th St, 424012345…"
@@ -161,7 +160,10 @@ export function FilterBar() {
               alignItems: "flex-end",
             }}
           >
-            <Field label="Scoring weights">
+            <Field
+              label="Scoring weights"
+              hint="Re-rank listings by your own blend of the value-add signals."
+            >
               <ScoringWeightsButton />
             </Field>
           </Box>

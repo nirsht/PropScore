@@ -37,6 +37,11 @@ type Props = {
   role: "USER" | "ADMIN";
 };
 
+// In production, sign-out lands on the public marketing root rather than the
+// in-app sign-in page. Dev stays on the relative /sign-in so localhost works.
+const SIGN_OUT_CALLBACK_URL =
+  process.env.NODE_ENV === "production" ? "https://propscore26.com/" : "/sign-in";
+
 export function AppShell({ children, userEmail, role }: Props) {
   const pathname = usePathname();
   const [chatOpen, setChatOpen] = React.useState(false);
@@ -99,7 +104,7 @@ export function AppShell({ children, userEmail, role }: Props) {
               {userEmail}
             </Typography>
             <Tooltip title="Sign out">
-              <IconButton size="small" onClick={() => signOut({ callbackUrl: "/sign-in" })}>
+              <IconButton size="small" onClick={() => signOut({ callbackUrl: SIGN_OUT_CALLBACK_URL })}>
                 <LogoutOutlinedIcon fontSize="small" />
               </IconButton>
             </Tooltip>

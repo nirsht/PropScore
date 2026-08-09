@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { DealStatus } from "@prisma/client";
 import { protectedProcedure, router } from "../trpc";
 import { enrichListingContact } from "@/server/etl/contact-enrichment";
+import { enrichListingSfpim } from "@/server/etl/sfpim-enrich";
 
 const DealStatusSchema = z.nativeEnum(DealStatus);
 
@@ -147,5 +148,19 @@ export const listingReviewsRouter = router({
         },
       });
       return { status: result.status, contact };
+    }),
+
+  /**
+   * On-demand SF Assessor (SFPIM) fetch for one listing — backs the Building
+   * Details card's "Calculate now" button for brand-new listings that haven't
+   * been picked up by the daily base cron yet. Same code path as the nightly
+   * sweep (enrich-sfpim.ts); free Socrata lookup, no OpenAI cost. Returns
+   * "matched" | "skipped" (skipped = no assessor parcel matched the address).
+   */
+  enrichAssessor: protectedProcedure
+    .input(z.object({ mlsId: z.string() }))
+    .mutation(async ({ input }) => {
+      const result = await enrichListingSfpim(input.mlsId);
+      return { status: result };
     }),
 });
