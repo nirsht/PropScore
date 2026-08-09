@@ -131,22 +131,17 @@ export async function runSync(opts: SyncOptions = {}): Promise<SyncSummary> {
       scored += flushed.scored;
     }
 
-    // Backfill Listing.neighborhood for any rows still NULL (new this run,
-    // or never had a polygon match). Single set-based PostGIS query against
-    // the Neighborhood.boundary GIST index — fast even at scale.
-    await log.info(`Resolving neighborhood polygons…`);
-    const nbhdResult = await resolveNeighborhoods();
-    if (nbhdResult.matched > 0 || nbhdResult.unmatched > 0) {
-      await log.info(
-        `Neighborhood join: matched=${nbhdResult.matched}, unmatched=${nbhdResult.unmatched}`,
-      );
-    }
-
-    await log.info(`Refreshing materialized view…`);
-    await refreshMaterializedView();
-    await log.info(`Sync complete: upserted=${upserted}, scored=${scored}.`);
-
+    // Ingestion is complete and the DB is confirmed healthy here, so commit
+    // the run as SUCCEEDED and advance the cursor NOW — before the finalization
+    // steps below. Those steps (neighborhood backfill + MV refresh) are
+    // idempotent and re-derived on the next run, so a transient DB outage
+    // during them must not discard the (expensive, potentially hours-long)
+    // fetch/upsert work or force a full Bridge re-fetch next night. This is
+    // the P1017 / "database system is in recovery mode" incident: the DB
+    // restarted mid-finalization and the whole run was marked FAILED, losing
+    // the cursor advance.
     const finishedAt = new Date();
+    const cursorTo = lastSeenMod > new Date(0) ? lastSeenMod : finishedAt;
     await db.syncRun.update({
       where: { id: run.id },
       data: {
@@ -154,12 +149,37 @@ export async function runSync(opts: SyncOptions = {}): Promise<SyncSummary> {
         status: "SUCCEEDED",
         recordsUpserted: upserted,
         recordsScored: scored,
-        cursorTo: lastSeenMod > new Date(0) ? lastSeenMod : finishedAt,
+        cursorTo,
         progressCurrent: upserted,
         progressMessage: `Done — upserted ${upserted}, scored ${scored}.`,
       },
     });
-    await log.finalFlush();
+    await log.info(`Sync complete: upserted=${upserted}, scored=${scored}.`);
+
+    // Best-effort finalization. Failures here are logged but never fail the
+    // run: the neighborhood backfill only touches rows whose neighborhood is
+    // still NULL, and the MV refresh runs every night, so both self-heal on
+    // the next sync. Backfill Listing.neighborhood via a single set-based
+    // PostGIS query against the Neighborhood.boundary GIST index.
+    await runFinalizationStep(log, `Resolving neighborhood polygons…`, async () => {
+      const nbhdResult = await resolveNeighborhoods();
+      if (nbhdResult.matched > 0 || nbhdResult.unmatched > 0) {
+        await log.info(
+          `Neighborhood join: matched=${nbhdResult.matched}, unmatched=${nbhdResult.unmatched}`,
+        );
+      }
+    });
+    await runFinalizationStep(log, `Refreshing materialized view…`, () =>
+      refreshMaterializedView(),
+    );
+
+    // Already committed as SUCCEEDED above; a flush failure here must not flip
+    // the run back to FAILED via the outer catch.
+    try {
+      await log.finalFlush();
+    } catch {
+      /* best-effort */
+    }
 
     return {
       syncRunId: run.id,
@@ -167,7 +187,7 @@ export async function runSync(opts: SyncOptions = {}): Promise<SyncSummary> {
       recordsUpserted: upserted,
       recordsScored: scored,
       cursorFrom,
-      cursorTo: lastSeenMod > new Date(0) ? lastSeenMod : finishedAt,
+      cursorTo,
       durationMs: finishedAt.getTime() - startedAt.getTime(),
     };
   } catch (err) {
@@ -325,6 +345,39 @@ async function flush(rows: NormalizedListing[]): Promise<{ upserted: number; sco
     }
   }
   return { upserted, scored };
+}
+
+/**
+ * Run a best-effort finalization step. Logs the start message, runs `fn`, and
+ * swallows any failure (logging it as a warning) so a transient DB outage
+ * during a re-derivable step can't fail an already-committed sync. Logging
+ * itself is best-effort too, since the DB may be the very thing that's down.
+ */
+async function runFinalizationStep(
+  log: ReturnType<typeof makeLogger>,
+  startMessage: string,
+  fn: () => Promise<void>,
+): Promise<void> {
+  await safeLog(log, "info", startMessage);
+  try {
+    await fn();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await safeLog(log, "warn", `${startMessage} failed (will retry next run): ${message}`);
+  }
+}
+
+async function safeLog(
+  log: ReturnType<typeof makeLogger>,
+  level: "info" | "warn",
+  message: string,
+): Promise<void> {
+  try {
+    await log[level](message);
+  } catch {
+    // eslint-disable-next-line no-console
+    console.error(`[etl:${level}] ${message}`);
+  }
 }
 
 async function refreshMaterializedView(): Promise<void> {
