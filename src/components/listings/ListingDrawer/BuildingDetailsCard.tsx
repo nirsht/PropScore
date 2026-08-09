@@ -1,10 +1,32 @@
+"use client";
+
 import * as React from "react";
-import { Alert, Box, Paper, Stack, Typography } from "@mui/material";
+import {
+  Alert,
+  Box,
+  Button,
+  CircularProgress,
+  Paper,
+  Stack,
+  Typography,
+} from "@mui/material";
+import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
+import { trpc } from "@/lib/trpc/client";
 import { isDiverging, rowDiverges } from "@/lib/diff";
 import { AIEvidenceTrail } from "./AIEvidenceTrail";
 import { DataFreshness } from "./DataFreshness";
 import { deriveRatio, fmtMoney, fmtNum } from "./formatters";
 import type { ListingForDetails } from "./types";
+
+// The assessor record is refreshed by the daily base cron (`0 20 * * *` in
+// render.yaml = 20:00 UTC = 12:00 PM PT). Compute the next occurrence so the
+// "new listing" notice can tell the user when it'll be picked up automatically.
+function nextDailyAssessorRun(now: Date): Date {
+  const next = new Date(now);
+  next.setUTCHours(20, 0, 0, 0);
+  if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
+  return next;
+}
 
 // ============================================================================
 // Building Details — replaces the old headline metrics + source-comparison.
@@ -13,6 +35,32 @@ import type { ListingForDetails } from "./types";
 // unit, so this is the MLS-equivalent room count); Assessor column = raw.
 // ============================================================================
 export function BuildingDetailsCard({ listing }: { listing: ListingForDetails }) {
+  const utils = trpc.useUtils();
+  const [noMatch, setNoMatch] = React.useState(false);
+  const enrichAssessor = trpc.listingReviews.enrichAssessor.useMutation({
+    onSuccess: (res) => {
+      setNoMatch(res.status === "skipped");
+      void utils.listings.getById.invalidate({ mlsId: listing.mlsId });
+    },
+  });
+
+  // Formatted client-side after mount to avoid an SSR/CSR hydration mismatch
+  // on the computed timestamp.
+  const [nextRunLabel, setNextRunLabel] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    setNextRunLabel(
+      nextDailyAssessorRun(new Date()).toLocaleString("en-US", {
+        timeZone: "America/Los_Angeles",
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZoneName: "short",
+      }),
+    );
+  }, []);
+
   const fmt = (n: number | null | undefined) => fmtNum(n);
   const fmtFloat = (n: number | null | undefined) =>
     n == null ? "—" : (Math.round(n * 10) / 10).toString();
@@ -118,9 +166,46 @@ export function BuildingDetailsCard({ listing }: { listing: ListingForDetails })
         <DataFreshness updatedAt={listing.assessorFetchedAt} label="Assessor" />
       </Stack>
       {!listing.assessorFetchedAt && (
-        <Alert severity="info" sx={{ mb: 1.5, py: 0.5 }}>
-          SF Assessor record not yet fetched. Run{" "}
-          <code>pnpm enrich:sfpim</code> to populate.
+        <Alert
+          severity="info"
+          sx={{ mb: 1.5 }}
+          action={
+            <Button
+              color="inherit"
+              size="small"
+              variant="outlined"
+              startIcon={
+                enrichAssessor.isPending ? (
+                  <CircularProgress size={14} color="inherit" />
+                ) : (
+                  <RefreshRoundedIcon fontSize="small" />
+                )
+              }
+              disabled={enrichAssessor.isPending}
+              onClick={() => {
+                setNoMatch(false);
+                enrichAssessor.mutate({ mlsId: listing.mlsId });
+              }}
+            >
+              {enrichAssessor.isPending ? "Calculating…" : "Calculate now"}
+            </Button>
+          }
+        >
+          This is a new listing — SF Assessor data isn’t in yet. It’s pulled
+          automatically every day at 12:00&nbsp;PM&nbsp;PT
+          {nextRunLabel ? ` (next run ${nextRunLabel})` : ""}, or you can
+          calculate it now.
+        </Alert>
+      )}
+      {enrichAssessor.isError && (
+        <Alert severity="error" sx={{ mb: 1.5 }}>
+          Assessor fetch failed: {enrichAssessor.error.message}
+        </Alert>
+      )}
+      {noMatch && !enrichAssessor.isPending && (
+        <Alert severity="warning" sx={{ mb: 1.5 }}>
+          No matching SF Assessor parcel was found for this address. The listing
+          was stamped as checked; it’ll be retried on the next daily run.
         </Alert>
       )}
       <Box

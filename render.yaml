@@ -21,6 +21,14 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # Canonical public URL. Without this, env.ts falls back to Render's
+      # auto-injected RENDER_EXTERNAL_URL (propscore-web.onrender.com), which
+      # then leaks into every absolute redirect built from NEXTAUTH_URL — most
+      # visibly the Gmail OAuth callback + post-connect redirect. The Google
+      # console must list https://propscore26.com/api/gmail/callback as an
+      # Authorized redirect URI for the Gmail connect flow to succeed.
+      - key: NEXTAUTH_URL
+        value: https://propscore26.com
       - key: BRIDGE_DATASET
         value: sfar
       - key: BRIDGE_BASE_URL
