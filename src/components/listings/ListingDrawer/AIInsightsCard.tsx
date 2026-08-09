@@ -1,9 +1,21 @@
 import { Box, Chip, Paper, Stack, Tooltip, Typography } from "@mui/material";
 import type { RenovationLevel } from "@prisma/client";
+import { DataFreshness } from "./DataFreshness";
 import { Metric } from "./Metric";
 import { RentRollSection } from "./RentRollSection";
 import { EmailHistorySection } from "./EmailHistorySection";
 import type { ListingForAI } from "./types";
+
+/** The more recent of two enrichment timestamps (either may be null). */
+function laterDate(
+  a: Date | string | null | undefined,
+  b: Date | string | null | undefined,
+): Date | string | null {
+  const ta = a ? new Date(a).getTime() : -Infinity;
+  const tb = b ? new Date(b).getTime() : -Infinity;
+  if (ta === -Infinity && tb === -Infinity) return null;
+  return ta >= tb ? a ?? null : b ?? null;
+}
 
 export const RENO_COLOR: Record<RenovationLevel, "error" | "warning" | "info" | "success"> = {
   DISTRESSED: "error",
@@ -59,6 +71,9 @@ export function AIInsightsCard({ listing }: { listing: ListingForAI }) {
     !!capex?.length ||
     hasAdu;
   const hasVision = !!listing.visionFetchedAt;
+  // "Updated" = the most recent AI enrichment run (photo-vision or text
+  // extraction) that fed this card.
+  const aiUpdatedAt = laterDate(listing.extractFetchedAt, listing.visionFetchedAt);
 
   return (
     <Paper variant="outlined" sx={{ p: 2 }}>
@@ -71,6 +86,8 @@ export function AIInsightsCard({ listing }: { listing: ListingForAI }) {
             label={RENO_LABEL[listing.renovationLevel]}
           />
         )}
+        <Box sx={{ flex: 1 }} />
+        <DataFreshness updatedAt={aiUpdatedAt} label="AI" />
       </Stack>
 
       {!hasVision && !hasAnyExtract && (

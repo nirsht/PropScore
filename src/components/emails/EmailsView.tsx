@@ -7,16 +7,20 @@ import {
   Chip,
   Container,
   Divider,
+  MenuItem,
   Paper,
   Stack,
+  TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
 import SyncRoundedIcon from "@mui/icons-material/SyncRounded";
 import MailOutlineRoundedIcon from "@mui/icons-material/MailOutlineRounded";
+import PersonOutlineRoundedIcon from "@mui/icons-material/PersonOutlineRounded";
 import { trpc } from "@/lib/trpc/client";
 import { ConnectGmailPill } from "./ConnectGmailPill";
 import { ThreadDetail } from "./ThreadDetail";
+import { EmailStatsHeader } from "./EmailStatsHeader";
 import {
   MultiSelectFilter,
   type ChipColor,
@@ -52,18 +56,35 @@ const STATUS_COLOR: Record<
 export function EmailsView() {
   const [statusFilter, setStatusFilter] = React.useState<ThreadStatus[]>([]);
   const [triggerFilter, setTriggerFilter] = React.useState<TriggerKind[]>([]);
+  const [senderFilter, setSenderFilter] = React.useState<string[]>([]);
+  // "" means "me" (the caller); a userId drafts into that teammate's mailbox.
+  const [draftAsUserId, setDraftAsUserId] = React.useState<string>("");
   const [selectedThreadId, setSelectedThreadId] = React.useState<string | null>(
     null,
   );
 
   const utils = trpc.useUtils();
+  const connection = trpc.emails.connectionStatus.useQuery();
+  const mailboxes = trpc.emails.connectedMailboxes.useQuery();
+  const myUserId = connection.data?.userId ?? null;
+
+  const senderOptions = (mailboxes.data ?? []).map((m) => ({
+    value: m.id,
+    label:
+      m.id === myUserId
+        ? `Me${m.name ? ` (${m.name})` : ""}`
+        : m.name || m.email,
+  }));
+
   const threads = trpc.emails.listThreads.useQuery({
     status: statusFilter.length ? statusFilter : undefined,
     trigger: triggerFilter.length ? triggerFilter : undefined,
+    senderUserId: senderFilter.length ? senderFilter : undefined,
   });
   const syncAll = trpc.emails.syncNow.useMutation({
     onSuccess: () => {
       void utils.emails.listThreads.invalidate();
+      void utils.emails.teamStats.invalidate();
       if (selectedThreadId)
         void utils.emails.getThread.invalidate({ threadId: selectedThreadId });
     },
@@ -72,6 +93,7 @@ export function EmailsView() {
   const bulkDraft = trpc.emails.bulkDraftUnderThreshold.useMutation({
     onSuccess: (res) => {
       void utils.emails.listThreads.invalidate();
+      void utils.emails.teamStats.invalidate();
       setBulkResult(
         res.total === 0
           ? `No new listings under $${res.threshold}/sqft to draft.`
@@ -96,13 +118,23 @@ export function EmailsView() {
             Emails
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Rent-roll outreach to listing agents — drafts only, send from Gmail.
+            Team rent-roll outreach — one thread per listing, drafts only, sent
+            from each person&apos;s Gmail.
           </Typography>
         </Box>
         <ConnectGmailPill />
       </Stack>
 
-      <Stack direction="row" spacing={1.5} sx={{ mb: 2 }} alignItems="center">
+      <EmailStatsHeader />
+
+      <Stack
+        direction="row"
+        spacing={1.5}
+        sx={{ mb: 2 }}
+        alignItems="center"
+        flexWrap="wrap"
+        useFlexGap
+      >
         <Box sx={{ minWidth: 220 }}>
           <MultiSelectFilter
             options={STATUS_OPTIONS}
@@ -126,13 +158,52 @@ export function EmailsView() {
             allLabel="All triggers"
           />
         </Box>
+        {senderOptions.length > 1 && (
+          <Box sx={{ minWidth: 220 }}>
+            <MultiSelectFilter
+              options={senderOptions}
+              value={senderOptions.filter((o) => senderFilter.includes(o.value))}
+              onChange={(next) => setSenderFilter(next.map((o) => o.value))}
+              getOptionLabel={(o) => o.label}
+              getOptionKey={(o) => o.value}
+              placeholder="All senders"
+              allLabel="All senders"
+            />
+          </Box>
+        )}
         <Box sx={{ flex: 1 }} />
         {bulkResult && (
           <Typography variant="caption" color="text.secondary">
             {bulkResult}
           </Typography>
         )}
-        <Tooltip title="Create Gmail drafts for every Active listing under the price/sqft threshold that doesn't already have a thread">
+        {/* Sender picker — which teammate's mailbox the batch drafts into. */}
+        {senderOptions.length > 1 && (
+          <TextField
+            select
+            size="small"
+            value={draftAsUserId || myUserId || ""}
+            onChange={(e) =>
+              setDraftAsUserId(e.target.value === myUserId ? "" : e.target.value)
+            }
+            InputProps={{
+              startAdornment: (
+                <PersonOutlineRoundedIcon
+                  fontSize="small"
+                  sx={{ mr: 0.5, color: "text.secondary" }}
+                />
+              ),
+            }}
+            sx={{ minWidth: 170 }}
+          >
+            {senderOptions.map((o) => (
+              <MenuItem key={o.value} value={o.value}>
+                {o.label}
+              </MenuItem>
+            ))}
+          </TextField>
+        )}
+        <Tooltip title="Create Gmail drafts for every Active listing under the price/sqft threshold that nobody on the team has a thread for yet">
           <span>
             <Button
               size="small"
@@ -141,7 +212,9 @@ export function EmailsView() {
               disabled={bulkDraft.isPending}
               onClick={() => {
                 setBulkResult(null);
-                bulkDraft.mutate();
+                bulkDraft.mutate(
+                  draftAsUserId ? { senderUserId: draftAsUserId } : undefined,
+                );
               }}
             >
               {bulkDraft.isPending ? "Drafting…" : "Draft rent-roll requests"}
@@ -218,6 +291,15 @@ export function EmailsView() {
                         : ""}
                     </Typography>
                   </Box>
+                  <Tooltip title={`Sent by ${t.user?.name || t.user?.email || "—"}`}>
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      icon={<PersonOutlineRoundedIcon sx={{ fontSize: 12 }} />}
+                      label={t.user?.name || t.user?.email || "—"}
+                      sx={{ height: 20, maxWidth: 140, fontSize: 11 }}
+                    />
+                  </Tooltip>
                   {t.trigger === "auto_under_450" && (
                     <Chip
                       size="small"

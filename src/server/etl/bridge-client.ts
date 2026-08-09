@@ -218,13 +218,20 @@ function buildUrl(opts: SearchOptions, skip: number): string {
  * Caller is responsible for batching upserts.
  */
 export async function* searchProperties(opts: SearchOptions = {}): AsyncIterable<BridgeProperty> {
+  type Page = { value: BridgeProperty[]; "@odata.nextLink"?: string };
+
   let skip = 0;
   let yielded = 0;
+  // Prefer OData server-driven paging (`@odata.nextLink`) over manual `$skip`.
+  // `$skip` is capped around 10,000 rows by Bridge/OData, so a large full pull
+  // would silently stop mid-dataset and drop listings. `@odata.nextLink`
+  // (a `$skiptoken`-based cursor) has no such ceiling. We fall back to `$skip`
+  // only for the first page and whenever the server omits a nextLink.
+  let nextUrl: string | null = buildUrl(opts, skip);
 
-  while (true) {
-    type Page = { value: BridgeProperty[]; "@odata.nextLink"?: string };
-    const url = buildUrl(opts, skip);
-    const page = await request<Page>(url);
+  while (nextUrl) {
+    const url: string = nextUrl;
+    const page: Page = await request<Page>(url);
 
     for (const row of page.value) {
       yield row;
@@ -233,7 +240,22 @@ export async function* searchProperties(opts: SearchOptions = {}): AsyncIterable
     }
 
     if (page.value.length < PAGE_SIZE) return;
-    skip += PAGE_SIZE;
+
+    if (page["@odata.nextLink"]) {
+      nextUrl = page["@odata.nextLink"];
+    } else {
+      // No server cursor — fall back to offset paging. This is the path that
+      // hits the ~10k `$skip` ceiling; warn once we cross it so a truncated
+      // pull is visible in the logs rather than silently short.
+      skip += PAGE_SIZE;
+      if (skip >= 10_000) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[bridge] paging past $skip=${skip} without @odata.nextLink — Bridge may truncate the result set. If listings are missing, the dataset likely exceeds the $skip ceiling.`,
+        );
+      }
+      nextUrl = buildUrl(opts, skip);
+    }
   }
 }
 

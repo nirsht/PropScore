@@ -153,7 +153,13 @@ export function FilterBar() {
             </Field>
           </Box>
 
-          <Box sx={{ gridColumn: { xs: "auto", sm: "span 1" } }}>
+          <Box
+            sx={{
+              gridColumn: { xs: "auto", sm: "span 1" },
+              display: "flex",
+              alignItems: "flex-end",
+            }}
+          >
             <Field
               label="Scoring weights"
               hint="Re-rank listings by your own blend of the value-add signals."

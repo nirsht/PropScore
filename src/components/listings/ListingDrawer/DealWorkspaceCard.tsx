@@ -3,6 +3,7 @@
 import * as React from "react";
 import {
   Chip,
+  Divider,
   MenuItem,
   Paper,
   Select,
@@ -12,10 +13,22 @@ import {
 } from "@mui/material";
 import type { DealStatus } from "@prisma/client";
 import { trpc } from "@/lib/trpc/client";
+import { Metric } from "./Metric";
+import { deriveRatio, fmtMoney } from "./formatters";
 import {
   STATUS_OPTIONS,
   STATUS_OPTION_BY_VALUE,
 } from "../FilterBar/filterConstants";
+
+/** Pricing metrics, merged into this card from the old standalone block. */
+export type DealPricing = {
+  price: number;
+  /** Building sqft used for $/Sqft (assessor-first). */
+  sqft: number | null;
+  /** Units used for $/Unit (assessor-first). */
+  units: number | null;
+  daysOnMls: number | null;
+};
 
 /**
  * Deal-workspace card in the listing drawer: the pipeline-status selector plus
@@ -23,7 +36,13 @@ import {
  * cache the grid's inline dropdown uses, so both stay in sync. Notes autosave
  * on blur (and are seeded from `listingReviews.get`).
  */
-export function DealWorkspaceCard({ mlsId }: { mlsId: string }) {
+export function DealWorkspaceCard({
+  mlsId,
+  pricing,
+}: {
+  mlsId: string;
+  pricing: DealPricing;
+}) {
   const utils = trpc.useUtils();
   const reviewsQuery = trpc.listingReviews.list.useQuery(undefined, {
     staleTime: 60_000,
@@ -74,6 +93,25 @@ export function DealWorkspaceCard({ mlsId }: { mlsId: string }) {
   return (
     <Paper variant="outlined" sx={{ p: 1.5 }}>
       <Stack spacing={1.25}>
+        {/* Pricing — merged in from the former standalone pricing block. */}
+        <Stack direction="row" spacing={3} flexWrap="wrap" useFlexGap>
+          <Metric label="Price" value={fmtMoney(pricing.price)} emphasis />
+          <Metric
+            label="$/Sqft"
+            value={fmtMoney(deriveRatio(pricing.price, pricing.sqft))}
+          />
+          <Metric
+            label="$/Unit"
+            value={fmtMoney(deriveRatio(pricing.price, pricing.units))}
+          />
+          <Metric
+            label="DOM"
+            value={pricing.daysOnMls != null ? pricing.daysOnMls.toString() : "—"}
+          />
+        </Stack>
+
+        <Divider />
+
         <Stack
           direction="row"
           alignItems="center"

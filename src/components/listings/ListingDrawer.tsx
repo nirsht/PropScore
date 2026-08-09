@@ -11,7 +11,6 @@ import {
   Stack,
   Tab,
   Tabs,
-  Typography,
 } from "@mui/material";
 import ChatBubbleOutlineRoundedIcon from "@mui/icons-material/ChatBubbleOutlineRounded";
 import FolderOpenOutlinedIcon from "@mui/icons-material/FolderOpenOutlined";
@@ -201,8 +200,16 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
             onClose={onClose}
           />
 
-          {/* Deal workspace — pipeline status + review notes. */}
-          <DealWorkspaceCard mlsId={listing.mlsId} />
+          {/* Deal workspace — pricing + pipeline status + review notes. */}
+          <DealWorkspaceCard
+            mlsId={listing.mlsId}
+            pricing={{
+              price: listing.price,
+              sqft: listing.assessorBuildingSqft ?? listing.sqft,
+              units: listing.assessorUnits ?? listing.units,
+              daysOnMls: listing.daysOnMls,
+            }}
+          />
 
           {/* Building Details — 3-column MLS / Assessor / AI grid. */}
           <BuildingDetailsCard listing={listing} />
@@ -283,29 +290,12 @@ export function ListingDrawer({ mlsId, onClose }: Props) {
             onMeasureClick={() => setMeasureOpen(true)}
           />
 
-          {/* Lot & extras (parking, HOA, tax, lot features, view) */}
-          <LotAndExtrasCard raw={raw} />
-
-          {/* Public remarks */}
-          {(raw.PublicRemarks as string | undefined) && (
-            <Paper variant="outlined" sx={{ p: 2 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                Public remarks
-              </Typography>
-              <Typography
-                component="pre"
-                variant="body2"
-                sx={{
-                  whiteSpace: "pre-wrap",
-                  fontFamily: "inherit",
-                  m: 0,
-                  color: "text.primary",
-                }}
-              >
-                {raw.PublicRemarks as string}
-              </Typography>
-            </Paper>
-          )}
+          {/* Lot & details — parking, HOA, tax, lot features, view, plus the
+              MLS public remarks (merged in from its former standalone card). */}
+          <LotAndExtrasCard
+            raw={raw}
+            publicRemarks={(raw.PublicRemarks as string | undefined) ?? null}
+          />
 
           <PhotosCard
             loading={photosQuery.isLoading}

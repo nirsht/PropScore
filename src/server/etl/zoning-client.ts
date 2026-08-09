@@ -1,20 +1,22 @@
 /**
  * SF Planning Zoning Districts — Socrata GeoJSON client.
  *
- * Dataset: SF Planning "Zoning Districts" (resource id `8br2-hhp3`). Polygon
- * features keyed by `zoning` (district code, e.g. "RH-2", "RM-1", "NCT-3").
- * Verify the resource ID against https://data.sfgov.org if a fetch starts
- * failing — Socrata occasionally re-publishes datasets under new IDs.
+ * Dataset: DataSF "Zoning Map - Zoning Districts" (resource id `3i4a-hu95`).
+ * Polygon features keyed by `zoning` (district code, e.g. "RH-2", "RM-1",
+ * "NCT-3"). Verify the resource ID against https://data.sfgov.org if a fetch
+ * starts failing — Socrata occasionally re-publishes datasets under new IDs
+ * (this dataset previously lived at `8br2-hhp3`, which now 404s).
  *
- * The polygon set is small (~hundreds of features citywide) so we download
- * the whole FeatureCollection in one request and bulk-load it into the
- * `zoning_polygon` PostGIS table. Re-fetch quarterly; districts change rarely.
+ * The dataset is parcel-level (~10.6k features citywide) but still small
+ * enough to download the whole FeatureCollection in one request and bulk-load
+ * it into the `zoning_polygon` PostGIS table. Re-fetch quarterly; districts
+ * change rarely.
  *
  * Anonymous access (no X-App-Token), ~1 req/sec to stay polite within
  * Socrata's anonymous-access guidance.
  */
 
-const ZONING_URL = "https://data.sfgov.org/resource/8br2-hhp3.geojson";
+const ZONING_URL = "https://data.sfgov.org/resource/3i4a-hu95.geojson";
 const THROTTLE_MS = 1100;
 
 let lastRequestAt = 0;
@@ -29,10 +31,14 @@ async function throttle() {
 export type ZoningFeature = {
   type: "Feature";
   properties: {
-    // Common Socrata-published columns; not all are guaranteed.
+    // Common Socrata-published columns; not all are guaranteed. The current
+    // `3i4a-hu95` export ships `zoning` + `zoning_sim` + `districtna`; older
+    // exports used `zoning_district` / `districtname`.
     zoning?: string;
+    zoning_sim?: string;
     zoning_district?: string;
     districtname?: string;
+    districtna?: string;
     [k: string]: unknown;
   };
   geometry: {
@@ -54,8 +60,10 @@ export type ZoningFeatureCollection = {
 export function readDistrict(f: ZoningFeature): string | null {
   const raw =
     (f.properties.zoning as string | undefined) ??
+    (f.properties.zoning_sim as string | undefined) ??
     (f.properties.zoning_district as string | undefined) ??
     (f.properties.districtname as string | undefined) ??
+    (f.properties.districtna as string | undefined) ??
     null;
   if (!raw) return null;
   const trimmed = String(raw).trim();
@@ -64,9 +72,10 @@ export function readDistrict(f: ZoningFeature): string | null {
 
 export async function fetchZoningDistricts(): Promise<ZoningFeatureCollection> {
   await throttle();
-  // $limit=10000 is well above the actual feature count; Socrata caps
-  // anonymous queries at 50000 but the dataset is much smaller.
-  const url = `${ZONING_URL}?$limit=10000`;
+  // The dataset has ~10.6k features; $limit=50000 (Socrata's anonymous cap)
+  // keeps the whole FeatureCollection in one request without silently
+  // truncating. If features ever exceed the cap this must switch to paging.
+  const url = `${ZONING_URL}?$limit=50000`;
   const res = await fetch(url, { headers: { Accept: "application/json" } });
   if (!res.ok) {
     const body = await res.text().catch(() => "");

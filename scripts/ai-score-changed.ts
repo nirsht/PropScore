@@ -36,8 +36,13 @@ const dryRun = args.includes("--dry-run");
 
 const BATCH = 200;
 
+// Only Active listings are AI-scored. We ingest every MLS status (Pending,
+// Sold, Withdrawn, …) so nothing is missing from the system, but there's no
+// value in spending AI tokens on listings that aren't actively for sale.
+const AI_SCORE_WHERE = { status: "Active" } as const;
+
 async function main() {
-  const total = await db.listing.count();
+  const total = await db.listing.count({ where: AI_SCORE_WHERE });
   console.log(
     `[ai-score] total listings: ${total} concurrency=${concurrency}${force ? " (force)" : ""}${dryRun ? " (dry-run)" : ""}${maxCap !== Number.POSITIVE_INFINITY ? ` max=${maxCap}` : ""}`,
   );
@@ -51,6 +56,7 @@ async function main() {
 
   while (scoreCalls < maxCap) {
     const batch = await db.listing.findMany({
+      where: AI_SCORE_WHERE,
       take: BATCH,
       ...(cursor ? { skip: 1, cursor: { mlsId: cursor } } : {}),
       orderBy: { mlsId: "asc" },

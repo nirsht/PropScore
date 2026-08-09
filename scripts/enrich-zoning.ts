@@ -4,7 +4,7 @@
  *
  * Two-phase script:
  *   1. If `zoning_polygon` is empty or its newest row is older than 90 days,
- *      bulk-refresh from the Socrata GeoJSON dataset (resource 8br2-hhp3).
+ *      bulk-refresh from the Socrata GeoJSON dataset (resource 3i4a-hu95).
  *   2. For each listing missing `zoningFetchedAt` (or all when `--force`),
  *      do a PostGIS ST_Intersects join from the listing's lat/lng to the
  *      polygon table, then resolve `zoningMaxUnits` from `ZoningRule`.

@@ -7,6 +7,7 @@ export const SORT_KEY_TO_FIELD: Record<SortKey, string> = {
   pricePerUnit: "pricePerUnit",
   daysOnMls: "daysOnMls",
   postDate: "postDate",
+  updated: "listingUpdatedAt",
   yearBuilt: "yearBuilt",
   density: "densityScore",
   vacancy: "vacancyScore",

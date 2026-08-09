@@ -34,6 +34,7 @@ export const SortKey = z.enum([
   "pricePerUnit",
   "daysOnMls",
   "postDate",
+  "updated",
   "yearBuilt",
   "density",
   "vacancy",
