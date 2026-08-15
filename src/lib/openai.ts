@@ -9,6 +9,18 @@ declare global {
   var __propscoreOpenAIWrapped: boolean | undefined;
 }
 
+// env.ts keeps OPENAI_API_KEY optional so the free daily cron (which never
+// imports this module) doesn't crash at load when the key is absent. Enforce
+// it here instead: only OpenAI-spending stages import this file, so a missing
+// key fails them loudly — while the free base pipeline stays unaffected.
+if (!env.OPENAI_API_KEY) {
+  throw new Error(
+    "OPENAI_API_KEY is required for OpenAI-backed stages (vision/extract/ai-score/" +
+      "contacts/emails-poll/chat) but is not set. The free daily `nightly:base` " +
+      "pipeline does not need it; only the paid `nightly:llm` cron and the web app do.",
+  );
+}
+
 export const openai: OpenAI =
   globalThis.__propscoreOpenAI ??
   new OpenAI({
