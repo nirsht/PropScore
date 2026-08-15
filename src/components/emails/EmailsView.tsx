@@ -17,6 +17,7 @@ import {
 import SyncRoundedIcon from "@mui/icons-material/SyncRounded";
 import MailOutlineRoundedIcon from "@mui/icons-material/MailOutlineRounded";
 import PersonOutlineRoundedIcon from "@mui/icons-material/PersonOutlineRounded";
+import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import { trpc } from "@/lib/trpc/client";
 import { ConnectGmailPill } from "./ConnectGmailPill";
 import { ThreadDetail } from "./ThreadDetail";
@@ -56,9 +57,11 @@ const STATUS_COLOR: Record<
 export function EmailsView() {
   const [statusFilter, setStatusFilter] = React.useState<ThreadStatus[]>([]);
   const [triggerFilter, setTriggerFilter] = React.useState<TriggerKind[]>([]);
-  const [senderFilter, setSenderFilter] = React.useState<string[]>([]);
-  // "" means "me" (the caller); a userId drafts into that teammate's mailbox.
-  const [draftAsUserId, setDraftAsUserId] = React.useState<string>("");
+  // Single sender control: "all" (default) shows the whole team and drafts as
+  // me; a userId filters the list + stats to that person AND drafts into their
+  // mailbox.
+  const [sender, setSender] = React.useState<string>("all");
+  const [search, setSearch] = React.useState<string>("");
   const [selectedThreadId, setSelectedThreadId] = React.useState<string | null>(
     null,
   );
@@ -67,19 +70,25 @@ export function EmailsView() {
   const connection = trpc.emails.connectionStatus.useQuery();
   const mailboxes = trpc.emails.connectedMailboxes.useQuery();
   const myUserId = connection.data?.userId ?? null;
+  const myName = connection.data?.name ?? null;
 
-  const senderOptions = (mailboxes.data ?? []).map((m) => ({
-    value: m.id,
-    label:
-      m.id === myUserId
-        ? `Me${m.name ? ` (${m.name})` : ""}`
-        : m.name || m.email,
-  }));
+  // "All" + one entry per connected mailbox ("Me (name)" for the caller).
+  const senderChoices = [
+    { value: "all", label: "All senders" },
+    ...(mailboxes.data ?? []).map((m) => ({
+      value: m.id,
+      label:
+        m.id === myUserId
+          ? `Me${myName ? ` (${myName})` : ""}`
+          : m.name || m.email,
+    })),
+  ];
+  const senderUserId = sender === "all" ? undefined : [sender];
 
   const threads = trpc.emails.listThreads.useQuery({
     status: statusFilter.length ? statusFilter : undefined,
     trigger: triggerFilter.length ? triggerFilter : undefined,
-    senderUserId: senderFilter.length ? senderFilter : undefined,
+    senderUserId,
   });
   const syncAll = trpc.emails.syncNow.useMutation({
     onSuccess: () => {
@@ -103,7 +112,15 @@ export function EmailsView() {
     onError: (err) => setBulkResult(err.message),
   });
 
-  const rows = threads.data ?? [];
+  const allRows = threads.data ?? [];
+  const q = search.trim().toLowerCase();
+  const rows = q
+    ? allRows.filter(
+        (t) =>
+          t.listing.address.toLowerCase().includes(q) ||
+          t.toEmail.toLowerCase().includes(q),
+      )
+    : allRows;
 
   return (
     <Container maxWidth="xl" sx={{ py: 3 }}>
@@ -125,7 +142,35 @@ export function EmailsView() {
         <ConnectGmailPill />
       </Stack>
 
-      <EmailStatsHeader />
+      {/* Sender filter — sits above the stats so picking a teammate recomputes
+          the tiles below, filters the list, and drafts into their mailbox. */}
+      {senderChoices.length > 1 && (
+        <Box sx={{ mb: 2 }}>
+          <TextField
+            select
+            size="small"
+            value={sender}
+            onChange={(e) => setSender(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <PersonOutlineRoundedIcon
+                  fontSize="small"
+                  sx={{ mr: 0.5, color: "text.secondary" }}
+                />
+              ),
+            }}
+            sx={{ minWidth: 200 }}
+          >
+            {senderChoices.map((o) => (
+              <MenuItem key={o.value} value={o.value}>
+                {o.label}
+              </MenuItem>
+            ))}
+          </TextField>
+        </Box>
+      )}
+
+      <EmailStatsHeader senderUserId={senderUserId} />
 
       <Stack
         direction="row"
@@ -158,52 +203,34 @@ export function EmailsView() {
             allLabel="All triggers"
           />
         </Box>
-        {senderOptions.length > 1 && (
-          <Box sx={{ minWidth: 220 }}>
-            <MultiSelectFilter
-              options={senderOptions}
-              value={senderOptions.filter((o) => senderFilter.includes(o.value))}
-              onChange={(next) => setSenderFilter(next.map((o) => o.value))}
-              getOptionLabel={(o) => o.label}
-              getOptionKey={(o) => o.value}
-              placeholder="All senders"
-              allLabel="All senders"
-            />
-          </Box>
-        )}
+        <TextField
+          size="small"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search address…"
+          InputProps={{
+            startAdornment: (
+              <SearchRoundedIcon
+                fontSize="small"
+                sx={{ mr: 0.5, color: "text.secondary" }}
+              />
+            ),
+          }}
+          sx={{ minWidth: 220, flex: { xs: "1 1 100%", sm: "0 1 280px" } }}
+        />
         <Box sx={{ flex: 1 }} />
         {bulkResult && (
           <Typography variant="caption" color="text.secondary">
             {bulkResult}
           </Typography>
         )}
-        {/* Sender picker — which teammate's mailbox the batch drafts into. */}
-        {senderOptions.length > 1 && (
-          <TextField
-            select
-            size="small"
-            value={draftAsUserId || myUserId || ""}
-            onChange={(e) =>
-              setDraftAsUserId(e.target.value === myUserId ? "" : e.target.value)
-            }
-            InputProps={{
-              startAdornment: (
-                <PersonOutlineRoundedIcon
-                  fontSize="small"
-                  sx={{ mr: 0.5, color: "text.secondary" }}
-                />
-              ),
-            }}
-            sx={{ minWidth: 170 }}
-          >
-            {senderOptions.map((o) => (
-              <MenuItem key={o.value} value={o.value}>
-                {o.label}
-              </MenuItem>
-            ))}
-          </TextField>
-        )}
-        <Tooltip title="Create Gmail drafts for every Active listing under the price/sqft threshold that nobody on the team has a thread for yet">
+        <Tooltip
+          title={
+            sender === "all"
+              ? "Draft (into your mailbox) rent-roll requests for every Active listing under the price/sqft threshold whose agent nobody on the team has emailed yet"
+              : `Draft into ${senderChoices.find((o) => o.value === sender)?.label ?? "the selected"}'s mailbox for every under-threshold listing whose agent nobody has emailed yet`
+          }
+        >
           <span>
             <Button
               size="small"
@@ -213,7 +240,7 @@ export function EmailsView() {
               onClick={() => {
                 setBulkResult(null);
                 bulkDraft.mutate(
-                  draftAsUserId ? { senderUserId: draftAsUserId } : undefined,
+                  sender !== "all" ? { senderUserId: sender } : undefined,
                 );
               }}
             >
@@ -236,8 +263,21 @@ export function EmailsView() {
         </Tooltip>
       </Stack>
 
-      <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems="stretch">
-        <Paper variant="outlined" sx={{ flex: 1, minWidth: 0, p: 0 }}>
+      <Stack
+        direction={{ xs: "column", md: "row" }}
+        spacing={2}
+        alignItems="flex-start"
+      >
+        <Paper
+          variant="outlined"
+          sx={{
+            flex: 1,
+            minWidth: 0,
+            p: 0,
+            maxHeight: "calc(100vh - 200px)",
+            overflowY: "auto",
+          }}
+        >
           <Stack divider={<Divider flexItem />}>
             {rows.length === 0 && (
               <Box
@@ -251,8 +291,9 @@ export function EmailsView() {
                 }}
               >
                 <Typography variant="body2" color="text.secondary">
-                  No threads yet. Open a listing and click the rent-roll button
-                  on the listing agent row to start.
+                  {search.trim()
+                    ? `No threads match “${search.trim()}”.`
+                    : "No threads yet. Open a listing and click the rent-roll button on the listing agent row to start."}
                 </Typography>
               </Box>
             )}
@@ -300,6 +341,17 @@ export function EmailsView() {
                       sx={{ height: 20, maxWidth: 140, fontSize: 11 }}
                     />
                   </Tooltip>
+                  {t.status === "DRAFT" && !t.gmailDraftId && (
+                    <Tooltip title="Draft was deleted before sending — open to re-draft">
+                      <Chip
+                        size="small"
+                        color="warning"
+                        variant="outlined"
+                        label="re-draft"
+                        sx={{ height: 18, fontSize: 10 }}
+                      />
+                    </Tooltip>
+                  )}
                   {t.trigger === "auto_under_450" && (
                     <Chip
                       size="small"
@@ -314,7 +366,18 @@ export function EmailsView() {
           </Stack>
         </Paper>
 
-        <Paper variant="outlined" sx={{ flex: 1.5, minWidth: 0, p: 2 }}>
+        <Paper
+          variant="outlined"
+          sx={{
+            flex: 1.5,
+            minWidth: 0,
+            p: 2,
+            position: { md: "sticky" },
+            top: { md: 16 },
+            maxHeight: { md: "calc(100vh - 200px)" },
+            overflowY: { md: "auto" },
+          }}
+        >
           {selectedThreadId ? (
             <ThreadDetail threadId={selectedThreadId} />
           ) : (
