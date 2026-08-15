@@ -215,10 +215,10 @@ export const emailsRouter = router({
   // Bulk-draft button on /emails — creates Gmail drafts for every Active SF
   // listing whose price/sqft is below EMAIL_AUTO_PRICE_PER_SQFT whose listing
   // agent NOBODY on the team has emailed yet. Dedup is by recipient AGENT
-  // EMAIL, not by listing: if the team already has a live thread to an agent
-  // (for any listing), we skip every other listing that same agent holds so we
-  // never double-contact them. Released threads (draft deleted before sending —
-  // status DRAFT with a null gmailDraftId) don't count as "contacted".
+  // EMAIL, not by listing: if the team already has a thread to an agent (for
+  // any listing), we skip every other listing that same agent holds so we
+  // never double-contact them. (Abandoned drafts are deleted on sync, so a
+  // lingering thread always means a real outstanding contact.)
   // `senderUserId` picks which teammate's mailbox the batch drafts into.
   bulkDraftUnderThreshold: protectedProcedure
     .input(z.object({ senderUserId: z.string().optional() }).optional())
@@ -237,7 +237,6 @@ export const emailsRouter = router({
       JOIN "ListingContact" c ON c."listingMlsId" = l."mlsId"
       LEFT JOIN "EmailThread" t
              ON LOWER(TRIM(t."toEmail")) = LOWER(TRIM(c."agentEmail"))
-            AND NOT (t."status" = 'DRAFT' AND t."gmailDraftId" IS NULL)
       WHERE l."status" = 'Active'
         AND c."agentEmail" IS NOT NULL
         AND c."agentEmail" != ''
@@ -325,87 +324,6 @@ export const emailsRouter = router({
       threshold: env.EMAIL_AUTO_PRICE_PER_SQFT,
     };
   }),
-
-  // Re-draft a "released" thread — one whose Gmail draft was deleted before it
-  // was ever sent (status DRAFT with a null gmailDraftId, set by syncThread).
-  // Creates a fresh draft in the caller's (or a chosen teammate's) mailbox and
-  // transfers ownership, so anyone on the team can pick up and send an
-  // abandoned draft. Rejected if the thread still has a live draft or has
-  // already moved past DRAFT.
-  reclaimThread: protectedProcedure
-    .input(
-      z.object({
-        threadId: z.string(),
-        senderUserId: z.string().optional(),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      const thread = await ctx.db.emailThread.findUnique({
-        where: { id: input.threadId },
-        include: { listing: { include: { contact: true } } },
-      });
-      if (!thread) throw new TRPCError({ code: "NOT_FOUND" });
-      if (thread.status !== "DRAFT" || thread.gmailDraftId) {
-        throw new TRPCError({
-          code: "PRECONDITION_FAILED",
-          message:
-            "This thread already has a live draft or has moved past the draft stage.",
-        });
-      }
-
-      const sender = await resolveSender(ctx.db, ctx.user.id, input.senderUserId);
-      const agentEmail =
-        thread.listing.contact?.agentEmail?.trim() || thread.toEmail.trim();
-      if (!agentEmail || !isValidEmailAddress(agentEmail)) {
-        throw new TRPCError({
-          code: "PRECONDITION_FAILED",
-          message:
-            "No valid agent email on file for this listing. Refresh contact enrichment first.",
-        });
-      }
-
-      const senderName = (await getConnectedName(sender.id)) ?? sender.name ?? null;
-      const { subject, body } = rentRollRequestEmail({
-        listingAddress: thread.listing.address,
-        agentName: thread.listing.contact?.agentName ?? null,
-        userName: senderName,
-      });
-
-      let draft: { gmailDraftId: string; gmailThreadId: string };
-      try {
-        draft = await createDraft({
-          userId: sender.id,
-          to: agentEmail,
-          subject,
-          body,
-        });
-      } catch (err) {
-        if (err instanceof GmailNotConnectedError) {
-          throw new TRPCError({
-            code: "PRECONDITION_FAILED",
-            message: "Connect Gmail before re-drafting.",
-          });
-        }
-        throw err;
-      }
-
-      await ctx.db.emailThread.update({
-        where: { id: thread.id },
-        data: {
-          userId: sender.id,
-          gmailDraftId: draft.gmailDraftId,
-          gmailThreadId: draft.gmailThreadId,
-          toEmail: agentEmail,
-          subject,
-          status: "DRAFT",
-          parseError: null,
-        },
-      });
-      return {
-        threadId: thread.id,
-        draftUrl: gmailDraftUrl(draft.gmailDraftId),
-      };
-    }),
 
   // Per-listing lookup for the EmailHistorySection in the drawer. Team-wide:
   // returns the single thread for the listing whoever owns it.
@@ -502,7 +420,6 @@ export const emailsRouter = router({
         JOIN "ListingContact" c ON c."listingMlsId" = l."mlsId"
         LEFT JOIN "EmailThread" t
                ON LOWER(TRIM(t."toEmail")) = LOWER(TRIM(c."agentEmail"))
-              AND NOT (t."status" = 'DRAFT' AND t."gmailDraftId" IS NULL)
         WHERE l."status" = 'Active'
           AND c."agentEmail" IS NOT NULL
           AND c."agentEmail" != ''
