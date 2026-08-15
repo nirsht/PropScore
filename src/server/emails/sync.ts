@@ -53,16 +53,28 @@ export async function syncThread(threadId: string): Promise<SyncResult> {
   } catch (err) {
     const code = (err as { code?: number }).code;
     if (code === 404) {
-      // Thread was deleted in Gmail (e.g. an unsent draft removed directly
-      // from the mailbox) — it will 404 forever. Stop retrying it every
-      // night instead of throwing the same error on every poll.
+      // Thread no longer exists in Gmail. If it was an unsent draft (still in
+      // DRAFT and never sent), the owner deleted it before sending — release
+      // it so any teammate can re-draft and send: clear the Gmail linkage and
+      // keep it as a DRAFT with a null draft id (emails.reclaimThread picks it
+      // up from there). Anything that had progressed past DRAFT is genuinely
+      // gone -> FAILED, and won't be retried every night.
+      const releasable = thread.status === "DRAFT" && !thread.sentAt;
       await db.emailThread.update({
         where: { id: thread.id },
-        data: {
-          status: "FAILED",
-          parseError: "Gmail thread no longer exists (deleted in Gmail) — sync disabled.",
-          lastSyncedAt: new Date(),
-        },
+        data: releasable
+          ? {
+              gmailDraftId: null,
+              gmailThreadId: null,
+              parseError: null,
+              lastSyncedAt: new Date(),
+            }
+          : {
+              status: "FAILED",
+              parseError:
+                "Gmail thread no longer exists (deleted in Gmail) — sync disabled.",
+              lastSyncedAt: new Date(),
+            },
       });
       return {
         threadId,
@@ -70,7 +82,7 @@ export async function syncThread(threadId: string): Promise<SyncResult> {
         newInboundMessages: 0,
         parsedRentRoll: false,
         statusBefore: thread.status,
-        statusAfter: "FAILED",
+        statusAfter: releasable ? "DRAFT" : "FAILED",
       };
     }
     throw err;
@@ -132,13 +144,19 @@ export async function syncThread(threadId: string): Promise<SyncResult> {
 
   // Determine new status.
   let newStatus: typeof thread.status = thread.status;
+  // Set when the draft was deleted in Gmail with nothing sent — we null out the
+  // draft id below so the thread becomes re-draftable (see emails.reclaimThread).
+  let releaseDraft = false;
   if (thread.status === "DRAFT") {
     if (thread.gmailDraftId) {
       // If the draft no longer exists in Gmail AND we've seen an outbound
-      // message in the thread, the user sent it.
+      // message in the thread, the user sent it. If it's gone with nothing
+      // sent, the draft was abandoned — release it for re-draft.
       const stillDraft = await draftExists(thread.userId, thread.gmailDraftId);
       if (!stillDraft && latestOutboundSeen) {
         newStatus = "SENT";
+      } else if (!stillDraft && !latestOutboundSeen) {
+        releaseDraft = true;
       }
     } else if (latestOutboundSeen) {
       newStatus = "SENT";
@@ -152,6 +170,7 @@ export async function syncThread(threadId: string): Promise<SyncResult> {
     where: { id: thread.id },
     data: {
       status: newStatus,
+      ...(releaseDraft ? { gmailDraftId: null } : {}),
       sentAt: newStatus === "SENT" && !thread.sentAt ? new Date() : thread.sentAt,
       lastSyncedAt: new Date(),
     },
