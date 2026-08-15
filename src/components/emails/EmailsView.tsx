@@ -341,17 +341,6 @@ export function EmailsView() {
                       sx={{ height: 20, maxWidth: 140, fontSize: 11 }}
                     />
                   </Tooltip>
-                  {t.status === "DRAFT" && !t.gmailDraftId && (
-                    <Tooltip title="Draft was deleted before sending — open to re-draft">
-                      <Chip
-                        size="small"
-                        color="warning"
-                        variant="outlined"
-                        label="re-draft"
-                        sx={{ height: 18, fontSize: 10 }}
-                      />
-                    </Tooltip>
-                  )}
                   {t.trigger === "auto_under_450" && (
                     <Chip
                       size="small"
