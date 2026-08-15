@@ -194,6 +194,37 @@ export async function createDraft(params: {
   return { gmailDraftId: draftId, gmailThreadId: threadId };
 }
 
+// Send an email immediately from the connected mailbox (no draft step). Used
+// by the daily auto-send cron (scripts/send-rent-roll-requests.ts). The manual
+// and bulk paths still go through createDraft so a human sends from Gmail;
+// this is the one place PropScore sends on the user's behalf without review.
+export async function sendEmail(params: {
+  userId: string;
+  to: string;
+  subject: string;
+  body: string;
+}): Promise<{ gmailMessageId: string; gmailThreadId: string }> {
+  if (!isValidEmailAddress(params.to)) {
+    throw new InvalidRecipientError(params.to);
+  }
+  const gmail = await getGmailClient(params.userId);
+  const raw = encodeRfc2822({
+    to: params.to,
+    subject: params.subject,
+    body: params.body,
+  });
+  const sent = await gmail.users.messages.send({
+    userId: "me",
+    requestBody: { raw },
+  });
+  const gmailMessageId = sent.data.id;
+  const gmailThreadId = sent.data.threadId;
+  if (!gmailMessageId || !gmailThreadId) {
+    throw new GmailAuthError("Gmail did not return message id / thread id");
+  }
+  return { gmailMessageId, gmailThreadId };
+}
+
 export function gmailDraftUrl(draftId: string): string {
   return `https://mail.google.com/mail/u/0/#drafts?compose=${draftId}`;
 }

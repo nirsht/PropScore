@@ -41,6 +41,7 @@ const API = "https://api.render.com/v1";
 const WEB_SERVICE_NAME = "propscore-web";
 const CRON_DAILY_NAME = "propscore-etl-daily";
 const CRON_LLM_NAME = "propscore-etl-llm";
+const CRON_EMAILS_NAME = "propscore-rent-roll-requests";
 
 type SecretMap = Record<string, string | undefined>;
 
@@ -208,14 +209,16 @@ async function main() {
 
   // 1. Locate services.
   console.log("Looking up services on Render…");
-  const [webId, cronDailyId, cronLlmId] = await Promise.all([
+  const [webId, cronDailyId, cronLlmId, cronEmailsId] = await Promise.all([
     findServiceId(WEB_SERVICE_NAME),
     findServiceId(CRON_DAILY_NAME),
     findServiceId(CRON_LLM_NAME),
+    findServiceId(CRON_EMAILS_NAME),
   ]);
   console.log(`  ${WEB_SERVICE_NAME}      → ${webId}`);
   console.log(`  ${CRON_DAILY_NAME} → ${cronDailyId}`);
-  console.log(`  ${CRON_LLM_NAME}   → ${cronLlmId}\n`);
+  console.log(`  ${CRON_LLM_NAME}   → ${cronLlmId}`);
+  console.log(`  ${CRON_EMAILS_NAME} → ${cronEmailsId}\n`);
 
   // 2. Push env vars.
   await setEnvVars(
@@ -268,11 +271,27 @@ async function main() {
     },
     CRON_LLM_NAME,
   );
+  // Rent-roll auto-send cron: DB + Gmail OAuth creds only. No OpenAI calls,
+  // but env.ts still requires OPENAI_API_KEY + BRIDGE_SERVER_TOKEN at import
+  // time, so push them for the module to load.
+  await setEnvVars(
+    cronEmailsId,
+    {
+      DATABASE_URL,
+      NEXTAUTH_SECRET,
+      BRIDGE_SERVER_TOKEN,
+      OPENAI_API_KEY,
+      ...(GOOGLE_CLIENT_ID ? { GOOGLE_CLIENT_ID } : {}),
+      ...(GOOGLE_CLIENT_SECRET ? { GOOGLE_CLIENT_SECRET } : {}),
+    },
+    CRON_EMAILS_NAME,
+  );
 
   // 3. Redeploy.
   await triggerDeploy(webId, WEB_SERVICE_NAME);
   await triggerDeploy(cronDailyId, CRON_DAILY_NAME);
   await triggerDeploy(cronLlmId, CRON_LLM_NAME);
+  await triggerDeploy(cronEmailsId, CRON_EMAILS_NAME);
 
   console.log("\n✓ done.");
   if (!DRY_RUN) {

@@ -115,3 +115,38 @@ services:
         value: https://api.bridgedataoutput.com/api/v2/OData
       - key: OPENAI_MODEL
         value: gpt-5-mini
+
+  # Daily rent-roll auto-send. Runs every day at 21:00 UTC — one hour after
+  # propscore-etl-daily (20:00) starts, so it picks up listings that run's
+  # etl:sync just pulled. Emails the listing agent of each newly-created,
+  # under-threshold Active asset asking for the rent roll, then records a SENT
+  # EmailThread so it never emails the same asset twice. No OpenAI calls;
+  # replies are parsed later by emails:poll in the LLM cron.
+  #
+  # Plan: `starter` (512 MiB) — sequential DB + Gmail API calls, no parallel
+  # lanes, no LLM, so nowhere near the OOM ceiling that forced the ETL crons
+  # onto `standard`.
+  #
+  # --days=2 matches the chosen "new in the last 2 days" window. NOTE: agent
+  # emails come from enrich:contacts, which only runs in the Mon/Fri LLM cron —
+  # so a listing created mid-week may not have an agent email until Friday, by
+  # which point it can fall outside a 2-day window. Widen --days (e.g. 7) if you
+  # find mid-week listings never get contacted.
+  - type: cron
+    name: propscore-rent-roll-requests
+    runtime: node
+    plan: starter
+    region: ohio
+    branch: main
+    schedule: "0 21 * * *"
+    buildCommand: npm install -g corepack@latest && corepack enable && pnpm install --frozen-lockfile && pnpm prisma generate
+    startCommand: pnpm emails:request --days=2
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: BRIDGE_DATASET
+        value: sfar
+      - key: BRIDGE_BASE_URL
+        value: https://api.bridgedataoutput.com/api/v2/OData
+      - key: OPENAI_MODEL
+        value: gpt-5-mini
