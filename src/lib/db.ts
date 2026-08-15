@@ -12,12 +12,14 @@ import { Prisma, PrismaClient } from "@prisma/client";
 const TRANSIENT_PRISMA_CODES = new Set([
   "P1001", // can't reach DB
   "P1002", // server reached but timed out
+  "P1011", // error opening a TLS connection (Render edge drops the socket
+  //          mid-handshake under load — e.g. "unexpected EOF")
   "P1017", // server has closed the connection
   "P2024", // timed out waiting for a connection from the pool
 ]);
 
 const TRANSIENT_MESSAGE_RE =
-  /Server has closed the connection|Can't reach database server|Connection reset|ECONNRESET|read ECONNRESET|the database system is in recovery mode|the database system is not yet accepting connections|the database system is starting up|Consistent recovery state has not been yet reached|terminating connection due to administrator command/i;
+  /Server has closed the connection|Can't reach database server|Connection reset|ECONNRESET|read ECONNRESET|Error opening a TLS connection|unexpected EOF|the database system is in recovery mode|the database system is not yet accepting connections|the database system is starting up|Consistent recovery state has not been yet reached|terminating connection due to administrator command/i;
 
 function isTransientDbError(err: unknown): boolean {
   if (err instanceof Prisma.PrismaClientKnownRequestError) {

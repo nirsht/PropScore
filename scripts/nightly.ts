@@ -88,14 +88,21 @@ const PRE: Stage = stage("etl-sync", "etl:sync");
 const OFFBOARD: Stage = stage("offboard-stale", "offboard:stale");
 
 const SFPIM = stage("sfpim", "enrich:sfpim", ["--concurrency=5"]);
-const VISION = stage("vision", "enrich:vision", ["--concurrency=5"], { llm: true });
+// Per-run row ceiling on the paid vision/extract stages. The candidate set
+// is normally a small daily delta (offboard-stale + the `deletedAt: null`
+// filter keep it to live listings), but if a backlog ever builds up this
+// cap guarantees the stage finishes well within the cron window instead of
+// being killed with "Timed out" — the remainder simply drains over the
+// next few runs.
+const LLM_RUN_LIMIT = "--limit=6000";
+const VISION = stage("vision", "enrich:vision", ["--concurrency=5", LLM_RUN_LIMIT], { llm: true });
 // Interior-photo Reno pass — supplements (not replaces) the exterior
 // verdict. Overwrites Listing.renovationLevel only when its confidence
 // beats the exterior verdict by > 0.1, or when the exterior one is null.
 const VISION_INTERIOR = stage(
   "vision-interior",
   "enrich:vision-interior",
-  ["--concurrency=5"],
+  ["--concurrency=5", LLM_RUN_LIMIT],
   { llm: true },
 );
 // landuse + permits join on Listing.blockLot (populated by sfpim);
@@ -114,7 +121,7 @@ const DBI_COMPLAINTS = stage("dbi-complaints", "enrich:dbi-complaints", ["--conc
 const HOUSING_INV = stage("housing-inventory", "enrich:housing-inventory", ["--concurrency=3"]);
 const RENT_CONTROL = stage("rent-control", "compute:rent-control");
 
-const EXTRACT = stage("extract", "enrich:listings", ["--concurrency=8"], { llm: true });
+const EXTRACT = stage("extract", "enrich:listings", ["--concurrency=8", LLM_RUN_LIMIT], { llm: true });
 // Agent contact enrichment — Bridge → LLM agent → Apollo. Its own lane: it
 // writes only ListingContact, disjoint from the vision/extract columns.
 // Concurrency 3 keeps LLM + Apollo call volume modest.

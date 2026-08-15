@@ -28,8 +28,10 @@ const mlsId = mlsIdArg ? mlsIdArg.split("=")[1] : undefined;
 
 async function main() {
   // --mlsId targets exactly one listing (implies --force — it always re-parses
-  // that row regardless of extractFetchedAt).
-  const where = mlsId ? { mlsId } : force ? {} : { extractFetchedAt: null };
+  // that row regardless of extractFetchedAt). The default sweep skips
+  // offboarded listings so OpenAI budget isn't spent on rows that fell off
+  // Bridge.
+  const where = mlsId ? { mlsId } : force ? {} : { extractFetchedAt: null, deletedAt: null };
 
   const total = await db.listing.count({ where });
   console.log(

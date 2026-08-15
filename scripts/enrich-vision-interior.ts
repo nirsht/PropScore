@@ -40,11 +40,13 @@ const missingReno = args.includes("--missing-reno");
 type Result = "analyzed" | "noMedia" | "noInteriors";
 
 async function main() {
+  // Skip offboarded listings — no point spending OpenAI vision budget on
+  // rows that have fallen off Bridge. `--force` still re-analyzes anything.
   const where: Prisma.ListingWhereInput = missingReno
-    ? { renovationLevel: null }
+    ? { renovationLevel: null, deletedAt: null }
     : force
       ? {}
-      : { enrichments: { none: { agentName: "interior-vision" } } };
+      : { enrichments: { none: { agentName: "interior-vision" } }, deletedAt: null };
 
   const total = await db.listing.count({ where });
   const mode = missingReno ? " (missing-reno)" : force ? " (force)" : "";

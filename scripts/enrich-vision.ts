@@ -41,11 +41,14 @@ const missingReno = args.includes("--missing-reno");
 type VisionResult = "analyzed" | "noMedia" | "ran";
 
 async function main() {
+  // Skip offboarded listings — no point spending OpenAI vision budget on
+  // rows that have fallen off Bridge (e.g. Closed sales). `--force` still
+  // re-analyzes anything, deleted or not.
   const where = missingReno
-    ? { renovationLevel: null }
+    ? { renovationLevel: null, deletedAt: null }
     : force
       ? {}
-      : { visionFetchedAt: null };
+      : { visionFetchedAt: null, deletedAt: null };
 
   const total = await db.listing.count({ where });
   const mode = missingReno ? " (missing-reno)" : force ? " (force)" : "";
