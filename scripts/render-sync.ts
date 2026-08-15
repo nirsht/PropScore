@@ -234,15 +234,19 @@ async function main() {
     },
     WEB_SERVICE_NAME,
   );
-  // Daily cron: free pipeline (no OpenAI calls in this run, but env.ts
-  // still requires OPENAI_API_KEY at import time, so push it).
+  // Daily cron: free `nightly:base` pipeline. Deliberately NO OPENAI_API_KEY —
+  // this run never calls OpenAI, and env.ts no longer requires it at import
+  // time (it's optional there, enforced only at src/lib/openai.ts, which the
+  // base pipeline never imports). Omitting the key fully decouples the free
+  // daily from OpenAI, so an OpenAI billing lapse or a rotated/pulled key can't
+  // break it. The bulk PUT replaces the managed set, so this also removes any
+  // key previously pushed to this cron.
   await setEnvVars(
     cronDailyId,
     {
       DATABASE_URL,
       NEXTAUTH_SECRET,
       BRIDGE_SERVER_TOKEN,
-      OPENAI_API_KEY,
       ...(WALKSCORE_API_KEY ? { WALKSCORE_API_KEY } : {}),
       ...(RENTCAST_API_KEY ? { RENTCAST_API_KEY } : {}),
     },

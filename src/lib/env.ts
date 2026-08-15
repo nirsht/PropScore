@@ -11,7 +11,16 @@ const schema = z.object({
   BRIDGE_DATASET: z.string().min(1).default("sfar"),
   BRIDGE_BASE_URL: z.string().url().default("https://api.bridgedataoutput.com/api/v2/OData"),
 
-  OPENAI_API_KEY: z.string().min(1),
+  // OpenAI — only the paid LLM stages (vision, extract, ai-score, contacts,
+  // emails-poll) and the web chat actually spend tokens. The free daily cron
+  // (`pnpm nightly:base`) imports this module transitively (etl-sync →
+  // bridge-client → env) but never calls OpenAI, so hard-requiring the key
+  // here crashed every free run whenever the key was absent — e.g. after an
+  // OpenAI billing lapse when the key had been pulled from the cron env. Same
+  // reasoning as NEXTAUTH_SECRET below: optional at parse time, hard-enforced
+  // at the real use site (src/lib/openai.ts throws when a stage that actually
+  // needs it loads without a key), so the paid paths are no less strict.
+  OPENAI_API_KEY: z.string().min(1).optional(),
   OPENAI_MODEL: z.string().min(1).default("gpt-4o-2024-11-20"),
 
   // Optional. Populates Listing.walkScore via the Walk Score API. When
