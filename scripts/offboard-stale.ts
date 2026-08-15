@@ -164,45 +164,73 @@ async function main() {
     where: { mlsId: { in: liveKeysArr }, deletedAt: { not: null } },
   });
 
-  // Per-row transition writes so we can also store the new status; tiny
-  // set in practice (~tens of rows/day), so we don't bother batching.
-  const transitionWrites = localTransitioned.map((r) =>
-    db.listing.update({
+  // Writes are chunked rather than run as one big `$transaction([...])`.
+  // A single sweep can legitimately need to soft-delete tens of thousands
+  // of rows (e.g. a long-neglected DB where Closed listings piled up); a
+  // lone `updateMany` over that many rows — plus a multi-thousand-element
+  // `notIn` and dozens of per-row updates — held one transaction/connection
+  // open long enough that Render's shared Postgres dropped it mid-flight
+  // (P1011 "Error opening a TLS connection: unexpected EOF"), failing the
+  // whole nightly. Chunking keeps each statement small and fast.
+  //
+  // Atomicity isn't needed here: the offboard set (keys NOT live) and the
+  // resurrect set (keys live) are disjoint, and the whole sweep is
+  // idempotent — a partial run just does less and the next nightly finishes
+  // the rest.
+  const CHUNK = 2_000;
+  const chunk = <T>(arr: T[]): T[][] => {
+    const out: T[][] = [];
+    for (let i = 0; i < arr.length; i += CHUNK) out.push(arr.slice(i, i + CHUNK));
+    return out;
+  };
+
+  // 1. Resurrect + bump lastSeenAt on every live key. Chunked so the
+  //    `in (...)` clause stays small.
+  let bumped = 0;
+  for (const keys of chunk(liveKeysArr)) {
+    const res = await db.listing.updateMany({
+      where: { mlsId: { in: keys } },
+      data: { lastSeenAt: sweepStartedAt, deletedAt: null },
+    });
+    bumped += res.count;
+  }
+
+  // 2. Soft-delete stale listings. Select the ids first (read-only, cheap),
+  //    then update in chunks. Live keys are excluded via `notIn`; the
+  //    lastSeenAt guard exempts anything etl-sync upserted this nightly but
+  //    the Active-keys scan missed to a paging artifact.
+  const staleRows = await db.listing.findMany({
+    where: {
+      mlsId: { notIn: liveKeysArr },
+      deletedAt: null,
+      OR: [{ lastSeenAt: null }, { lastSeenAt: { lt: seenCutoff } }],
+    },
+    select: { mlsId: true },
+  });
+  let offboarded = 0;
+  for (const rows of chunk(staleRows)) {
+    const res = await db.listing.updateMany({
+      where: { mlsId: { in: rows.map((r) => r.mlsId) } },
+      data: { deletedAt: sweepStartedAt },
+    });
+    offboarded += res.count;
+  }
+
+  // 3. Per-row transition writes so we can also store the new status; tiny
+  //    set in practice (~tens of rows/day). Runs last so a same-key
+  //    Active↔terminal flip lands on the terminal state.
+  for (const r of localTransitioned) {
+    await db.listing.update({
       where: { mlsId: r.mlsId },
       data: {
         deletedAt: sweepStartedAt,
         status: transitioned.get(r.mlsId) ?? undefined,
       },
-    }),
-  );
-
-  const txResult = await db.$transaction([
-    db.listing.updateMany({
-      where: {
-        mlsId: { notIn: liveKeysArr },
-        deletedAt: null,
-        // A listing upserted by etl-sync within this same nightly has
-        // lastSeenAt >= seenCutoff and is exempt from the "missing"
-        // rule. Status-transition offboards above already handled the
-        // same-nightly Pending/Closed case.
-        OR: [{ lastSeenAt: null }, { lastSeenAt: { lt: seenCutoff } }],
-      },
-      data: { deletedAt: sweepStartedAt },
-    }),
-    db.listing.updateMany({
-      where: { mlsId: { in: liveKeysArr } },
-      data: { lastSeenAt: sweepStartedAt, deletedAt: null },
-    }),
-    ...transitionWrites,
-  ]);
-  const [offboarded, bumped] = txResult as [
-    { count: number },
-    { count: number },
-    ...unknown[],
-  ];
+    });
+  }
 
   console.log(
-    `[offboard] done — offboarded=${offboarded.count}, transition-offboarded=${transitionWrites.length}, resurrected=${resurrectingCount}, bumped lastSeenAt=${bumped.count}, total live keys=${liveKeys.size}`,
+    `[offboard] done — offboarded=${offboarded}, transition-offboarded=${localTransitioned.length}, resurrected=${resurrectingCount}, bumped lastSeenAt=${bumped}, total live keys=${liveKeys.size}`,
   );
 }
 
