@@ -14,7 +14,6 @@ import {
 import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
 import SyncRoundedIcon from "@mui/icons-material/SyncRounded";
 import ReplayRoundedIcon from "@mui/icons-material/ReplayRounded";
-import MailOutlineRoundedIcon from "@mui/icons-material/MailOutlineRounded";
 import { trpc } from "@/lib/trpc/client";
 
 type RentRollEntryUI = {
@@ -37,13 +36,25 @@ const STATUS_COLOR: Record<
   FAILED: "error",
 };
 
-export function ThreadDetail({ threadId }: { threadId: string }) {
+export function ThreadDetail({
+  threadId,
+  onThreadRemoved,
+}: {
+  threadId: string;
+  /** Called when the sync dropped this thread — an unsent, deleted draft. */
+  onThreadRemoved?: () => void;
+}) {
   const utils = trpc.useUtils();
   const thread = trpc.emails.getThread.useQuery({ threadId });
   const sync = trpc.emails.syncNow.useMutation({
-    onSuccess: () => {
-      void utils.emails.getThread.invalidate({ threadId });
+    onSuccess: (res) => {
       void utils.emails.listThreads.invalidate();
+      void utils.emails.teamStats.invalidate();
+      if (res.removedCount > 0) {
+        onThreadRemoved?.();
+        return;
+      }
+      void utils.emails.getThread.invalidate({ threadId });
     },
   });
   const parse = trpc.emails.parseMessage.useMutation({
@@ -52,19 +63,8 @@ export function ThreadDetail({ threadId }: { threadId: string }) {
       void utils.emails.listThreads.invalidate();
     },
   });
-  const reclaim = trpc.emails.reclaimThread.useMutation({
-    onSuccess: () => {
-      void utils.emails.getThread.invalidate({ threadId });
-      void utils.emails.listThreads.invalidate();
-      void utils.emails.teamStats.invalidate();
-    },
-  });
-
   if (!thread.data) return null;
   const t = thread.data;
-  // A "released" thread: the Gmail draft was deleted before it was ever sent
-  // (see syncThread). Anyone can re-draft it into their own mailbox and send.
-  const released = t.status === "DRAFT" && !t.gmailDraftId;
   const draftUrl = t.gmailDraftId
     ? `https://mail.google.com/mail/u/0/#drafts?compose=${t.gmailDraftId}`
     : null;
@@ -132,17 +132,6 @@ export function ThreadDetail({ threadId }: { threadId: string }) {
       </Stack>
 
       <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
-        {released && (
-          <Button
-            size="small"
-            variant="contained"
-            startIcon={<MailOutlineRoundedIcon />}
-            disabled={reclaim.isPending}
-            onClick={() => reclaim.mutate({ threadId })}
-          >
-            {reclaim.isPending ? "Re-drafting…" : "Re-draft"}
-          </Button>
-        )}
         {gmailUrl && (
           <Button
             size="small"
@@ -183,42 +172,6 @@ export function ThreadDetail({ threadId }: { threadId: string }) {
           </Tooltip>
         )}
       </Stack>
-
-      {released && (
-        <Box
-          sx={{
-            p: 1.5,
-            mb: 2,
-            bgcolor: "warning.50",
-            border: 1,
-            borderColor: "warning.200",
-            borderRadius: 1,
-          }}
-        >
-          <Typography variant="caption" color="warning.main">
-            The Gmail draft was deleted before it was sent. Click{" "}
-            <strong>Re-draft</strong> to recreate it in your mailbox so you can
-            send it.
-          </Typography>
-        </Box>
-      )}
-
-      {reclaim.error && (
-        <Box
-          sx={{
-            p: 1.5,
-            mb: 2,
-            bgcolor: "error.50",
-            border: 1,
-            borderColor: "error.200",
-            borderRadius: 1,
-          }}
-        >
-          <Typography variant="caption" color="error.main">
-            {reclaim.error.message}
-          </Typography>
-        </Box>
-      )}
 
       {t.parseError && (
         <Box
