@@ -8,6 +8,8 @@ import { computeHeuristicScore } from "./scoring";
 const BATCH_SIZE = 200;
 const FLUSH_CONCURRENCY = 10;
 const MAX_LOG_ENTRIES = 500;
+/** Server-side ceiling for the neighborhood point-in-polygon backfill. */
+const NEIGHBORHOOD_TIMEOUT_MS = 300_000;
 
 type LogEntry = { ts: string; level: "info" | "warn" | "error"; message: string };
 
@@ -219,7 +221,22 @@ function buildFilter(since: Date | null): string {
   // We still exclude lease/rental listings — their ListPrice is a monthly rent
   // (e.g. $2,500/mo for a retail space) not a sale price, which corrupts every
   // downstream ratio (price, $/Sqft, Value-Add) when treated as for-sale.
-  const parts = ["not contains(PropertyType, 'Lease')"];
+  // The parens around the `not` are LOAD-BEARING. Bridge's OData parser binds
+  // a leading `not` across the whole conjunction, so
+  //   `not contains(PropertyType,'Lease') and BridgeModificationTimestamp gt X`
+  // is evaluated as `not (contains(…) and BridgeMod gt X)` — i.e. "everything
+  // except recently-touched leases", which matches almost the entire dataset
+  // and silently voids BOTH the lease exclusion and the incremental cursor.
+  // Measured against sfar/Properties with $count=true (2026-08-22):
+  //   (no filter)                                        108,450
+  //   not contains(PropertyType,'Lease')                  99,220
+  //   not contains(…) and BridgeMod gt <cursor>          108,443  ← bug
+  //   not (contains(…) and BridgeMod gt <cursor>)        108,443  ← same, proof
+  //   (not contains(…)) and BridgeMod gt <cursor>            117  ← correct
+  // That bug made every "incremental" nightly sync a full 108k-row pull,
+  // taking 1h20m–4h45m and exhausting the Bridge hourly request quota (which
+  // is what 429'd the LLM cron). Keep each clause parenthesized.
+  const parts = ["(not contains(PropertyType, 'Lease'))"];
   if (since) {
     parts.push(`BridgeModificationTimestamp gt ${since.toISOString()}`);
   }
@@ -394,14 +411,32 @@ async function refreshMaterializedView(): Promise<void> {
  * with no geom (those can't be located regardless of polygon coverage).
  */
 async function resolveNeighborhoods(): Promise<{ matched: number; unmatched: number }> {
-  const matched = await db.$executeRaw`
-    UPDATE "Listing" l
-       SET "neighborhood" = n."name"
-      FROM "Neighborhood" n
-     WHERE l."geom" IS NOT NULL
-       AND l."neighborhood" IS NULL
-       AND ST_Intersects(n."boundary", l."geom")
-  `;
+  // With the Neighborhood_boundary_gist index in place this is a sub-second
+  // statement. The explicit statement_timeout is a guardrail, not a tuning
+  // knob: the server-wide statement_timeout is 0 (unlimited), so before the
+  // index existed this UPDATE ran ~32 minutes and took the connection (and
+  // sometimes the whole instance) down with it. Failing fast here lets
+  // runFinalizationStep() log a warning and move on — the backfill is
+  // idempotent and re-runs next sync.
+  const matched = await db.$transaction(
+    async (tx) => {
+      await tx.$executeRawUnsafe(
+        `SET LOCAL statement_timeout = ${NEIGHBORHOOD_TIMEOUT_MS}`,
+      );
+      return tx.$executeRaw`
+        UPDATE "Listing" l
+           SET "neighborhood" = n."name"
+          FROM "Neighborhood" n
+         WHERE l."geom" IS NOT NULL
+           AND l."neighborhood" IS NULL
+           AND ST_Intersects(n."boundary", l."geom")
+      `;
+    },
+    // Prisma's interactive-transaction default is 5s, well under the
+    // statement_timeout above — give the wrapper room so the server-side
+    // timeout is what actually fires.
+    { timeout: NEIGHBORHOOD_TIMEOUT_MS + 30_000, maxWait: 15_000 },
+  );
 
   const unmatchedRows = await db.$queryRaw<Array<{ count: bigint }>>`
     SELECT COUNT(*)::bigint AS count

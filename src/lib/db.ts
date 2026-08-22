@@ -47,6 +47,17 @@ function isTransientDbError(err: unknown): boolean {
 const RETRY_TRIES = 8;
 const RETRY_BASE_MS = 500;
 const RETRY_MAX_MS = 15_000;
+// Wall-clock ceiling across ALL attempts for a single operation.
+//
+// The "~63s of retries" budget above only holds when each failure returns
+// fast. It does not bound anything when the *query itself* is slow to fail:
+// the nightly neighborhood backfill ran ~32 minutes before the server
+// dropped its connection, so 8 attempts became 3h15m of the daily cron's
+// 12h budget (see the 20260822000000_neighborhood_boundary_gist migration).
+// Retrying is only ever meant to ride out a restart window, so once we've
+// spent this long on one operation, stop and surface the error instead of
+// silently multiplying a slow failure by RETRY_TRIES.
+const RETRY_TOTAL_BUDGET_MS = 120_000;
 
 function makePrisma() {
   const base = new PrismaClient({
@@ -57,6 +68,7 @@ function makePrisma() {
     query: {
       async $allOperations({ args, query, model, operation }) {
         let lastErr: unknown;
+        const deadline = Date.now() + RETRY_TOTAL_BUDGET_MS;
         for (let attempt = 0; attempt < RETRY_TRIES; attempt++) {
           try {
             return await query(args);
@@ -67,6 +79,13 @@ function makePrisma() {
               RETRY_MAX_MS,
               RETRY_BASE_MS * 2 ** attempt,
             ) + Math.floor(Math.random() * 250);
+            if (Date.now() + waitMs >= deadline) {
+              // eslint-disable-next-line no-console
+              console.warn(
+                `[db] transient ${model ?? "raw"}.${operation} error, but the ${RETRY_TOTAL_BUDGET_MS}ms retry budget is exhausted after ${attempt + 1} attempt(s) — surfacing`,
+              );
+              throw err;
+            }
             // eslint-disable-next-line no-console
             console.warn(
               `[db] transient ${model ?? "raw"}.${operation} error, retrying in ${waitMs}ms (attempt ${attempt + 2}/${RETRY_TRIES})`,

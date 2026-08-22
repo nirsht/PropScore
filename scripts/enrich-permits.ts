@@ -179,6 +179,11 @@ async function phase2(): Promise<void> {
   const where = {
     city: "San Francisco",
     blockLot: { not: null },
+    // Skip listings Bridge has stopped showing (soft-deleted by
+    // offboard:stale). They were ~30% of the candidate set and nothing reads
+    // their enrichment. A re-listed row has deletedAt cleared by etl:sync
+    // while its *FetchedAt stays null, so it re-enters scope on its own.
+    deletedAt: null,
     ...(force ? {} : { permitsFetchedAt: null }),
   };
   const total = await db.listing.count({ where });

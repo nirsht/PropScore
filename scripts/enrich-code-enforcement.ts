@@ -1,72 +1,106 @@
 /**
  * Enrich every SF Listing with its parcel's DBI Notice of Violations summary
- * from Socrata nife-svxp. Idempotent + resumable: only touches rows where
+ * from Socrata nbtm-fbw5. Idempotent + resumable: only touches rows where
  * `codeViolationsFetchedAt IS NULL` (or `--force`).
  *
- * Joins on `Listing.blockLot` (populated by `enrich:sfpim`). Listings without
- * blockLot are stamped as fetched with zero counts so they don't keep
- * re-trying — they'll be re-fetched once `--force` is used after sfpim runs.
+ * Joins on `Listing.blockLot` (populated by `enrich:sfpim`).
+ *
+ * Fetching is batched by *block*, not by parcel. The Socrata client throttles
+ * globally to ~1 req/1.1s, so request count is the only thing that sets
+ * wall-clock: one request per parcel meant 74.5k requests ≈ 22.8 hours, which
+ * is why the daily cron never got past this lane inside its 12h budget. The
+ * candidate set collapses to ~4.1k distinct blocks, and a block-level query
+ * returns every lot on the block, so the same coverage costs ~165 requests
+ * (≈3 min). Blocks are fetched in waves so only one wave of summaries is
+ * resident at a time.
  *
  * Usage:
- *   pnpm enrich:code-enforcement                  # full sweep, concurrency 3
+ *   pnpm enrich:code-enforcement                  # full sweep
  *   pnpm enrich:code-enforcement --limit=50
- *   pnpm enrich:code-enforcement --concurrency=2
  *   pnpm enrich:code-enforcement --force          # re-fetch even if populated
  */
 import { db } from "@/lib/db";
-import { fetchByBlockLot } from "@/server/etl/code-enforcement-client";
+import { fetchByBlocks, emptyNovSummary } from "@/server/etl/code-enforcement-client";
 import { mapWithConcurrency } from "@/lib/concurrency";
 
 const args = process.argv.slice(2);
 const limitArg = args.find((a) => a.startsWith("--limit="));
 const limit = limitArg ? Number(limitArg.split("=")[1]) : undefined;
 const concurrencyArg = args.find((a) => a.startsWith("--concurrency="));
+// Concurrency now only governs the DB writeback — the Socrata side is a single
+// serialized batch fetch per wave.
 const concurrency = concurrencyArg
   ? Math.max(1, Math.min(20, Number(concurrencyArg.split("=")[1])))
   : 3;
 const force = args.includes("--force");
 
+/** Blocks per fetch+writeback wave. At 25 blocks/request this is 4 requests. */
+const BLOCKS_PER_WAVE = 100;
+
 async function main() {
   const where = {
     city: "San Francisco",
     blockLot: { not: null },
+    // Skip listings Bridge has stopped showing (offboard:stale soft-deletes
+    // them). They were ~30% of the candidate set and their enrichment is
+    // never read. A re-listed row gets deletedAt cleared by etl:sync and its
+    // *FetchedAt is still null, so it comes back into scope automatically.
+    deletedAt: null,
     ...(force ? {} : { codeViolationsFetchedAt: null }),
   };
 
   const total = await db.listing.count({ where });
+
+  // Load the candidate (mlsId, blockLot) pairs up front and group by block.
+  // ~52k rows of two short strings — a few MB, and it lets every block be
+  // fetched exactly once regardless of mlsId ordering.
+  const candidates = await db.listing.findMany({
+    where,
+    select: { mlsId: true, blockLot: true },
+    orderBy: { blockLot: "asc" },
+    ...(limit ? { take: limit } : {}),
+  });
+
+  const byBlock = new Map<string, Array<{ mlsId: string; blockLot: string }>>();
+  for (const c of candidates) {
+    if (!c.blockLot || c.blockLot.length < 7) continue;
+    const block = c.blockLot.slice(0, 4);
+    const bucket = byBlock.get(block);
+    if (bucket) bucket.push({ mlsId: c.mlsId, blockLot: c.blockLot });
+    else byBlock.set(block, [{ mlsId: c.mlsId, blockLot: c.blockLot }]);
+  }
+
+  const blocks = [...byBlock.keys()];
   console.log(
-    `[code-enforcement] candidates: ${total}${limit ? ` (limited to ${limit})` : ""}${force ? " (force)" : ""} concurrency=${concurrency}`,
+    `[code-enforcement] candidates: ${total}${limit ? ` (limited to ${limit})` : ""}${force ? " (force)" : ""} across ${blocks.length} blocks`,
   );
 
   let processed = 0;
   let matched = 0;
   let skipped = 0;
   let errored = 0;
-  let cursor: string | undefined;
-  const cap = limit ?? Number.POSITIVE_INFINITY;
-  const BATCH = 100;
 
-  while (processed < cap) {
-    const remaining = Math.min(BATCH, cap - processed);
-    const batch = await db.listing.findMany({
-      where,
-      take: remaining,
-      ...(cursor ? { skip: 1, cursor: { mlsId: cursor } } : {}),
-      orderBy: { mlsId: "asc" },
-      select: { mlsId: true, blockLot: true },
-    });
-    if (batch.length === 0) break;
-
+  for (let i = 0; i < blocks.length; i += BLOCKS_PER_WAVE) {
+    const wave = blocks.slice(i, i + BLOCKS_PER_WAVE);
     const started = Date.now();
-    const results = await mapWithConcurrency(batch, concurrency, async (l) => {
-      if (!l.blockLot) {
-        await db.listing.update({
-          where: { mlsId: l.mlsId },
-          data: { codeViolationsFetchedAt: new Date() },
-        });
-        return "skipped" as const;
-      }
-      const summary = await fetchByBlockLot(l.blockLot);
+
+    let summaries: Awaited<ReturnType<typeof fetchByBlocks>>;
+    try {
+      summaries = await fetchByBlocks(wave);
+    } catch (err) {
+      // A whole wave failing is worth surfacing but not fatal — the listings
+      // keep their null fetchedAt and are retried on the next run.
+      errored += wave.reduce((n, b) => n + (byBlock.get(b)?.length ?? 0), 0);
+      console.error(`[code-enforcement] wave ${wave[0]}..${wave[wave.length - 1]} failed:`, err);
+      continue;
+    }
+
+    const listings = wave.flatMap((b) => byBlock.get(b) ?? []);
+    const results = await mapWithConcurrency(listings, concurrency, async (l) => {
+      // A parcel with no NOV history has no entry — that is the common case
+      // and still counts as "fetched" (zero counts), matching the previous
+      // per-parcel behaviour.
+      const summary = summaries.get(l.blockLot) ?? emptyNovSummary(l.blockLot);
       await db.listing.update({
         where: { mlsId: l.mlsId },
         data: {
@@ -81,25 +115,24 @@ async function main() {
         : ("skipped" as const);
     });
 
-    for (let i = 0; i < results.length; i++) {
+    for (let j = 0; j < results.length; j++) {
       processed += 1;
-      const r = results[i]!;
+      const r = results[j]!;
       if (r.status === "fulfilled") {
         if (r.value === "matched") matched += 1;
         else skipped += 1;
       } else {
         errored += 1;
         console.error(
-          `[code-enforcement] mlsId=${batch[i]!.mlsId} blockLot=${batch[i]!.blockLot}:`,
+          `[code-enforcement] mlsId=${listings[j]!.mlsId} blockLot=${listings[j]!.blockLot}:`,
           r.reason,
         );
       }
     }
 
-    cursor = batch[batch.length - 1]?.mlsId;
     const dur = ((Date.now() - started) / 1000).toFixed(1);
     console.log(
-      `[code-enforcement] processed=${processed}/${total}, matched=${matched}, skipped=${skipped}, errored=${errored} (batch ${dur}s)`,
+      `[code-enforcement] blocks=${Math.min(i + BLOCKS_PER_WAVE, blocks.length)}/${blocks.length}, processed=${processed}, matched=${matched}, skipped=${skipped}, errored=${errored} (wave ${dur}s)`,
     );
   }
 

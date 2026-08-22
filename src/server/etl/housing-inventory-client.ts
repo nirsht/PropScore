@@ -22,6 +22,25 @@ const BASE_URL = "https://data.sfgov.org/resource/xdht-4php.json";
 const THROTTLE_MS = 1100;
 const RECENT_WINDOW_YEARS = 5;
 
+const SELECT_FIELDS =
+  "blocklot,net_units,net_units_completed,bmr_reporting_year,first_completion_date,latest_completion_date";
+
+/**
+ * Parcels per request when fetching in bulk.
+ *
+ * Unlike the NOV/complaint feeds this dataset exposes a single `blocklot`
+ * column (no separate block/lot), so we batch on the full parcel id rather
+ * than the block. 52k candidate listings resolve to ~31.6k distinct
+ * blockLots, which at 100/request is ~317 requests (≈6 min under the global
+ * 1.1s throttle) instead of 74.5k requests (≈22.8 hours).
+ *
+ * This is a small, sparse dataset — only parcels with completed housing
+ * production appear at all — so rows-per-request stays tiny.
+ */
+const BLOCKLOTS_PER_REQUEST = 100;
+/** Socrata's per-request row ceiling. */
+const ROW_LIMIT = 50_000;
+
 let lastRequestAt = 0;
 
 async function throttle() {
@@ -85,21 +104,8 @@ async function fetchJson(url: string): Promise<HousingInventoryRow[]> {
   return (await res.json()) as HousingInventoryRow[];
 }
 
-/**
- * Sum the last N years of net unit change on a parcel. Returns 0 (not null)
- * when the parcel has no inventory rows — callers persist this as a "fetched"
- * state so the script is idempotent.
- */
-export async function fetchByBlockLot(blockLot: string): Promise<HousingInventorySummary> {
-  // The current dataset uses a single `blocklot` field.
-  const params = new URLSearchParams({
-    $where: `blocklot='${blockLot}'`,
-    $select:
-      "blocklot,net_units,net_units_completed,bmr_reporting_year,first_completion_date,latest_completion_date",
-    $limit: "200",
-  });
-  const rows = await fetchJson(`${BASE_URL}?${params.toString()}`);
-
+/** Sum the recent-window net unit change across one parcel's rows. */
+function summarize(blockLot: string, rows: HousingInventoryRow[]): HousingInventorySummary {
   const cutoffYear = new Date().getUTCFullYear() - RECENT_WINDOW_YEARS;
   let net = 0;
   for (const row of rows) {
@@ -109,6 +115,69 @@ export async function fetchByBlockLot(blockLot: string): Promise<HousingInventor
     if (delta == null) continue;
     net += delta;
   }
-
   return { blockLot, netUnitChange5y: net };
+}
+
+/** Fetch every row matching `where`, paging on `:id`. */
+async function fetchPaged(where: string): Promise<HousingInventoryRow[]> {
+  const out: HousingInventoryRow[] = [];
+  for (let offset = 0; ; offset += ROW_LIMIT) {
+    const params = new URLSearchParams({
+      $where: where,
+      $select: SELECT_FIELDS,
+      $order: ":id",
+      $limit: String(ROW_LIMIT),
+      $offset: String(offset),
+    });
+    const rows = await fetchJson(`${BASE_URL}?${params.toString()}`);
+    out.push(...rows);
+    if (rows.length < ROW_LIMIT) break;
+  }
+  return out;
+}
+
+/**
+ * Bulk lookup: net unit change for many parcels at once, keyed by blockLot.
+ *
+ * Parcels with no housing-production history have no entry in the returned
+ * map — that is the common case, and callers must treat a miss as
+ * `netUnitChange5y: 0` and still mark the listing as fetched.
+ */
+export async function fetchByBlockLots(
+  blockLots: string[],
+): Promise<Map<string, HousingInventorySummary>> {
+  const unique = [...new Set(blockLots)];
+  const byBlockLot = new Map<string, HousingInventoryRow[]>();
+
+  for (let i = 0; i < unique.length; i += BLOCKLOTS_PER_REQUEST) {
+    const chunk = unique.slice(i, i + BLOCKLOTS_PER_REQUEST);
+    const inList = chunk.map((b) => `'${b.replace(/'/g, "''")}'`).join(",");
+    const rows = await fetchPaged(`blocklot IN (${inList})`);
+    for (const row of rows) {
+      const key = typeof row.blocklot === "string" ? row.blocklot.trim() : "";
+      if (!key) continue;
+      const bucket = byBlockLot.get(key);
+      if (bucket) bucket.push(row);
+      else byBlockLot.set(key, [row]);
+    }
+  }
+
+  const out = new Map<string, HousingInventorySummary>();
+  for (const [blockLot, rows] of byBlockLot) {
+    out.set(blockLot, summarize(blockLot, rows));
+  }
+  return out;
+}
+
+/**
+ * Sum the last N years of net unit change on a parcel. Returns 0 (not null)
+ * when the parcel has no inventory rows — callers persist this as a "fetched"
+ * state so the script is idempotent.
+ *
+ * Prefer `fetchByBlockLots` for sweeps: this issues one throttled request per
+ * parcel.
+ */
+export async function fetchByBlockLot(blockLot: string): Promise<HousingInventorySummary> {
+  const byBlockLot = await fetchByBlockLots([blockLot]);
+  return byBlockLot.get(blockLot) ?? { blockLot, netUnitChange5y: 0 };
 }

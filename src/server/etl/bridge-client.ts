@@ -6,12 +6,26 @@ import { env } from "@/lib/env";
  * Docs: https://bridgedataoutput.com/docs/platform/API/reso-web-api
  *
  * Auth:    server token sent as `Bearer <token>`
- * Limits:  5000 req/hr, burst ~334 req/min — enforced via token-bucket throttle.
+ * Limits:  5000 req/hr, burst ~334 req/min — BOTH enforced below.
  * Paging:  `$top=200` (max), `$skip` for offset; switch to `/replication` for >10k rows.
  */
 
 const PAGE_SIZE = 200;
-const THROTTLE_MIN_INTERVAL_MS = 200; // ~300 req/min — comfortably below the burst limit
+// Burst spacing only. 200ms = ~300 req/min, just under the ~334 req/min burst
+// ceiling — but 300 req/min sustained is 18,000 req/hr, 3.6x over the HOURLY
+// limit. Spacing alone therefore drains the hourly budget in ~17 minutes,
+// which is how the LLM cron ended up dying on
+//   `Bridge 429 … Your limit will reset on Tue Aug 18 2026 02:57:23`
+// while the daily cron's rent-comps lane was also pulling. The sliding-window
+// guard below is what actually bounds sustained usage; this stays small so
+// short bursts (a 1-page delta sync, a handful of rent-comp lookups) are
+// still fast.
+const THROTTLE_MIN_INTERVAL_MS = 200;
+// Our own hourly ceiling, held under the documented 5000/hr so concurrent
+// callers racing on the window below (and the web service sharing the same
+// account token) still have headroom.
+const HOURLY_REQUEST_LIMIT = 4_500;
+const HOUR_MS = 3_600_000;
 const MAX_RETRIES = 5;
 
 export type BridgeProperty = Record<string, unknown> & {
@@ -144,12 +158,42 @@ const DEFAULT_SELECT = [
 ];
 
 let lastRequestAt = 0;
+// Timestamps of the requests issued in the trailing hour, oldest first.
+// Bounded by HOURLY_REQUEST_LIMIT, so at most a few thousand numbers.
+const recentRequests: number[] = [];
+let hourlyWaitLogged = false;
 
 async function throttle() {
+  // 1. Burst spacing. Reserving the slot before awaiting serializes
+  //    concurrent callers into a queue THROTTLE_MIN_INTERVAL_MS apart.
   const now = Date.now();
   const wait = Math.max(0, lastRequestAt + THROTTLE_MIN_INTERVAL_MS - now);
   lastRequestAt = now + wait;
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+
+  // 2. Sliding-hour budget. Sleep until the oldest request in the window
+  //    ages out, so sustained work self-limits instead of 429ing. This is
+  //    strictly better than absorbing the 429: Bridge's reset is up to an
+  //    hour away, far beyond what MAX_RETRIES can ride out.
+  for (;;) {
+    const cutoff = Date.now() - HOUR_MS;
+    while (recentRequests.length > 0 && recentRequests[0]! <= cutoff) {
+      recentRequests.shift();
+    }
+    if (recentRequests.length < HOURLY_REQUEST_LIMIT) break;
+    const sleepMs = recentRequests[0]! - cutoff + 250;
+    if (!hourlyWaitLogged) {
+      // Log once per process — this is expected backpressure on a big sweep,
+      // not an error, and one line per request would flood the cron log.
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[bridge] hourly budget reached (${HOURLY_REQUEST_LIMIT} req/hr) — throttling; first wait ${Math.round(sleepMs / 1000)}s`,
+      );
+      hourlyWaitLogged = true;
+    }
+    await new Promise((r) => setTimeout(r, sleepMs));
+  }
+  recentRequests.push(Date.now());
 }
 
 async function request<T>(url: string, attempt = 0): Promise<T> {
