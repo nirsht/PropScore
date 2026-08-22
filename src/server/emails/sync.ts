@@ -13,9 +13,55 @@ export type SyncResult = {
   newMessages: number;
   newInboundMessages: number;
   parsedRentRoll: boolean;
+  /** The row was dropped — an unsent draft its owner deleted in Gmail. */
+  deleted: boolean;
   statusBefore: string;
   statusAfter: string;
 };
+
+export type DraftOutcome = "delete" | "sent" | "keep";
+
+/**
+ * Decide the fate of a thread still sitting in DRAFT, given what Gmail says
+ * about its draft and what messages the thread carries.
+ *
+ * - "delete" — the draft is gone and nothing ever left the mailbox: the owner
+ *   deleted it before sending, so the row is dropped. The listing goes back
+ *   into the un-contacted pool for the next bulk-draft run.
+ * - "sent" — the draft is gone but the thread has an outbound message: sent.
+ * - "keep" — nothing to conclude; leave the status where it is.
+ */
+export function resolveDraftOutcome(input: {
+  status: string;
+  sentAt: Date | null;
+  draftStillExists: boolean;
+  outboundSeen: boolean;
+  inboundSeen: boolean;
+}): DraftOutcome {
+  if (input.status !== "DRAFT" || input.sentAt) return "keep";
+  if (input.draftStillExists) return "keep";
+  if (input.outboundSeen) return "sent";
+  // An inbound-only thread is too odd to throw away — keep it for a human.
+  if (input.inboundSeen) return "keep";
+  return "delete";
+}
+
+/** Drop a thread row (messages cascade) and shape the SyncResult for it. */
+async function deleteAbandonedThread(
+  threadId: string,
+  statusBefore: string,
+): Promise<SyncResult> {
+  await db.emailThread.delete({ where: { id: threadId } });
+  return {
+    threadId,
+    newMessages: 0,
+    newInboundMessages: 0,
+    parsedRentRoll: false,
+    deleted: true,
+    statusBefore,
+    statusAfter: "DELETED",
+  };
+}
 
 /**
  * Sync one EmailThread against Gmail: fetch every message in the thread,
@@ -28,10 +74,28 @@ export type SyncResult = {
 export async function syncThread(threadId: string): Promise<SyncResult> {
   const thread = await db.emailThread.findUnique({
     where: { id: threadId },
-    include: { messages: { select: { gmailMessageId: true } } },
+    include: { messages: { select: { gmailMessageId: true, direction: true } } },
   });
   if (!thread) throw new Error(`EmailThread not found: ${threadId}`);
+  // Older syncs recorded the unsent draft itself as an OUTBOUND row (Gmail
+  // returns it as a message in the thread), so "has messages" isn't "has
+  // replies" — only INBOUND rows mean a reply actually landed.
+  const hadInbound = thread.messages.some((m) => m.direction === "INBOUND");
   if (!thread.gmailThreadId) {
+    // No Gmail linkage and nothing sent: the draft was deleted before it went
+    // out. (Older syncs "released" these rows instead of dropping them, which
+    // left them stuck in the draft list forever — this cleans those up too.)
+    if (
+      resolveDraftOutcome({
+        status: thread.status,
+        sentAt: thread.sentAt,
+        draftStillExists: false,
+        outboundSeen: false,
+        inboundSeen: hadInbound,
+      }) === "delete"
+    ) {
+      return deleteAbandonedThread(thread.id, thread.status);
+    }
     await db.emailThread.update({
       where: { id: threadId },
       data: { lastSyncedAt: new Date() },
@@ -41,6 +105,7 @@ export async function syncThread(threadId: string): Promise<SyncResult> {
       newMessages: 0,
       newInboundMessages: 0,
       parsedRentRoll: false,
+      deleted: false,
       statusBefore: thread.status,
       statusAfter: thread.status,
     };
@@ -54,35 +119,37 @@ export async function syncThread(threadId: string): Promise<SyncResult> {
     const code = (err as { code?: number }).code;
     if (code === 404) {
       // Thread no longer exists in Gmail. If it was an unsent draft (still in
-      // DRAFT and never sent), the owner deleted it before sending — release
-      // it so any teammate can re-draft and send: clear the Gmail linkage and
-      // keep it as a DRAFT with a null draft id (emails.reclaimThread picks it
-      // up from there). Anything that had progressed past DRAFT is genuinely
-      // gone -> FAILED, and won't be retried every night.
-      const releasable = thread.status === "DRAFT" && !thread.sentAt;
+      // DRAFT and never sent), the owner deleted it before sending — the
+      // outreach never happened, so drop the row entirely and let the listing
+      // fall back into the un-contacted pool. Anything that had progressed
+      // past DRAFT is genuinely gone -> FAILED, and won't be retried nightly.
+      const outcome = resolveDraftOutcome({
+        status: thread.status,
+        sentAt: thread.sentAt,
+        draftStillExists: false,
+        outboundSeen: false,
+        inboundSeen: hadInbound,
+      });
+      if (outcome === "delete") {
+        return deleteAbandonedThread(thread.id, thread.status);
+      }
       await db.emailThread.update({
         where: { id: thread.id },
-        data: releasable
-          ? {
-              gmailDraftId: null,
-              gmailThreadId: null,
-              parseError: null,
-              lastSyncedAt: new Date(),
-            }
-          : {
-              status: "FAILED",
-              parseError:
-                "Gmail thread no longer exists (deleted in Gmail) — sync disabled.",
-              lastSyncedAt: new Date(),
-            },
+        data: {
+          status: "FAILED",
+          parseError:
+            "Gmail thread no longer exists (deleted in Gmail) — sync disabled.",
+          lastSyncedAt: new Date(),
+        },
       });
       return {
         threadId,
         newMessages: 0,
         newInboundMessages: 0,
         parsedRentRoll: false,
+        deleted: false,
         statusBefore: thread.status,
-        statusAfter: releasable ? "DRAFT" : "FAILED",
+        statusAfter: "FAILED",
       };
     }
     throw err;
@@ -99,6 +166,10 @@ export async function syncThread(threadId: string): Promise<SyncResult> {
 
   for (const msg of gmailMessages) {
     if (!msg.id) continue;
+    // The unsent draft is one of the thread's messages. It isn't mail yet, so
+    // don't record it and don't let it read as "the user sent something" —
+    // otherwise a discarded draft can look like a send.
+    if (msg.labelIds?.includes("DRAFT")) continue;
     if (seen.has(msg.id)) {
       // Even if we've seen it, track whether it's outbound for status flip.
       const fromHeader = headerValue(msg.payload?.headers ?? undefined, "From");
@@ -142,25 +213,25 @@ export async function syncThread(threadId: string): Promise<SyncResult> {
     else latestOutboundSeen = true;
   }
 
-  // Determine new status.
+  // Determine new status. A draft that's gone from Gmail either went out
+  // (outbound message in the thread -> SENT) or was thrown away before it went
+  // out, in which case the row goes with it.
   let newStatus: typeof thread.status = thread.status;
-  // Set when the draft was deleted in Gmail with nothing sent — we null out the
-  // draft id below so the thread becomes re-draftable (see emails.reclaimThread).
-  let releaseDraft = false;
   if (thread.status === "DRAFT") {
-    if (thread.gmailDraftId) {
-      // If the draft no longer exists in Gmail AND we've seen an outbound
-      // message in the thread, the user sent it. If it's gone with nothing
-      // sent, the draft was abandoned — release it for re-draft.
-      const stillDraft = await draftExists(thread.userId, thread.gmailDraftId);
-      if (!stillDraft && latestOutboundSeen) {
-        newStatus = "SENT";
-      } else if (!stillDraft && !latestOutboundSeen) {
-        releaseDraft = true;
-      }
-    } else if (latestOutboundSeen) {
-      newStatus = "SENT";
+    const stillDraft = thread.gmailDraftId
+      ? await draftExists(thread.userId, thread.gmailDraftId)
+      : false;
+    const outcome = resolveDraftOutcome({
+      status: thread.status,
+      sentAt: thread.sentAt,
+      draftStillExists: stillDraft,
+      outboundSeen: latestOutboundSeen,
+      inboundSeen: hadInbound || newInbound.length > 0,
+    });
+    if (outcome === "delete") {
+      return deleteAbandonedThread(thread.id, thread.status);
     }
+    if (outcome === "sent") newStatus = "SENT";
   }
   if (newInbound.length > 0 && newStatus !== "PARSED") {
     newStatus = "REPLIED";
@@ -170,7 +241,6 @@ export async function syncThread(threadId: string): Promise<SyncResult> {
     where: { id: thread.id },
     data: {
       status: newStatus,
-      ...(releaseDraft ? { gmailDraftId: null } : {}),
       sentAt: newStatus === "SENT" && !thread.sentAt ? new Date() : thread.sentAt,
       lastSyncedAt: new Date(),
     },
@@ -197,6 +267,7 @@ export async function syncThread(threadId: string): Promise<SyncResult> {
     newMessages,
     newInboundMessages: newInbound.length,
     parsedRentRoll,
+    deleted: false,
     statusBefore: thread.status,
     statusAfter: parsedRentRoll ? "PARSED" : newStatus,
   };

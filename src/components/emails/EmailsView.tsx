@@ -90,13 +90,30 @@ export function EmailsView() {
     trigger: triggerFilter.length ? triggerFilter : undefined,
     senderUserId,
   });
+  const [syncResult, setSyncResult] = React.useState<string | null>(null);
   const syncAll = trpc.emails.syncNow.useMutation({
-    onSuccess: () => {
+    onSuccess: (res) => {
       void utils.emails.listThreads.invalidate();
       void utils.emails.teamStats.invalidate();
-      if (selectedThreadId)
+      // Threads whose draft was deleted before sending are gone now — the
+      // open one may be among them, so drop the selection.
+      if (res.removedCount > 0) setSelectedThreadId(null);
+      else if (selectedThreadId)
         void utils.emails.getThread.invalidate({ threadId: selectedThreadId });
+      const parts = [`Synced ${res.syncedCount}`];
+      if (res.removedCount > 0)
+        parts.push(
+          `removed ${res.removedCount} deleted draft${res.removedCount === 1 ? "" : "s"}`,
+        );
+      if (res.newInboundCount > 0)
+        parts.push(
+          `${res.newInboundCount} new repl${res.newInboundCount === 1 ? "y" : "ies"}`,
+        );
+      if (res.failedCount > 0)
+        parts.push(`${res.failedCount} failed (${res.errors.join("; ")})`);
+      setSyncResult(`${parts.join(" · ")}.`);
     },
+    onError: (err) => setSyncResult(err.message),
   });
   const [bulkResult, setBulkResult] = React.useState<string | null>(null);
   const bulkDraft = trpc.emails.bulkDraftUnderThreshold.useMutation({
@@ -219,9 +236,9 @@ export function EmailsView() {
           sx={{ minWidth: 220, flex: { xs: "1 1 100%", sm: "0 1 280px" } }}
         />
         <Box sx={{ flex: 1 }} />
-        {bulkResult && (
+        {(bulkResult ?? syncResult) && (
           <Typography variant="caption" color="text.secondary">
-            {bulkResult}
+            {bulkResult ?? syncResult}
           </Typography>
         )}
         <Tooltip
@@ -238,6 +255,7 @@ export function EmailsView() {
               startIcon={<MailOutlineRoundedIcon />}
               disabled={bulkDraft.isPending}
               onClick={() => {
+                setSyncResult(null);
                 setBulkResult(null);
                 bulkDraft.mutate(
                   sender !== "all" ? { senderUserId: sender } : undefined,
@@ -248,14 +266,18 @@ export function EmailsView() {
             </Button>
           </span>
         </Tooltip>
-        <Tooltip title="Poll Gmail for new replies on every thread">
+        <Tooltip title="Poll Gmail for new replies on every thread, and clear out drafts that were deleted before they were sent">
           <span>
             <Button
               size="small"
               variant="outlined"
               startIcon={<SyncRoundedIcon />}
               disabled={syncAll.isPending}
-              onClick={() => syncAll.mutate({})}
+              onClick={() => {
+                setBulkResult(null);
+                setSyncResult(null);
+                syncAll.mutate({});
+              }}
             >
               {syncAll.isPending ? "Syncing…" : "Sync all"}
             </Button>
@@ -341,17 +363,6 @@ export function EmailsView() {
                       sx={{ height: 20, maxWidth: 140, fontSize: 11 }}
                     />
                   </Tooltip>
-                  {t.status === "DRAFT" && !t.gmailDraftId && (
-                    <Tooltip title="Draft was deleted before sending — open to re-draft">
-                      <Chip
-                        size="small"
-                        color="warning"
-                        variant="outlined"
-                        label="re-draft"
-                        sx={{ height: 18, fontSize: 10 }}
-                      />
-                    </Tooltip>
-                  )}
                   {t.trigger === "auto_under_450" && (
                     <Chip
                       size="small"
@@ -379,7 +390,10 @@ export function EmailsView() {
           }}
         >
           {selectedThreadId ? (
-            <ThreadDetail threadId={selectedThreadId} />
+            <ThreadDetail
+              threadId={selectedThreadId}
+              onThreadRemoved={() => setSelectedThreadId(null)}
+            />
           ) : (
             <Typography
               variant="body2"

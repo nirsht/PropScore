@@ -1,7 +1,8 @@
 /**
  * Sync every active EmailThread against Gmail — fetch any new messages,
- * advance the DRAFT → SENT / SENT → REPLIED status, run the GPT-5 rent-roll
- * parser on new inbound messages.
+ * advance the DRAFT → SENT / SENT → REPLIED status, drop threads whose draft
+ * was deleted before it was ever sent, run the GPT-5 rent-roll parser on new
+ * inbound messages.
  *
  * Designed to be a Render-cron lane in scripts/nightly.ts. Also exposed via
  * the `emails.syncNow` tRPC procedure for manual triggering from the UI.
@@ -40,13 +41,19 @@ async function main() {
   let totalNew = 0;
   let totalInbound = 0;
   let parsed = 0;
+  let removed = 0;
   for (const t of threads) {
     try {
       const result = await syncThread(t.id);
       totalNew += result.newMessages;
       totalInbound += result.newInboundMessages;
       if (result.parsedRentRoll) parsed += 1;
-      if (result.newMessages > 0 || result.statusBefore !== result.statusAfter) {
+      if (result.deleted) removed += 1;
+      if (
+        result.newMessages > 0 ||
+        result.statusBefore !== result.statusAfter ||
+        result.deleted
+      ) {
         console.log(
           `  ✓ ${t.id}  +${result.newMessages} msgs (${result.newInboundMessages} inbound)  ${result.statusBefore} → ${result.statusAfter}`,
         );
@@ -57,7 +64,7 @@ async function main() {
   }
 
   console.log(
-    `[poll-replies] done. threads=${threads.length} newMessages=${totalNew} newInbound=${totalInbound} parsed=${parsed}`,
+    `[poll-replies] done. threads=${threads.length} newMessages=${totalNew} newInbound=${totalInbound} parsed=${parsed} removed=${removed}`,
   );
 }
 
