@@ -35,10 +35,6 @@ async function main() {
 
   const targets = await db.listing.findMany({
     where: {
-      // Live listings only. Soft-deleted rows took this from 353 candidates
-      // to 53,830 — and since nothing reads their walkScore, every one of
-      // those calls was a wasted round-trip against a 5,000/day free tier.
-      deletedAt: null,
       lat: { not: null },
       lng: { not: null },
       OR: [
@@ -67,21 +63,6 @@ async function main() {
   let calculating = 0;
   let errored = 0;
   let stoppedEarly = false;
-  let processed = 0;
-
-  // Progress every PROGRESS_EVERY rows. Without this the stage is completely
-  // silent whenever the API is failing: the error log below is capped at 5
-  // lines and a failed call writes nothing to the DB, so a run that errors
-  // on every row is indistinguishable from a hang.
-  const PROGRESS_EVERY = 100;
-  const noteProcessed = () => {
-    processed += 1;
-    if (processed % PROGRESS_EVERY === 0 || processed === targets.length) {
-      console.log(
-        `[refresh-walkscore] progress: ${processed}/${targets.length}, fetched=${ok}, calculating=${calculating}, errored=${errored}`,
-      );
-    }
-  };
 
   // Simple bounded-concurrency runner. We bail early on rate-limit/quota.
   const queue = [...targets];
@@ -118,8 +99,6 @@ async function main() {
             console.warn(`[refresh-walkscore] error for ${l.mlsId}: reason=${result.reason} status=${result.status}`);
           }
         }
-
-        noteProcessed();
       }
     }),
   );
