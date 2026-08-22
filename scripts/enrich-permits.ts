@@ -5,10 +5,11 @@
  * Two phases per run:
  *
  *   Phase 1 — Hydrate `BuildingPermit` rows by block. We pull every permit
- *   on each distinct `Listing.block` filed in the last 10 years, then
- *   upsert into `BuildingPermit` keyed on `permit_number`. Each block is
- *   re-fetched at most every 7 days (Socrata refreshes daily but a permit
- *   filing rarely changes ADU/legalization signals once issued).
+ *   on each distinct `Listing.block` among live (non-soft-deleted) listings,
+ *   filed in the last 10 years, then upsert into `BuildingPermit` keyed on
+ *   `permit_number`. Each block is re-fetched at most every 7 days (Socrata
+ *   refreshes daily but a permit filing rarely changes ADU/legalization
+ *   signals once issued).
  *
  *   Phase 2 — Recompute `Listing.permits*` summary counts: own-parcel
  *   permits, same-block ADU precedent in last 5y, within-500ft ADU
@@ -49,7 +50,11 @@ async function phase1(): Promise<void> {
 
   // Distinct `block` values across SF listings (with blockLot populated).
   const blocks = await db.listing.findMany({
-    where: { city: "San Francisco", block: { not: null } },
+    // Live listings only. The 76k soft-deleted SF rows drag ~3.9k blocks no
+    // live listing sits on into the sweep, and permits-client throttles
+    // globally to ~1 req/1.1s, so every extra block is 1.1s of wall-clock.
+    // Phase 2 already filters on `deletedAt`, so nothing ever read them.
+    where: { city: "San Francisco", block: { not: null }, deletedAt: null },
     select: { block: true },
     distinct: ["block"],
   });
@@ -79,93 +84,105 @@ async function phase1(): Promise<void> {
     );
   }
 
-  let blockIdx = 0;
+  let blocksDone = 0;
   let permitsUpserted = 0;
   let blocksErrored = 0;
 
+  // Report progress from *inside* the mapped function. mapWithConcurrency
+  // resolves only once every block is done, so anything logged after it
+  // prints in one burst at the end of a phase that runs for minutes — which
+  // reads as a hang.
+  const noteBlockDone = () => {
+    blocksDone += 1;
+    if (blocksDone % 25 === 0) {
+      console.log(
+        `[permits] phase 1 progress: ${blocksDone}/${blocksToFetch.length} blocks, permits upserted=${permitsUpserted}, errored=${blocksErrored}`,
+      );
+    }
+  };
+
   const results = await mapWithConcurrency(blocksToFetch, concurrency, async (block) => {
-    const records = await fetchPermitsByBlock(block, 10);
-    if (records.length === 0) return 0;
+    try {
+      const records = await fetchPermitsByBlock(block, 10);
+      if (records.length === 0) return 0;
 
-    // Upsert in chunks. Distinct permitNumbers, no row contention.
-    const inner = await mapWithConcurrency(records, 5, async (rec) => {
-      await db.buildingPermit.upsert({
-        where: { permitNumber: rec.permitNumber },
-        create: {
-          permitNumber: rec.permitNumber,
-          blockLot: rec.blockLot,
-          block: rec.block,
-          lot: rec.lot,
-          filedDate: rec.filedDate,
-          issuedDate: rec.issuedDate,
-          status: rec.status,
-          description: rec.description,
-          aduFlag: rec.aduFlag,
-          aduKeyword: rec.aduKeyword,
-          existingUnits: rec.existingUnits,
-          proposedUnits: rec.proposedUnits,
-          existingConstructionType: rec.existingConstructionType,
-          proposedConstructionType: rec.proposedConstructionType,
-          existingUse: rec.existingUse,
-          proposedUse: rec.proposedUse,
-          lat: rec.lat,
-          lng: rec.lng,
-          raw: rec.raw as Prisma.InputJsonValue,
-        },
-        update: {
-          blockLot: rec.blockLot,
-          block: rec.block,
-          lot: rec.lot,
-          filedDate: rec.filedDate,
-          issuedDate: rec.issuedDate,
-          status: rec.status,
-          description: rec.description,
-          aduFlag: rec.aduFlag,
-          aduKeyword: rec.aduKeyword,
-          existingUnits: rec.existingUnits,
-          proposedUnits: rec.proposedUnits,
-          existingConstructionType: rec.existingConstructionType,
-          proposedConstructionType: rec.proposedConstructionType,
-          existingUse: rec.existingUse,
-          proposedUse: rec.proposedUse,
-          lat: rec.lat,
-          lng: rec.lng,
-          raw: rec.raw as Prisma.InputJsonValue,
-          fetchedAt: new Date(),
-        },
+      // Upsert in chunks. Distinct permitNumbers, no row contention.
+      const inner = await mapWithConcurrency(records, 5, async (rec) => {
+        await db.buildingPermit.upsert({
+          where: { permitNumber: rec.permitNumber },
+          create: {
+            permitNumber: rec.permitNumber,
+            blockLot: rec.blockLot,
+            block: rec.block,
+            lot: rec.lot,
+            filedDate: rec.filedDate,
+            issuedDate: rec.issuedDate,
+            status: rec.status,
+            description: rec.description,
+            aduFlag: rec.aduFlag,
+            aduKeyword: rec.aduKeyword,
+            existingUnits: rec.existingUnits,
+            proposedUnits: rec.proposedUnits,
+            existingConstructionType: rec.existingConstructionType,
+            proposedConstructionType: rec.proposedConstructionType,
+            existingUse: rec.existingUse,
+            proposedUse: rec.proposedUse,
+            lat: rec.lat,
+            lng: rec.lng,
+            raw: rec.raw as Prisma.InputJsonValue,
+          },
+          update: {
+            blockLot: rec.blockLot,
+            block: rec.block,
+            lot: rec.lot,
+            filedDate: rec.filedDate,
+            issuedDate: rec.issuedDate,
+            status: rec.status,
+            description: rec.description,
+            aduFlag: rec.aduFlag,
+            aduKeyword: rec.aduKeyword,
+            existingUnits: rec.existingUnits,
+            proposedUnits: rec.proposedUnits,
+            existingConstructionType: rec.existingConstructionType,
+            proposedConstructionType: rec.proposedConstructionType,
+            existingUse: rec.existingUse,
+            proposedUse: rec.proposedUse,
+            lat: rec.lat,
+            lng: rec.lng,
+            raw: rec.raw as Prisma.InputJsonValue,
+            fetchedAt: new Date(),
+          },
+        });
+        return 1;
       });
-      return 1;
-    });
-    const upserted = inner.reduce(
-      (s, r) => s + (r.status === "fulfilled" ? r.value : 0),
-      0,
-    );
+      const upserted = inner.reduce(
+        (s, r) => s + (r.status === "fulfilled" ? r.value : 0),
+        0,
+      );
 
-    // Backfill the PostGIS point for newly inserted rows. Cheap set-based
-    // raw query — only touches rows missing geom on this block.
-    await db.$executeRaw`
-      UPDATE "BuildingPermit"
-         SET "geom" = ST_SetSRID(ST_MakePoint("lng", "lat"), 4326)::geography
-       WHERE "block" = ${block}
-         AND "geom" IS NULL
-         AND "lat" IS NOT NULL
-         AND "lng" IS NOT NULL
-    `;
-    return upserted;
+      // Backfill the PostGIS point for newly inserted rows. Cheap set-based
+      // raw query — only touches rows missing geom on this block.
+      await db.$executeRaw`
+        UPDATE "BuildingPermit"
+           SET "geom" = ST_SetSRID(ST_MakePoint("lng", "lat"), 4326)::geography
+         WHERE "block" = ${block}
+           AND "geom" IS NULL
+           AND "lat" IS NOT NULL
+           AND "lng" IS NOT NULL
+      `;
+      permitsUpserted += upserted;
+      return upserted;
+    } catch (err) {
+      blocksErrored += 1;
+      throw err;
+    } finally {
+      noteBlockDone();
+    }
   });
 
   for (const r of results) {
-    blockIdx += 1;
-    if (r.status === "fulfilled") {
-      permitsUpserted += r.value;
-    } else {
-      blocksErrored += 1;
+    if (r.status === "rejected") {
       console.error(`[permits] block fetch failed:`, r.reason);
-    }
-    if (blockIdx % 25 === 0) {
-      console.log(
-        `[permits] phase 1 progress: ${blockIdx}/${blocksToFetch.length} blocks, permits upserted=${permitsUpserted}, errored=${blocksErrored}`,
-      );
     }
   }
   console.log(
