@@ -77,9 +77,22 @@ services:
       - key: OPENAI_MODEL
         value: gpt-5-mini
 
-  # PAID LLM refresh. Mon + Fri at 22:00 UTC — two hours after the daily
-  # base finishes so it can build on the freshest non-LLM data. Re-runs
-  # etl:sync first so the job is self-healing if the morning base failed.
+  # PAID LLM refresh, at 02:00 UTC on Tue + Sat — i.e. still Mon + Fri
+  # evening Pacific (18:00 PST), unchanged in local terms. It used to fire at
+  # 22:00 UTC Mon/Fri, only two hours after the daily base started, on the
+  # assumption the base was done in ~15 min. Once the base began overrunning,
+  # the two jobs ran concurrently for hours and fought over the two resources
+  # they share: the per-account Bridge request quota (5000/hr — see the
+  # sliding-window limiter in bridge-client.ts) and the single Postgres
+  # instance. That is the direct cause of
+  #   2026-08-17 `Bridge 429 … limit will reset on Tue Aug 18 02:57:23`
+  # which killed the LLM run 3h56m in, and of the 131 `database system is in
+  # recovery mode` errors it logged while the base cron's unindexed spatial
+  # UPDATE was crashing the shared instance.
+  #
+  # 02:00 UTC leaves the base (20:00 UTC, now ~3.5h) a ~2.5h margin to finish
+  # before this starts. Re-runs etl:sync first so the job is still
+  # self-healing if the base failed earlier.
   # OpenAI tokens spent here: vision, vision-interior, listing extract,
   # ai-score, and the Gmail rent-roll parser.
   #
@@ -91,7 +104,7 @@ services:
     plan: standard
     region: ohio
     branch: main
-    schedule: "0 22 * * 1,5"
+    schedule: "0 2 * * 2,6"
     buildCommand: npm install -g corepack@latest && corepack enable && pnpm install --frozen-lockfile && pnpm prisma generate
     # See scripts/nightly.ts (mode=llm) for the full pipeline. Summary:
     #   etl:sync                       — self-healing incremental pull
