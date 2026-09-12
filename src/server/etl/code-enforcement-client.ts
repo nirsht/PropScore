@@ -1,7 +1,7 @@
 /**
  * SF DBI Notice of Violations — Socrata client.
  *
- * Dataset: nbtm-fbw5 (https://data.sfgov.org/Housing-and-Buildings/Notices-of-Violation-issued-by-the-Department-of-B/nbtm-fbw5)
+ * Dataset: nbtm-fbw5 (https://data.sf.gov/Housing-and-Buildings/Notices-of-Violation-issued-by-the-Department-of-B/nbtm-fbw5)
  * One row per NOV *item* (complaint_number + item_sequence_number); we dedupe
  * to one row per complaint before counting so summaries stay per-NOV, not
  * per-violation-item. Summarized per-parcel: open count, 5y total count, and
@@ -13,8 +13,9 @@
  */
 
 import { canonicalBlockLot } from "./permits-client";
+import { datasfResource } from "./datasf-host";
 
-const BASE_URL = "https://data.sfgov.org/resource/nbtm-fbw5.json";
+const BASE_URL = datasfResource("nbtm-fbw5");
 const THROTTLE_MS = 1100;
 const RECENT_WINDOW_YEARS = 5;
 

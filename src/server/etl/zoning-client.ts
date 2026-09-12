@@ -3,7 +3,7 @@
  *
  * Dataset: DataSF "Zoning Map - Zoning Districts" (resource id `3i4a-hu95`).
  * Polygon features keyed by `zoning` (district code, e.g. "RH-2", "RM-1",
- * "NCT-3"). Verify the resource ID against https://data.sfgov.org if a fetch
+ * "NCT-3"). Verify the resource ID against https://data.sf.gov if a fetch
  * starts failing — Socrata occasionally re-publishes datasets under new IDs
  * (this dataset previously lived at `8br2-hhp3`, which now 404s).
  *
@@ -16,7 +16,9 @@
  * Socrata's anonymous-access guidance.
  */
 
-const ZONING_URL = "https://data.sfgov.org/resource/3i4a-hu95.geojson";
+import { datasfResource } from "./datasf-host";
+
+const ZONING_URL = datasfResource("3i4a-hu95", "geojson");
 const THROTTLE_MS = 1100;
 
 let lastRequestAt = 0;

@@ -1,7 +1,7 @@
 /**
  * SF DBI Building Permits — Socrata client.
  *
- * Dataset: i98e-djp9 (https://data.sfgov.org/Housing-and-Buildings/Building-Permits/i98e-djp9)
+ * Dataset: i98e-djp9 (https://data.sf.gov/Housing-and-Buildings/Building-Permits/i98e-djp9)
  * One row per permit. Used by `scripts/enrich-permits.ts` to hydrate the
  * BuildingPermit table block-by-block. The permit precedent counts feed
  * into the ADU heuristic score boosts in `valueAdd.ts`.
@@ -10,7 +10,9 @@
  * unauthenticated-access guidance (matches sfpim-client.ts/datasf-client.ts).
  */
 
-const BASE_URL = "https://data.sfgov.org/resource/i98e-djp9.json";
+import { datasfResource } from "./datasf-host";
+
+const BASE_URL = datasfResource("i98e-djp9");
 const THROTTLE_MS = 1100;
 const PAGE_SIZE = 1000;
 

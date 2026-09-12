@@ -1,7 +1,7 @@
 /**
  * SF Assessor Secured Property Tax Roll — Socrata client.
  *
- * Dataset: wv5m-vpq2 (https://data.sfgov.org/Housing-and-Buildings/Assessor-Historical-Secured-Property-Tax-Rolls/wv5m-vpq2)
+ * Dataset: wv5m-vpq2 (https://data.sf.gov/Housing-and-Buildings/Assessor-Historical-Secured-Property-Tax-Rolls/wv5m-vpq2)
  * The Assessor's official per-parcel record: building area, parcel area,
  * year built, stories, units, rooms, beds, baths, basement area, use type.
  * Used by `scripts/enrich-sfpim.ts` to fill in the holes in the Bridge feed.
@@ -19,6 +19,7 @@
 
 import { type AddressParts, parseAddress } from "./address-parser";
 import { MIN_SCORE, rangeNumbers, scoreCandidate } from "./sfpim-scoring";
+import { datasfResource } from "./datasf-host";
 import {
   type AssessorRecord,
   type MatchedAssessor,
@@ -30,7 +31,7 @@ export { mapSfpimRow, type AssessorRecord, type MatchedAssessor, type SfpimRow }
 export { normalizeSuffix, parseAddress, type AddressParts } from "./address-parser";
 export { scoreCandidate } from "./sfpim-scoring";
 
-const BASE_URL = "https://data.sfgov.org/resource/wv5m-vpq2.json";
+const BASE_URL = datasfResource("wv5m-vpq2");
 const THROTTLE_MS = 1100;
 
 let lastRequestAt = 0;

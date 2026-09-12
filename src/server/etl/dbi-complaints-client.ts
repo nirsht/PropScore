@@ -1,7 +1,7 @@
 /**
  * SF DBI Inspection Complaints — Socrata client.
  *
- * Dataset: 9c7e-yn3d (https://data.sfgov.org/Housing-and-Buildings/DBI-Inspection-Complaints/9c7e-yn3d)
+ * Dataset: 9c7e-yn3d (https://data.sf.gov/Housing-and-Buildings/DBI-Inspection-Complaints/9c7e-yn3d)
  * One row per inspection visit on a complaint; we dedupe to one row per
  * `complaint_number` before counting so a complaint with multiple inspections
  * doesn't inflate the totals. The dataset has no "date filed" column, so we
@@ -18,8 +18,9 @@
  */
 
 import { canonicalBlockLot } from "./permits-client";
+import { datasfResource } from "./datasf-host";
 
-const BASE_URL = "https://data.sfgov.org/resource/9c7e-yn3d.json";
+const BASE_URL = datasfResource("9c7e-yn3d");
 const THROTTLE_MS = 1100;
 const RECENT_WINDOW_YEARS = 5;
 
