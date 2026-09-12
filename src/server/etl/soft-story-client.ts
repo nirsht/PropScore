@@ -19,8 +19,9 @@
  */
 
 import { canonicalBlockLot } from "./permits-client";
+import { datasfResource } from "./datasf-host";
 
-const BASE_URL = "https://data.sfgov.org/resource/beah-shgi.json";
+const BASE_URL = datasfResource("beah-shgi");
 const PAGE_SIZE = 10000;
 const THROTTLE_MS = 1100;
 

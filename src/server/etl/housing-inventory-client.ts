@@ -2,7 +2,7 @@
  * SF Housing Inventory — Socrata client.
  *
  * Dataset: xdht-4php — "Housing Production - 2005-present"
- * (https://data.sfgov.org/Housing-and-Buildings/Housing-Production/xdht-4php).
+ * (https://data.sf.gov/Housing-and-Buildings/Housing-Production/xdht-4php).
  * Replaces the retired `6v9b-p59r` dataset, which DataSF now returns
  * `404 dataset.missing` for. One row per completed building event with a
  * `net_units` count (positive = gain from new construction or unit-add;
@@ -18,7 +18,9 @@
  * Anonymous Socrata access, ~1 req/sec throttle.
  */
 
-const BASE_URL = "https://data.sfgov.org/resource/xdht-4php.json";
+import { datasfResource } from "./datasf-host";
+
+const BASE_URL = datasfResource("xdht-4php");
 const THROTTLE_MS = 1100;
 const RECENT_WINDOW_YEARS = 5;
 

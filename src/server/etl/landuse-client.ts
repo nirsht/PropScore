@@ -1,7 +1,7 @@
 /**
  * SF Land Use 2023 — Socrata client.
  *
- * Dataset: fdfd-xptc (https://data.sfgov.org/Geographic-Locations-and-Boundaries/-ARCHIVED-San-Francisco-Land-Use-2023/fdfd-xptc)
+ * Dataset: fdfd-xptc (https://data.sf.gov/Geographic-Locations-and-Boundaries/-ARCHIVED-San-Francisco-Land-Use-2023/fdfd-xptc)
  * Land use category for every SF parcel. Marked "ARCHIVED" upstream because
  * 2023 is the latest year-stamped snapshot DataSF publishes — the wrapper
  * datasets (us3s-fp9q etc.) are map/redirect shells with no tabular rows,
@@ -12,7 +12,9 @@
  * Anonymous Socrata access, ~1 req/sec throttle.
  */
 
-const BASE_URL = "https://data.sfgov.org/resource/fdfd-xptc.json";
+import { datasfResource } from "./datasf-host";
+
+const BASE_URL = datasfResource("fdfd-xptc");
 const THROTTLE_MS = 1100;
 
 let lastRequestAt = 0;
