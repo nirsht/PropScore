@@ -126,7 +126,18 @@ const EXTRACT = stage("extract", "enrich:listings", ["--concurrency=8", LLM_RUN_
 // writes only ListingContact, disjoint from the vision/extract columns.
 // Concurrency 3 keeps LLM + Apollo call volume modest.
 const CONTACTS = stage("contacts", "enrich:contacts", ["--concurrency=3"], { llm: true });
-const RENT_COMPS = stage("rent-comps", "enrich:rent-comps", ["--concurrency=3"]);
+// The candidate set is live listings only (~1.5k, of which ~600 are stale on
+// a typical night — see enrich-rent-comps.ts), so this cap is inert today.
+// It is here for the same reason LLM_RUN_LIMIT is: each row costs 1-3 Bridge
+// requests against a 4500/hr ceiling, so an unbounded backlog is the one
+// thing that can put this lane back over the cron window. Candidates come
+// back oldest-refreshed-first, so anything the cap sheds is picked up first
+// on the next run.
+const RENT_COMPS_RUN_LIMIT = "--limit=3000";
+const RENT_COMPS = stage("rent-comps", "enrich:rent-comps", [
+  "--concurrency=3",
+  RENT_COMPS_RUN_LIMIT,
+]);
 const WALKSCORE = stage("walkscore", "refresh:walkscore");
 const CRIME = stage("crime", "refresh:crime");
 
