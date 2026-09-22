@@ -1,19 +1,29 @@
 /**
  * Batch-run the rent-comps agent to refresh SFAR closed-lease comp medians
- * for every listing with lat/lng. Skips anything refreshed within the last
- * `--max-age-days` (default 7) since rental medians don't move that fast.
+ * for every LIVE listing with lat/lng. Skips anything refreshed within the
+ * last `--max-age-days` (default 7) since rental medians don't move that fast.
  *
  * The agent is deterministic — no LLM calls — but each run hits Bridge for
- * a small bbox query (1mi/24mo). The Bridge rate limit is 5000/hr and
- * bridge-client throttles outgoing requests at 200ms intervals, so
- * concurrency above ~5 won't go faster, only risk 429s.
+ * a small bbox query (1mi/24mo, up to 3 pages). bridge-client holds sustained
+ * usage under 4500 req/hr (see its sliding-window guard), so the candidate
+ * count — not concurrency — is what sets this stage's wall-clock.
+ *
+ * That is why the `deletedAt: null` filter below is load-bearing, not a
+ * nicety: without it the sweep covered all ~100k rows we've ever ingested
+ * (97k of them Closed), 71,800 of which were stale on any given night. At
+ * the hourly Bridge ceiling that is >16h of quota for listings nothing
+ * reads — `latestRentComps` is only ever queried per-listing from the
+ * drawer — and it is what timed the daily cron out at ~39k rows processed.
+ * Live listings alone are ~1.5k. Same omission d06165e fixed for the other
+ * enrichment predicates.
  *
  * Usage:
  *   pnpm tsx scripts/enrich-rent-comps.ts                        # full sweep, concurrency 5
  *   pnpm tsx scripts/enrich-rent-comps.ts --limit=100            # cap rows this run
  *   pnpm tsx scripts/enrich-rent-comps.ts --concurrency=3        # back off if you hit 429s
  *   pnpm tsx scripts/enrich-rent-comps.ts --max-age-days=14      # only refresh older than 14 days
- *   pnpm tsx scripts/enrich-rent-comps.ts --force                # refresh everything
+ *   pnpm tsx scripts/enrich-rent-comps.ts --force                # refresh everything (ignores age)
+ *   pnpm tsx scripts/enrich-rent-comps.ts --include-deleted      # backfill soft-deleted rows too
  */
 import { db } from "@/lib/db";
 import { runRentComps } from "@/server/agents/rent-comps/agent";
@@ -28,21 +38,20 @@ const concurrency = concurrencyArg
 const maxAgeArg = args.find((a) => a.startsWith("--max-age-days="));
 const maxAgeDays = maxAgeArg ? Number(maxAgeArg.split("=")[1]) : 7;
 const force = args.includes("--force");
+// Escape hatch for a deliberate backfill over soft-deleted listings. Never
+// pass this from the nightly cron — see the header for what it costs.
+const includeDeleted = args.includes("--include-deleted");
 
 type Candidate = { mlsId: string };
 
 async function fetchCandidates(): Promise<Candidate[]> {
-  // Listings with lat/lng whose latest rent-comps enrichment is older than
-  // the staleness window — or has none at all. force=true returns every
-  // listing with lat/lng.
-  if (force) {
-    return db.$queryRaw<Candidate[]>`
-      SELECT "mlsId"
-      FROM "Listing"
-      WHERE "lat" IS NOT NULL AND "lng" IS NOT NULL
-      ORDER BY "mlsId" ASC
-    `;
-  }
+  // Live listings with lat/lng whose latest rent-comps enrichment is older
+  // than the staleness window — or has none at all. force=true keeps the
+  // liveness filter and only drops the age check.
+  //
+  // Ordered oldest-refreshed-first (never-refreshed first) so a `--limit`ed
+  // run drains the backlog instead of re-walking the same head of a
+  // mlsId-sorted list every night and starving the tail.
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - maxAgeDays);
   return db.$queryRaw<Candidate[]>`
@@ -54,8 +63,9 @@ async function fetchCandidates(): Promise<Candidate[]> {
       WHERE "listingMlsId" = l."mlsId" AND "agentName" = 'rent-comps'
     ) e ON TRUE
     WHERE l."lat" IS NOT NULL AND l."lng" IS NOT NULL
-      AND (e.last_at IS NULL OR e.last_at < ${cutoff})
-    ORDER BY l."mlsId" ASC
+      AND (${includeDeleted} OR l."deletedAt" IS NULL)
+      AND (${force} OR e.last_at IS NULL OR e.last_at < ${cutoff})
+    ORDER BY e.last_at ASC NULLS FIRST, l."mlsId" ASC
   `;
 }
 
@@ -63,7 +73,7 @@ async function main() {
   const allCandidates = await fetchCandidates();
   const candidates = limit ? allCandidates.slice(0, limit) : allCandidates;
   console.log(
-    `[rent-comps] candidates: ${candidates.length}${limit ? ` (limited from ${allCandidates.length})` : ""} concurrency=${concurrency} maxAgeDays=${maxAgeDays}${force ? " (force)" : ""}`,
+    `[rent-comps] candidates: ${candidates.length}${limit ? ` (limited from ${allCandidates.length})` : ""} concurrency=${concurrency} maxAgeDays=${maxAgeDays}${force ? " (force)" : ""}${includeDeleted ? " (include-deleted)" : ""}`,
   );
 
   let processed = 0;
