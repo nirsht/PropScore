@@ -8,6 +8,8 @@ import {
   createDraft,
   getConnectedEmail,
   getConnectedName,
+  getMailboxEmail,
+  getMailboxEmails,
   GmailNotConnectedError,
   gmailDraftUrl,
   gmailThreadUrl,
@@ -64,6 +66,21 @@ async function resolveSender(
   return user;
 }
 
+// A thread's Gmail draft lives in its owner's mailbox, which is not
+// necessarily the caller's — and Gmail's `/mail/u/0/` deep links resolve
+// against whichever account the *browser* signed into first. Tag every thread
+// we hand the client with the mailbox that owns it so the link opens the
+// right account.
+async function withMailbox<T extends { userId: string }>(
+  threads: T[],
+): Promise<Array<T & { mailboxEmail: string | null }>> {
+  const mailboxes = await getMailboxEmails(threads.map((t) => t.userId));
+  return threads.map((t) => ({
+    ...t,
+    mailboxEmail: mailboxes.get(t.userId) ?? null,
+  }));
+}
+
 export const emailsRouter = router({
   // Is Gmail wired up at all (env) and does this user have a linked Google
   // account with valid scopes? Drives the Connect-Gmail pill + ContactCard
@@ -110,15 +127,16 @@ export const emailsRouter = router({
         include: { user: { select: { id: true, name: true, email: true } } },
       });
       if (existing) {
+        const mailbox = await getMailboxEmail(existing.userId);
         return {
           threadId: existing.id,
           alreadyExisted: true as const,
           owner: existing.user,
           ownedByCaller: existing.userId === ctx.user.id,
           draftUrl: existing.gmailDraftId
-            ? gmailDraftUrl(existing.gmailDraftId)
+            ? gmailDraftUrl(existing.gmailDraftId, mailbox)
             : existing.gmailThreadId
-              ? gmailThreadUrl(existing.gmailThreadId)
+              ? gmailThreadUrl(existing.gmailThreadId, mailbox)
               : null,
         };
       }
@@ -188,7 +206,10 @@ export const emailsRouter = router({
         return {
           threadId: thread.id,
           alreadyExisted: false as const,
-          draftUrl: gmailDraftUrl(draft.gmailDraftId),
+          draftUrl: gmailDraftUrl(
+            draft.gmailDraftId,
+            await getMailboxEmail(sender.id),
+          ),
         };
       } catch (err) {
         // Concurrent click — another thread was created for this listing
@@ -205,7 +226,9 @@ export const emailsRouter = router({
               alreadyExisted: true as const,
               owner: dup.user,
               ownedByCaller: dup.userId === ctx.user.id,
-              draftUrl: dup.gmailDraftId ? gmailDraftUrl(dup.gmailDraftId) : null,
+              draftUrl: dup.gmailDraftId
+                ? gmailDraftUrl(dup.gmailDraftId, await getMailboxEmail(dup.userId))
+                : null,
             };
         }
         throw err;
@@ -330,10 +353,15 @@ export const emailsRouter = router({
   forListing: protectedProcedure
     .input(z.object({ listingMlsId: z.string() }))
     .query(async ({ ctx, input }) => {
-      return ctx.db.emailThread.findUnique({
+      const thread = await ctx.db.emailThread.findUnique({
         where: { listingMlsId: input.listingMlsId },
         include: threadInclude,
       });
+      if (!thread) return null;
+      return {
+        ...thread,
+        mailboxEmail: await getMailboxEmail(thread.userId),
+      };
     }),
 
   // Cross-listing, team-wide inbox on the /emails page. `senderUserId` filters
@@ -358,7 +386,7 @@ export const emailsRouter = router({
       const senderFilter = input?.senderUserId?.length
         ? { in: input.senderUserId }
         : undefined;
-      return ctx.db.emailThread.findMany({
+      const threads = await ctx.db.emailThread.findMany({
         where: {
           ...(statusFilter ? { status: statusFilter } : {}),
           ...(triggerFilter ? { trigger: triggerFilter } : {}),
@@ -368,6 +396,7 @@ export const emailsRouter = router({
         orderBy: { createdAt: "desc" },
         take: 500,
       });
+      return withMailbox(threads);
     }),
 
   getThread: protectedProcedure
@@ -378,7 +407,10 @@ export const emailsRouter = router({
         include: threadInclude,
       });
       if (!thread) throw new TRPCError({ code: "NOT_FOUND" });
-      return thread;
+      return {
+        ...thread,
+        mailboxEmail: await getMailboxEmail(thread.userId),
+      };
     }),
 
   // Connected teammate mailboxes — drives the "send from" picker and the

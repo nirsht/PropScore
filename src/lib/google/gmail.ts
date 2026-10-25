@@ -2,6 +2,9 @@ import { google, type gmail_v1 } from "googleapis";
 import { db } from "../db";
 import { env } from "../env";
 import { isValidEmailAddress } from "../email-address";
+import { gmailDraftUrl, gmailThreadUrl } from "./gmail-url";
+
+export { gmailDraftUrl, gmailThreadUrl };
 
 type OAuth2Client = InstanceType<typeof google.auth.OAuth2>;
 
@@ -194,12 +197,33 @@ export async function createDraft(params: {
   return { gmailDraftId: draftId, gmailThreadId: threadId };
 }
 
-export function gmailDraftUrl(draftId: string): string {
-  return `https://mail.google.com/mail/u/0/#drafts?compose=${draftId}`;
+// Which mailbox a user's drafts land in — read from the `email` claim of the
+// id_token captured at connect time, so this costs no Gmail API call. Mailbox
+// connect is decoupled from app login, so this can differ from User.email.
+// Drives the per-mailbox Gmail deep links; null when no Google account is
+// linked or the token carries no email claim.
+export async function getMailboxEmail(userId: string): Promise<string | null> {
+  return (await getMailboxEmails([userId])).get(userId) ?? null;
 }
 
-export function gmailThreadUrl(threadId: string): string {
-  return `https://mail.google.com/mail/u/0/#all/${threadId}`;
+export async function getMailboxEmails(
+  userIds: string[],
+): Promise<Map<string, string | null>> {
+  const unique = [...new Set(userIds)];
+  const result = new Map<string, string | null>(unique.map((id) => [id, null]));
+  if (unique.length === 0) return result;
+  const accounts = await db.account.findMany({
+    where: { userId: { in: unique }, provider: "google" },
+    select: { userId: true, id_token: true },
+  });
+  for (const account of accounts) {
+    const payload = account.id_token ? decodeJwtPayload(account.id_token) : null;
+    const email = payload?.email;
+    if (typeof email === "string" && email.trim()) {
+      result.set(account.userId, email.trim());
+    }
+  }
+  return result;
 }
 
 // --- Reply polling helpers ---------------------------------------------------
