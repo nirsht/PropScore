@@ -16,6 +16,7 @@ import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import EmailRoundedIcon from "@mui/icons-material/EmailRounded";
 import { trpc } from "@/lib/trpc/client";
+import { gmailDraftUrl, gmailThreadUrl } from "@/lib/google/gmail-url";
 
 export function ContactCard({
   role,
@@ -173,10 +174,11 @@ function RequestRentRollButton({
   if (hasDraft) {
     const draftId = existing.data?.gmailDraftId;
     const threadId = existing.data?.gmailThreadId;
+    const mailbox = existing.data?.mailboxEmail;
     const href = draftId
-      ? `https://mail.google.com/mail/u/0/#drafts?compose=${draftId}`
+      ? gmailDraftUrl(draftId, mailbox)
       : threadId
-        ? `https://mail.google.com/mail/u/0/#all/${threadId}`
+        ? gmailThreadUrl(threadId, mailbox)
         : undefined;
     const ownerId = existing.data?.userId;
     const ownedByMe = ownerId && ownerId === connection.data?.userId;

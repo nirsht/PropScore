@@ -18,6 +18,7 @@ import ExpandLessRoundedIcon from "@mui/icons-material/ExpandLessRounded";
 import SyncRoundedIcon from "@mui/icons-material/SyncRounded";
 import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
 import { trpc } from "@/lib/trpc/client";
+import { gmailDraftUrl, gmailThreadUrl } from "@/lib/google/gmail-url";
 
 const STATUS_COLOR: Record<
   string,
@@ -47,10 +48,10 @@ export function EmailHistorySection({ listingMlsId }: { listingMlsId: string }) 
   const messages = t.messages;
   const lastMsg = messages[messages.length - 1];
   const draftUrl = t.gmailDraftId
-    ? `https://mail.google.com/mail/u/0/#drafts?compose=${t.gmailDraftId}`
+    ? gmailDraftUrl(t.gmailDraftId, t.mailboxEmail)
     : null;
   const threadUrl = t.gmailThreadId
-    ? `https://mail.google.com/mail/u/0/#all/${t.gmailThreadId}`
+    ? gmailThreadUrl(t.gmailThreadId, t.mailboxEmail)
     : null;
   const gmailUrl = draftUrl ?? threadUrl;
 
